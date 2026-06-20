@@ -9,6 +9,8 @@ import type {
   PanelPublish,
   ContentQueue,
   LikeRate,
+  Alert,
+  PanelInteraction,
 } from '../types/api';
 
 export function useVersion() {
@@ -53,5 +55,26 @@ export function useLikeRate() {
   return useQuery({
     queryKey: ['analytics', 'like-rate'],
     queryFn: () => apiGet<LikeRate>('/api/analytics/like-rate'),
+  });
+}
+
+/** 告警只读流（V1 task 9.5）：默认仅未解决，5s 轮询。 */
+export function useAlerts() {
+  return useQuery({
+    queryKey: ['alerts'],
+    queryFn: () => apiGet<{ alerts: Alert[] }>('/api/alerts'),
+    refetchInterval: 5_000,
+  });
+}
+
+/** 按笔记互动历史（V1 task 9.2）；可按账号过滤。 */
+export function useInteractions(accountId?: string) {
+  return useQuery({
+    queryKey: ['monitor', 'interactions', accountId ?? 'all'],
+    queryFn: () =>
+      apiGet<{ interactions: PanelInteraction[] }>(
+        `/api/monitor/interactions${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
+      ),
+    refetchInterval: 10_000,
   });
 }

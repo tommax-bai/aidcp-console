@@ -1,6 +1,6 @@
-import { Alert, Button, Card, Col, Empty, Row, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Empty, List, Row, Statistic, Tag, Typography } from 'antd';
 import { useDashboardSummary } from '../api/queries';
-import { AttributionPendingBanner, AccountsTable } from '../components';
+import { AccountsTable, AccountTotalsTable, AlertSeverityBadge, DispatchControl } from '../components';
 import type { DashboardSummary } from '../types/api';
 
 const METRICS: { key: string; get: (s: DashboardSummary) => number }[] = [
@@ -25,14 +25,12 @@ function healthLine(s: DashboardSummary): string {
   return `${s.edgesOnline} edges online · ${total} accounts · ${warned} warned · ${bad} restricted/frozen · like-rate ${pct(s.likeRate.rate)} ${band}`;
 }
 
-/** Dashboard 首页（design PAGE 3）：今日数据 + 账号状态一览（severity 排序）。 */
+/** Dashboard 首页（design PAGE 3）：今日数据 + 账号状态一览（severity 排序）+ 调度引擎 + 告警 + 真按账号切片。 */
 export function DashboardPage() {
   const { data, isLoading, isError, refetch } = useDashboardSummary();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <AttributionPendingBanner show={data?.attributionPending ?? true} />
-
       {isError && (
         <Alert
           type="error"
@@ -46,7 +44,15 @@ export function DashboardPage() {
         />
       )}
 
-      {data && <Typography.Text>{healthLine(data)}</Typography.Text>}
+      <Card size="small">
+        <Row align="middle" gutter={16}>
+          <Col flex="auto">{data && <Typography.Text>{healthLine(data)}</Typography.Text>}</Col>
+          {/* V1 task 10.2：全局调度引擎启停（接 9.4 /dispatch；非乐观、回报真实在线 edge 数）。 */}
+          <Col>
+            <DispatchControl active={data?.dispatchActive ?? null} />
+          </Col>
+        </Row>
+      </Card>
 
       <Row gutter={[12, 12]}>
         <Col>
@@ -81,8 +87,33 @@ export function DashboardPage() {
         )}
       </Card>
 
-      <Card size="small" title="Alerts">
-        <Empty description="alerts land in V1" />
+      {/* V1 task 9.6：真按账号今日计数切片（归因已流通，不再「归因待补」）。 */}
+      <Card size="small" title="Today by account">
+        <AccountTotalsTable rows={data?.totalsByAccount ?? []} loading={isLoading} />
+      </Card>
+
+      {/* V1 task 9.5：真未解决告警。 */}
+      <Card size="small" title={`Alerts (unresolved · ${data?.alerts.length ?? 0})`}>
+        {data && data.alerts.length > 0 ? (
+          <List
+            size="small"
+            dataSource={data.alerts}
+            renderItem={(a) => (
+              <List.Item>
+                <AlertSeverityBadge severity={a.severity} />
+                <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
+                {a.accountId && (
+                  <Typography.Text type="secondary" style={{ marginRight: 8 }}>
+                    {a.accountId}
+                  </Typography.Text>
+                )}
+                <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>
+              </List.Item>
+            )}
+          />
+        ) : (
+          <Empty description={isLoading ? 'loading…' : 'no unresolved alerts'} />
+        )}
       </Card>
     </div>
   );

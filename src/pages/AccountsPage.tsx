@@ -2,7 +2,7 @@ import { App, Button, Card, Popconfirm, Space } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
 import { useAccounts } from '../api/queries';
-import { AttributionPendingBanner, AccountsTable, RiskControls } from '../components';
+import { AccountsTable, RiskControls } from '../components';
 import type { PanelAccount } from '../types/api';
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
@@ -52,7 +52,6 @@ export function AccountsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <AttributionPendingBanner show />
       <Card size="small" title="Accounts">
         <AccountsTable accounts={data?.accounts ?? []} loading={isLoading} actionsColumn={actions} />
       </Card>

@@ -1,7 +1,9 @@
 export { RiskStatusBadge } from './RiskStatusBadge';
 export { QuotaTierBadge } from './QuotaTierBadge';
 export { EdgeOnlineBadge } from './EdgeOnlineBadge';
-export { AttributionPendingBanner } from './AttributionPendingBanner';
+export { AlertSeverityBadge } from './AlertSeverityBadge';
 export { AccountsTable } from './AccountsTable';
+export { AccountTotalsTable } from './AccountTotalsTable';
 export { RiskControls } from './RiskControls';
+export { DispatchControl } from './DispatchControl';
 export { writeResultText, type WriteOutcome } from './honest-write-result';
