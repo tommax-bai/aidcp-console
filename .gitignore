@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*.local
+.DS_Store
+*.log
+
+# 本机用官方源生成（内部源 npm.zhaopin.com 不可达时）；交由团队用内部源生成权威 lock
+package-lock.json
