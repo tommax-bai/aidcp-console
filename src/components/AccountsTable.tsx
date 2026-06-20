@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
@@ -42,12 +43,18 @@ export function AccountsTable({
   accounts,
   loading,
   severitySorted = false,
+  actionsColumn,
 }: {
   accounts: PanelAccount[];
   loading?: boolean;
   severitySorted?: boolean;
+  /** 可选操作列（如 pause/resume 按钮）；只读视图不传。 */
+  actionsColumn?: (account: PanelAccount) => ReactNode;
 }) {
   const rows = severitySorted ? [...accounts].sort((a, b) => severityRank(a) - severityRank(b)) : accounts;
+  const cols: ColumnsType<PanelAccount> = actionsColumn
+    ? [...columns, { title: 'Actions', key: 'actions', render: (_, r) => actionsColumn(r) }]
+    : columns;
   return (
     <Table
       size="small"
@@ -55,7 +62,7 @@ export function AccountsTable({
       rowKey="accountId"
       loading={loading}
       pagination={false}
-      columns={columns}
+      columns={cols}
       dataSource={rows}
     />
   );
