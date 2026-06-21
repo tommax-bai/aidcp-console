@@ -14,12 +14,12 @@ export function writeResultText(o: WriteOutcome): {
 } {
   switch (o.kind) {
     case 'written':
-      return { type: 'success', text: 'written' };
+      return { type: 'success', text: '已写入' };
     case 'alreadyDecided':
-      return { type: 'info', text: `already decided: ${o.value}` };
+      return { type: 'info', text: `已有决策：${o.value}` };
     case 'refused':
-      return { type: 'warning', text: `refused: ${o.reason}` };
+      return { type: 'warning', text: `已拒绝：${o.reason}` };
     case 'recorded':
-      return { type: 'info', text: `recorded, ${o.edgesOnline} edges online` };
+      return { type: 'info', text: `已记录，${o.edgesOnline} 个边缘端在线` };
   }
 }

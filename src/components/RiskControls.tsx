@@ -3,7 +3,13 @@ import { App, Button, Dropdown, Input, Modal, Select, Space } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
 import type { PanelAccount } from '../types/api';
-import { RISK_QUOTA_LEVELS } from '../types/aidcp-enums';
+import {
+  RISK_QUOTA_LEVELS,
+  RISK_QUOTA_LABEL,
+  RISK_STATUS_LABEL,
+  type RiskQuotaLevel,
+  type RiskStatus,
+} from '../types/aidcp-enums';
 
 /**
  * 风控写控件（V1 task 10.1）：status 迁移（枚举种类）与 quota-tier 是**两个独立控件**。
@@ -25,22 +31,24 @@ export function RiskControls({ account }: { account: PanelAccount }) {
         v,
       ),
     onSuccess: (res) => {
-      // refused 可辨：状态机拒绝（changed=false）渲染 refused，绝不当成功
-      if (res.changed) message.success(`status → ${res.state.status}`);
-      else message.warning(`refused (still ${res.state.status})`);
+      // refused 可辨：状态机拒绝（changed=false）渲染「已拒绝」，绝不当成功
+      const label = RISK_STATUS_LABEL[res.state.status as RiskStatus] ?? res.state.status;
+      if (res.changed) message.success(`风控状态已改为 ${label}`);
+      else message.warning(`已拒绝（仍为 ${label}）`);
       invalidate();
     },
-    onError: () => message.error('status change failed'),
+    onError: () => message.error('风控状态修改失败'),
   });
 
   const quota = useMutation({
     mutationFn: (level: string) =>
       apiPost<{ state: { quotaLevel: string } }>(`/api/accounts/${account.accountId}/risk/quota`, { level }),
     onSuccess: (res) => {
-      message.success(`tier → ${res.state.quotaLevel}`);
+      const label = RISK_QUOTA_LABEL[res.state.quotaLevel as RiskQuotaLevel] ?? res.state.quotaLevel;
+      message.success(`配额档位已改为 ${label}`);
       invalidate();
     },
-    onError: () => message.error('tier change failed'),
+    onError: () => message.error('配额档位修改失败'),
   });
 
   return (
@@ -48,9 +56,9 @@ export function RiskControls({ account }: { account: PanelAccount }) {
       <Dropdown
         menu={{
           items: [
-            { key: 'manual_restrict', label: 'Restrict' },
-            { key: 'manual_freeze', label: 'Freeze', danger: true },
-            { key: 'operator_override_recover', label: 'Force recover (override)…' },
+            { key: 'manual_restrict', label: '受限' },
+            { key: 'manual_freeze', label: '冻结', danger: true },
+            { key: 'operator_override_recover', label: '强制恢复（特权覆盖）…' },
           ],
           onClick: ({ key }) => {
             if (key === 'operator_override_recover') {
@@ -62,20 +70,20 @@ export function RiskControls({ account }: { account: PanelAccount }) {
         }}
       >
         <Button size="small" loading={status.isPending}>
-          Risk ▾
+          风控 ▾
         </Button>
       </Dropdown>
       <Select
         size="small"
-        style={{ width: 110 }}
+        style={{ width: 120 }}
         value={account.riskQuotaLevel ?? undefined}
-        placeholder="tier"
+        placeholder="配额档位"
         loading={quota.isPending}
         onChange={(v) => quota.mutate(v)}
-        options={RISK_QUOTA_LEVELS.map((l) => ({ label: `Tier: ${l}`, value: l }))}
+        options={RISK_QUOTA_LEVELS.map((l) => ({ label: `档位：${RISK_QUOTA_LABEL[l]}`, value: l }))}
       />
       <Modal
-        title="Force recover — bypasses risk recovery window (privileged)"
+        title="强制恢复 — 绕过风控恢复时间窗（特权操作）"
         open={overrideOpen}
         onOk={() => {
           status.mutate({ kind: 'operator_override_recover', reason });
@@ -84,10 +92,11 @@ export function RiskControls({ account }: { account: PanelAccount }) {
         }}
         onCancel={() => setOverrideOpen(false)}
         okButtonProps={{ disabled: !reason.trim(), danger: true }}
-        okText="Force recover"
+        okText="强制恢复"
+        cancelText="取消"
       >
         <Input.TextArea
-          placeholder="audit reason (required) — 这是绕过风控时间门控的特权操作"
+          placeholder="审计理由（必填）— 这是绕过风控时间门控的特权操作"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={2}

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { App, Button, Card, Form, Input, Layout, Typography } from 'antd';
+import { App, Button, Card, Form, Input, Typography } from 'antd';
+import { DeploymentUnitOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 
-/** 登录页（design PAGE 1）：非乐观——仅 JWT round-trip 成功后才进入外壳。 */
+/** 登录页（design PAGE 1）：非乐观——仅 JWT round-trip 成功后才进入外壳；视觉对齐 isales。 */
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -20,10 +21,10 @@ export function LoginPage() {
       navigate('/', { replace: true });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        setError('invalid credentials');
+        setError('用户名或密码错误');
       } else {
-        setError('cannot reach /api');
-        message.error('cannot reach /api');
+        setError('无法连接服务端');
+        message.error('无法连接服务端');
       }
     } finally {
       setLoading(false);
@@ -31,33 +32,56 @@ export function LoginPage() {
   };
 
   return (
-    <Layout
-      style={{ minHeight: '100vh', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--aidcp-muted)',
+        padding: 'var(--aidcp-space-6)',
+      }}
     >
-      <Card style={{ width: 320 }}>
-        <Typography.Title level={4} style={{ textAlign: 'center', marginBottom: 0 }}>
-          AIDCP Console
-        </Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>
-          internal ops console
-        </Typography.Paragraph>
-        <Form layout="vertical" size="small" onFinish={onFinish} disabled={loading}>
-          <Form.Item label="Username" name="username" rules={[{ required: true }]}>
-            <Input autoFocus />
+      <Card style={{ width: 360, boxShadow: 'var(--aidcp-shadow-md)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--aidcp-space-6)' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 44,
+              height: 44,
+              borderRadius: 'var(--aidcp-radius-md)',
+              background: 'var(--aidcp-primary)',
+              color: '#fff',
+              fontSize: 22,
+              marginBottom: 'var(--aidcp-space-3)',
+            }}
+          >
+            <DeploymentUnitOutlined />
+          </span>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            AIDCP 运营管理后台
+          </Typography.Title>
+          <Typography.Text type="secondary">内部运营控制台</Typography.Text>
+        </div>
+        <Form layout="vertical" onFinish={onFinish} disabled={loading} requiredMark={false}>
+          <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+            <Input autoFocus placeholder="请输入用户名" />
           </Form.Item>
-          <Form.Item label="Password" name="password" rules={[{ required: true }]}>
-            <Input.Password />
+          <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
+            <Input.Password placeholder="请输入密码" />
           </Form.Item>
           {error && (
-            <Typography.Paragraph type="danger" style={{ marginBottom: 8 }}>
+            <Typography.Paragraph type="danger" style={{ marginBottom: 'var(--aidcp-space-2)' }}>
               {error}
             </Typography.Paragraph>
           )}
           <Button type="primary" htmlType="submit" block loading={loading}>
-            Sign in
+            登录
           </Button>
         </Form>
       </Card>
-    </Layout>
+    </div>
   );
 }

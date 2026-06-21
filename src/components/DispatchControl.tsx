@@ -20,40 +20,41 @@ export function DispatchControl({ active }: { active: boolean | null }) {
     mutationFn: (action: 'start' | 'stop') =>
       apiPost<DispatchResult>('/api/accounts/default/dispatch', { action }),
     onSuccess: (res) => {
-      if (res.changed) message.success(`dispatch ${res.dispatch} — ${res.edgesOnline} edges online`);
-      else message.info(`already ${res.dispatch} — ${res.edgesOnline} edges online`);
+      const label = res.dispatch === 'started' ? '已启动' : '已停止';
+      if (res.changed) message.success(`调度${label} — ${res.edgesOnline} 个边缘端在线`);
+      else message.info(`已处于${label} — ${res.edgesOnline} 个边缘端在线`);
       void qc.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
     },
-    onError: () => message.error('dispatch control failed'),
+    onError: () => message.error('调度下发控制失败'),
   });
 
   const badge =
     active == null ? (
-      <Badge status="default" text="unknown" />
+      <Badge status="default" text="未知" />
     ) : active ? (
-      <Badge status="processing" text="dispatching" />
+      <Badge status="processing" text="调度中" />
     ) : (
-      <Badge status="default" text="stopped" />
+      <Badge status="default" text="已停止" />
     );
 
   return (
     <Space>
-      <Tooltip title="Global decision engine (single dispatcher). Per-account dispatch lands with the per-edge split.">
-        <Typography.Text type="secondary">Decision engine:</Typography.Text>
+      <Tooltip title="全局决策引擎（单一调度器）。按账号调度将随多边缘端拆分一并上线。">
+        <Typography.Text type="secondary">决策引擎：</Typography.Text>
       </Tooltip>
       {badge}
       {active ? (
         <Popconfirm
-          title="Stop the decision engine? Browsing halts until restarted."
+          title="停止决策引擎？浏览将暂停，直至重新启动。"
           onConfirm={() => dispatch.mutate('stop')}
         >
           <Button size="small" danger loading={dispatch.isPending}>
-            Stop
+            停止
           </Button>
         </Popconfirm>
       ) : (
         <Button size="small" loading={dispatch.isPending} onClick={() => dispatch.mutate('start')}>
-          Start
+          启动
         </Button>
       )}
     </Space>

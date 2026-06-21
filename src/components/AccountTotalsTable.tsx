@@ -1,6 +1,6 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { RISK_ACTIONS } from '../types/aidcp-enums';
+import { RISK_ACTIONS, RISK_ACTION_LABEL } from '../types/aidcp-enums';
 import type { AccountTotals } from '../types/api';
 
 /**
@@ -9,9 +9,9 @@ import type { AccountTotals } from '../types/api';
  * 保留键 default 即单账号现实下的真实账号行。
  */
 const columns: ColumnsType<AccountTotals> = [
-  { title: 'Account', dataIndex: 'accountId', key: 'accountId', fixed: 'left' },
+  { title: '账号', dataIndex: 'accountId', key: 'accountId', fixed: 'left' },
   ...RISK_ACTIONS.map((a) => ({
-    title: a,
+    title: RISK_ACTION_LABEL[a],
     key: a,
     align: 'right' as const,
     render: (_: unknown, r: AccountTotals) => r.totals[a] ?? 0,
@@ -34,7 +34,7 @@ export function AccountTotalsTable({
       pagination={false}
       columns={columns}
       dataSource={rows}
-      locale={{ emptyText: 'no per-account counters today' }}
+      locale={{ emptyText: '今日暂无按账号计数' }}
     />
   );
 }

@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { usePanelWs, type WsStatus } from '../ws/panelWs';
 import { useAlerts, useInteractions, useDashboardSummary } from '../api/queries';
 import { AccountTotalsTable, AlertSeverityBadge } from '../components';
+import { RISK_ACTION_LABEL, type RiskAction } from '../types/aidcp-enums';
 import type { PanelInteraction } from '../types/api';
 
 const STATUS_BADGE: Record<WsStatus, 'processing' | 'success' | 'warning' | 'default'> = {
@@ -13,16 +14,29 @@ const STATUS_BADGE: Record<WsStatus, 'processing' | 'success' | 'warning' | 'def
   offline: 'default',
 };
 
+/** WS 连接状态中文 label（内部值不变、渲染中文）。 */
+const STATUS_LABEL: Record<WsStatus, string> = {
+  connecting: '连接中',
+  live: '实时',
+  reconnecting: '重连中',
+  offline: '离线',
+};
+
 const interactionColumns: ColumnsType<PanelInteraction> = [
   {
-    title: 'When',
+    title: '时间',
     dataIndex: 'interactedAt',
     key: 'when',
     render: (v: number) => new Date(v).toLocaleString(),
   },
-  { title: 'Account', dataIndex: 'accountId', key: 'accountId' },
-  { title: 'Action', dataIndex: 'action', key: 'action', render: (v: string) => <Tag>{v}</Tag> },
-  { title: 'Note', dataIndex: 'noteId', key: 'noteId', render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+  { title: '账号', dataIndex: 'accountId', key: 'accountId' },
+  {
+    title: '动作',
+    dataIndex: 'action',
+    key: 'action',
+    render: (v: string) => <Tag>{RISK_ACTION_LABEL[v as RiskAction] ?? v}</Tag>,
+  },
+  { title: '笔记', dataIndex: 'noteId', key: 'noteId', render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
 ];
 
 /** 运行监控（design PAGE 6）：面板 WS 单一全局流 + 按笔记互动 + 告警只读流 + 真按账号总览（V1 task 10.3）。 */
@@ -44,32 +58,32 @@ export function MonitorPage() {
   const shown = filter ? frames.filter((f) => f.kind.includes(filter)) : frames;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="page-stack">
       <Card size="small">
         <Space wrap>
-          <Badge status={STATUS_BADGE[status]} text={`WS: ${status}`} />
+          <Badge status={STATUS_BADGE[status]} text={`连接：${STATUS_LABEL[status]}`} />
           <Button size="small" onClick={togglePause}>
-            {paused ? `resume (${frames.length} buffered)` : 'pause'}
+            {paused ? `恢复（已缓冲 ${frames.length} 条）` : '暂停'}
           </Button>
           <Input
             size="small"
-            placeholder="filter by kind"
+            placeholder="按类型筛选"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             style={{ width: 200 }}
             allowClear
           />
           <Typography.Text type="secondary">
-            {shown.length} events（max 500，单一全局流 · 断连不回填）
+            {shown.length} 条事件（最多 500，单一全局流 · 断连不回填）
           </Typography.Text>
         </Space>
       </Card>
 
-      <Card size="small" title="Live event stream">
+      <Card size="small" title="实时事件流">
         <List
           size="small"
           dataSource={shown}
-          locale={{ emptyText: 'waiting for events…' }}
+          locale={{ emptyText: '等待事件中…' }}
           style={{ maxHeight: '40vh', overflow: 'auto' }}
           renderItem={(f) => (
             <List.Item>
@@ -86,7 +100,7 @@ export function MonitorPage() {
       </Card>
 
       {/* V1 task 9.2/10.3：按笔记互动历史（risk_interactions 接线后的读侧）。 */}
-      <Card size="small" title={`Interactions by note (${interactions.data?.interactions.length ?? 0})`}>
+      <Card size="small" title={`按笔记互动（${interactions.data?.interactions.length ?? 0}）`}>
         <Table
           size="small"
           bordered
@@ -95,12 +109,12 @@ export function MonitorPage() {
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={interactionColumns}
           dataSource={interactions.data?.interactions ?? []}
-          locale={{ emptyText: 'no recorded interactions yet' }}
+          locale={{ emptyText: '暂无互动记录' }}
         />
       </Card>
 
       {/* V1 task 9.5/10.3：告警只读流（未解决）。 */}
-      <Card size="small" title={`Alerts (unresolved · ${alerts.data?.alerts.length ?? 0})`}>
+      <Card size="small" title={`告警（未解决 · ${alerts.data?.alerts.length ?? 0}）`}>
         {alerts.data && alerts.data.alerts.length > 0 ? (
           <List
             size="small"
@@ -120,12 +134,12 @@ export function MonitorPage() {
             )}
           />
         ) : (
-          <Empty description={alerts.isLoading ? 'loading…' : 'no unresolved alerts'} />
+          <Empty description={alerts.isLoading ? '加载中…' : '暂无未解决告警'} />
         )}
       </Card>
 
       {/* V1 task 9.6/10.3：真按账号总览切片（归因已流通）。 */}
-      <Card size="small" title="Today by account">
+      <Card size="small" title="今日按账号">
         <AccountTotalsTable rows={summary.data?.totalsByAccount ?? []} loading={summary.isLoading} />
       </Card>
     </div>

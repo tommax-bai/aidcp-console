@@ -1,0 +1,270 @@
+/**
+ * app.css — aidcp-console 全局视觉令牌 + 基线排版 + 外壳布局
+ *
+ * 设计语言对齐 isales-web（参照 ~/isales-web/src/styles/design-tokens.css 与
+ * STYLE_GUIDE.md）：近黑主色、白卡淡边框、极淡阴影、14px 中文密致基线、
+ * PingFang SC 字体栈、顶部胶囊导航 + 居中容器。
+ *
+ * 令牌前缀用 `--aidcp-*`（与 AntD 自动生成的 `--ant-*` 区分）；色值/圆角/字号
+ * 与 theme.ts 的 AntD ConfigProvider token 保持一致，二者同源。组件内禁止硬编码
+ * 颜色/字号/间距，统一引用这里的变量或走 AntD 主题。
+ */
+
+:root {
+  /* ---- 基础调色（移植 isales oklch 色板）---- */
+  --aidcp-background: oklch(1 0 0);
+  --aidcp-foreground: oklch(0.145 0 0);
+  --aidcp-card: oklch(1 0 0);
+  --aidcp-muted: oklch(0.97 0 0);
+  --aidcp-muted-foreground: oklch(0.556 0 0);
+  --aidcp-border: oklch(0.922 0 0);
+
+  /* 主色（isales Figma #030213，近黑）*/
+  --aidcp-primary: #030213;
+  --aidcp-primary-foreground: oklch(0.985 0 0);
+
+  /* ---- 形状 ---- */
+  --aidcp-radius-sm: 6px;
+  --aidcp-radius-md: 8px;
+  --aidcp-radius-lg: 12px;
+
+  /* ---- 字号体系（中文密致基线，base 14px）---- */
+  --aidcp-font-size-2xs: 11px;
+  --aidcp-font-size-xs: 12px;
+  --aidcp-font-size-sm: 13px;
+  --aidcp-font-size-body: 14px;
+  --aidcp-font-size-title-3: 15px;
+  --aidcp-font-size-title-2: 17px;
+  --aidcp-font-size-title-1: 20px;
+
+  /* ---- 字重 ---- */
+  --aidcp-font-weight-normal: 400;
+  --aidcp-font-weight-medium: 500;
+  --aidcp-font-weight-semibold: 600;
+
+  /* ---- 行高 ---- */
+  --aidcp-line-height-tight: 1.25;
+  --aidcp-line-height-normal: 1.55;
+
+  /* ---- 字间距 ---- */
+  --aidcp-letter-spacing-tight: -0.01em;
+
+  /* ---- 间距（4px 倍数）---- */
+  --aidcp-space-1: 4px;
+  --aidcp-space-2: 8px;
+  --aidcp-space-3: 12px;
+  --aidcp-space-4: 16px;
+  --aidcp-space-5: 20px;
+  --aidcp-space-6: 24px;
+  --aidcp-space-8: 32px;
+  --aidcp-space-12: 48px;
+
+  /* ---- 容器 ---- */
+  --aidcp-container-max: 1280px;
+  --aidcp-container-px: var(--aidcp-space-6);
+  --aidcp-topnav-height: 56px;
+
+  /* ---- 字体栈 ---- */
+  --aidcp-font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", system-ui, Arial, sans-serif;
+
+  /* ---- 阴影 ---- */
+  --aidcp-shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --aidcp-shadow-md: 0 2px 4px -1px rgb(15 23 42 / 0.06), 0 4px 8px -2px rgb(15 23 42 / 0.04);
+}
+
+/* ---- 基线排版 ---- */
+html {
+  font-size: var(--aidcp-font-size-base, 14px);
+  line-height: var(--aidcp-line-height-normal);
+  color: var(--aidcp-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body {
+  margin: 0;
+  font-family: var(--aidcp-font-family);
+  font-feature-settings: "kern" 1, "tnum" 1;
+  background: var(--aidcp-muted);
+}
+
+/* 数字密集字段（ID / 时间戳 / 计数）等宽数字 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 页面内容块纵向堆叠（替代逐页内联 gap，统一 16px 块间距）*/
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-4);
+}
+
+/* ======================================================================
+ * 外壳：顶部导航 + 居中内容（移植 isales DefaultLayout / TopNav）
+ * ====================================================================== */
+.app-shell {
+  min-height: 100vh;
+  background: var(--aidcp-muted);
+  display: flex;
+  flex-direction: column;
+}
+.app-main {
+  flex: 1;
+  padding: var(--aidcp-space-6) 0 var(--aidcp-space-12);
+}
+.app-main__inner {
+  max-width: var(--aidcp-container-max);
+  margin: 0 auto;
+  padding: 0 var(--aidcp-container-px);
+}
+
+/* ---- 顶栏 ---- */
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--aidcp-background);
+  border-bottom: 1px solid var(--aidcp-border);
+  box-shadow: var(--aidcp-shadow-sm);
+}
+.top-nav__inner {
+  max-width: var(--aidcp-container-max);
+  margin: 0 auto;
+  padding: 0 var(--aidcp-container-px);
+  height: var(--aidcp-topnav-height);
+  display: flex;
+  align-items: center;
+  gap: var(--aidcp-space-4);
+}
+
+/* ---- 品牌 ---- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--aidcp-space-2);
+  text-decoration: none;
+  color: var(--aidcp-foreground);
+  flex-shrink: 0;
+}
+.brand__logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-primary);
+  color: var(--aidcp-primary-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: var(--aidcp-line-height-tight);
+}
+.brand__title {
+  font-weight: var(--aidcp-font-weight-semibold);
+  font-size: var(--aidcp-font-size-body);
+  letter-spacing: var(--aidcp-letter-spacing-tight);
+}
+.brand__sub {
+  font-size: var(--aidcp-font-size-xs);
+  color: var(--aidcp-muted-foreground);
+  margin-top: 1px;
+}
+
+/* ---- 胶囊容器 ---- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--aidcp-muted);
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+}
+.pill--business {
+  margin: 0 auto;
+}
+
+/* 主业务胶囊按钮 */
+.pill__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: var(--aidcp-font-size-sm);
+  font-weight: var(--aidcp-font-weight-medium);
+  color: var(--aidcp-muted-foreground);
+  text-decoration: none;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.pill__btn:hover {
+  color: var(--aidcp-foreground);
+}
+.pill__btn--active {
+  background: var(--aidcp-background);
+  color: var(--aidcp-foreground);
+  box-shadow: var(--aidcp-shadow-sm);
+}
+
+/* 配置圆按钮 */
+.pill__circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--aidcp-muted-foreground);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.pill__circle:hover {
+  color: var(--aidcp-foreground);
+  background: var(--aidcp-muted);
+}
+.pill__circle--active {
+  background: var(--aidcp-muted);
+  color: var(--aidcp-foreground);
+}
+
+/* ---- 右侧操作簇 ---- */
+.top-nav__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--aidcp-space-3);
+  flex-shrink: 0;
+}
+.user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 1px solid var(--aidcp-border);
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.user-trigger:hover {
+  color: var(--aidcp-foreground);
+  background: var(--aidcp-muted);
+}
+
+/* 窄屏：隐藏主业务胶囊文字与品牌副标题 */
+@media (max-width: 860px) {
+  .pill--business .pill__btn span {
+    display: none;
+  }
+  .brand__sub {
+    display: none;
+  }
+}

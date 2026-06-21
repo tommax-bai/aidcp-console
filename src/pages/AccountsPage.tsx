@@ -18,31 +18,31 @@ export function AccountsPage() {
       }),
     // 非乐观：round-trip 后才显示真态；诚实文案（resume 带真实恢复 edge 数）
     onSuccess: (res, v) => {
-      if (v.command === 'resume') message.success(`resumed — ${res.resumedEdges ?? 0} edges`);
-      else message.success('paused (durable)');
+      if (v.command === 'resume') message.success(`已恢复 — 恢复 ${res.resumedEdges ?? 0} 个边缘端`);
+      else message.success('已暂停（已持久化）');
       void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
-    onError: () => message.error('command failed'),
+    onError: () => message.error('调度下发失败'),
   });
 
   const actions = (a: PanelAccount) => (
     <Space size={4}>
       {a.operatorStatus === 'paused' ? (
         <Popconfirm
-          title={`Resume ${a.accountId}?`}
+          title={`确认恢复账号 ${a.accountId}？`}
           onConfirm={() => cmd.mutate({ accountId: a.accountId, command: 'resume' })}
         >
           <Button size="small" loading={cmd.isPending}>
-            Resume
+            恢复
           </Button>
         </Popconfirm>
       ) : (
         <Popconfirm
-          title={`Pause ${a.accountId}?`}
+          title={`确认暂停账号 ${a.accountId}？`}
           onConfirm={() => cmd.mutate({ accountId: a.accountId, command: 'pause' })}
         >
           <Button size="small" danger loading={cmd.isPending}>
-            Pause
+            暂停
           </Button>
         </Popconfirm>
       )}
@@ -51,8 +51,8 @@ export function AccountsPage() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Card size="small" title="Accounts">
+    <div className="page-stack">
+      <Card size="small" title="账号">
         <AccountsTable accounts={data?.accounts ?? []} loading={isLoading} actionsColumn={actions} />
       </Card>
     </div>
