@@ -114,3 +114,23 @@ export interface ContentQueue {
   status: string;
   snapshot: unknown | null;
 }
+
+/** 模型凭据视图（change console-model-provider-config）。永不含明文密钥。 */
+export interface ModelConfigCredential {
+  field: string;
+  configured: boolean;
+  maskedHint: string | null;
+  /** db=库内加密凭据 / env=回退环境变量 / none=未配置。 */
+  source: 'db' | 'env' | 'none';
+}
+
+/** GET /api/config/model 形状。 */
+export interface ModelConfig {
+  provider: string;
+  baseUrl: string;
+  textModel: string;
+  imageModel: string;
+  credential: ModelConfigCredential;
+  /** 主加密密钥是否就位——凭据能否在后台编辑。 */
+  canEditCredential: boolean;
+}

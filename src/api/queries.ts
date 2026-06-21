@@ -11,6 +11,7 @@ import type {
   LikeRate,
   Alert,
   PanelInteraction,
+  ModelConfig,
 } from '../types/api';
 
 export function useVersion() {
@@ -18,6 +19,14 @@ export function useVersion() {
     queryKey: ['version'],
     queryFn: () => apiGet<VersionPayload>('/api/version'),
     staleTime: 60_000,
+  });
+}
+
+/** 模型与凭据配置（change console-model-provider-config）。 */
+export function useModelConfig() {
+  return useQuery({
+    queryKey: ['config', 'model'],
+    queryFn: () => apiGet<ModelConfig>('/api/config/model'),
   });
 }
 
