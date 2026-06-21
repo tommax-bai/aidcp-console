@@ -12,6 +12,7 @@ import type {
   Alert,
   PanelInteraction,
   ModelConfig,
+  RoleConfigCatalog,
 } from '../types/api';
 
 export function useVersion() {
@@ -27,6 +28,14 @@ export function useModelConfig() {
   return useQuery({
     queryKey: ['config', 'model'],
     queryFn: () => apiGet<ModelConfig>('/api/config/model'),
+  });
+}
+
+/** 角色级模型/温度配置目录（change console-role-model-config）。 */
+export function useRoleConfig() {
+  return useQuery({
+    queryKey: ['config', 'roles'],
+    queryFn: () => apiGet<RoleConfigCatalog>('/api/roles'),
   });
 }
 

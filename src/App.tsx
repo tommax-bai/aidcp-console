@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { ContentPage } from './pages/ContentPage';
 import { MonitorPage } from './pages/MonitorPage';
+import { RolesPage } from './pages/RolesPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 /** 路由守卫：未鉴权跳登录。 */
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
           { path: '/accounts', element: <AccountsPage /> },
           { path: '/content', element: <ContentPage /> },
           { path: '/monitor', element: <MonitorPage /> },
+          { path: '/roles', element: <RolesPage /> },
           { path: '/settings', element: <SettingsPage /> },
         ],
       },

@@ -134,3 +134,29 @@ export interface ModelConfig {
   /** 主加密密钥是否就位——凭据能否在后台编辑。 */
   canEditCredential: boolean;
 }
+
+// 角色级模型/温度配置（change console-role-model-config）。与 cloud RoleConfigRowView 手动对齐。
+
+/** 单角色目录行 + 生效值（GET /api/roles 形状）。 */
+export interface RoleConfigRow {
+  roleId: string;
+  displayName: string;
+  group: 'browse' | 'publish';
+  /** text=可配模型/温度；image=全局配置不在此覆盖；none=不调模型。 */
+  llmKind: 'text' | 'image' | 'none';
+  /** 是否开放温度调节（仅生成/改写类）。 */
+  tunableTemperature: boolean;
+  /** 当前生效模型（文本类=覆盖或全局；图像类=全局图片模型）。 */
+  effectiveModel: string;
+  /** 是否存在按角色模型覆盖。 */
+  modelOverridden: boolean;
+  /** 温度覆盖（null=用代码默认）。 */
+  temperatureOverride: number | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/roles 形状。 */
+export interface RoleConfigCatalog {
+  roles: RoleConfigRow[];
+}
