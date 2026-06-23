@@ -21,13 +21,21 @@ export const aidcpTheme: ThemeConfig = {
     colorPrimary: '#030213',
     colorInfo: '#030213',
     colorLink: '#030213',
-    // 近黑 colorInfo 会让 AntD 从这颗几乎零饱和的暗种子推出**深色**的 info 容器底
-    // （colorInfoBg≈#4c4a52 / colorInfoBorder≈#252138），叠近黑正文 → `ant-alert-info`
-    // 文字与底色对比仅 ~2.3:1（远低于 WCAG AA 4.5）。这里显式把 info 容器底/边覆盖为
-    // 与设计令牌同源的浅灰（muted 底 + 淡边框），正文/图标恢复近黑、对比拉到 15:1+，
-    // 同时保留近黑 colorInfo 作为图标/链接小色块的品牌口径。仅改容器底/边，不动 colorInfo。
+    // 近黑 colorPrimary/colorInfo（#030213，几乎零饱和的暗种子）会让 AntD 把「主色/信息色最浅
+    // 一档」派生成**深色**面（colorPrimaryBg/colorInfoBg≈#4c4a52、*BgHover≈#373445），而这些 token
+    // 正是「浅底深字」类表面的底色——叠近黑正文后对比仅 ~1.7–2.3:1（远低于 WCAG AA 4.5）：
+    //   · ant-alert-info 容器底（colorInfoBg / colorInfoBorder）
+    //   · Select / Dropdown / Menu / Table 的「选中项」底（controlItemBgActive ← colorPrimaryBg）
+    // 修法：显式把这些派生底 pin 成与设计令牌同源的浅灰；不动 colorPrimary/colorInfo 本身，故
+    // 图标/链接/主按钮等近黑品牌口径不变。选中项底（#ededed）比 hover 底（colorFillTertiary≈#f5f5f5）
+    // 略深以作区分，叠近黑正文对比 13–15:1。改容器/选中底前先确认是这层、而非品牌主色本身。
     colorInfoBg: '#f7f7f7',
     colorInfoBorder: '#e8e8e8',
+    colorInfoBgHover: '#f0f0f0',
+    colorPrimaryBg: '#ededed',
+    colorPrimaryBgHover: '#e0e0e0',
+    controlItemBgActive: '#ededed',
+    controlItemBgActiveHover: '#e0e0e0',
     borderRadius: 8,
     borderRadiusLG: 12,
     borderRadiusSM: 6,
