@@ -21,6 +21,13 @@ export const aidcpTheme: ThemeConfig = {
     colorPrimary: '#030213',
     colorInfo: '#030213',
     colorLink: '#030213',
+    // 近黑 colorInfo 会让 AntD 从这颗几乎零饱和的暗种子推出**深色**的 info 容器底
+    // （colorInfoBg≈#4c4a52 / colorInfoBorder≈#252138），叠近黑正文 → `ant-alert-info`
+    // 文字与底色对比仅 ~2.3:1（远低于 WCAG AA 4.5）。这里显式把 info 容器底/边覆盖为
+    // 与设计令牌同源的浅灰（muted 底 + 淡边框），正文/图标恢复近黑、对比拉到 15:1+，
+    // 同时保留近黑 colorInfo 作为图标/链接小色块的品牌口径。仅改容器底/边，不动 colorInfo。
+    colorInfoBg: '#f7f7f7',
+    colorInfoBorder: '#e8e8e8',
     borderRadius: 8,
     borderRadiusLG: 12,
     borderRadiusSM: 6,
