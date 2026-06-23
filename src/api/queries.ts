@@ -13,6 +13,7 @@ import type {
   PanelInteraction,
   ModelConfig,
   RoleConfigCatalog,
+  CategoryConfigCatalog,
 } from '../types/api';
 
 export function useVersion() {
@@ -36,6 +37,14 @@ export function useRoleConfig() {
   return useQuery({
     queryKey: ['config', 'roles'],
     queryFn: () => apiGet<RoleConfigCatalog>('/api/roles'),
+  });
+}
+
+/** 分类级模型默认配置目录（change role-model-category-config，item 5/6）。 */
+export function useCategoryConfig() {
+  return useQuery({
+    queryKey: ['config', 'categories'],
+    queryFn: () => apiGet<CategoryConfigCatalog>('/api/categories'),
   });
 }
 

@@ -96,7 +96,7 @@ export function SettingsPage() {
         </Descriptions>
 
         <Form layout="vertical" requiredMark={false} style={{ maxWidth: 480 }}>
-          <Form.Item label="文本模型（Qwen）">
+          <Form.Item label="默认模型（文本，Qwen）" extra="全局默认文本模型：角色 / 分类未单独设置时一律回落到它（见「角色」页）。">
             <Input value={textModel} onChange={(e) => setTextModel(e.target.value)} placeholder="如 qwen-turbo / qwen-plus / qwen-max" />
           </Form.Item>
           <Form.Item label="图片模型（通义万相）">

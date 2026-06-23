@@ -137,17 +137,24 @@ export interface ModelConfig {
 
 // 角色级模型/温度配置（change console-role-model-config）。与 cloud RoleConfigRowView 手动对齐。
 
+/** 生效模型来源（change role-model-category-config）：覆盖 / 继承分类 / 继承默认 / 图像全局。 */
+export type ModelEffectiveSource = 'override' | 'category' | 'default' | 'image';
+
 /** 单角色目录行 + 生效值（GET /api/roles 形状）。 */
 export interface RoleConfigRow {
   roleId: string;
   displayName: string;
   group: 'browse' | 'publish';
+  /** 所属分类（稳定 key，与 category_config.category_id 一致）。 */
+  category: string;
   /** text=可配模型/温度；image=全局配置不在此覆盖；none=不调模型。 */
   llmKind: 'text' | 'image' | 'none';
   /** 是否开放温度调节（仅生成/改写类）。 */
   tunableTemperature: boolean;
-  /** 当前生效模型（文本类=覆盖或全局；图像类=全局图片模型）。 */
+  /** 当前生效模型（文本类=覆盖/分类默认/全局；图像类=全局图片模型）。 */
   effectiveModel: string;
+  /** 生效模型来源：override=按角色覆盖 / category=继承分类默认 / default=继承全局默认 / image=图像全局。 */
+  effectiveSource: ModelEffectiveSource;
   /** 是否存在按角色模型覆盖。 */
   modelOverridden: boolean;
   /** 温度覆盖（null=用代码默认）。 */
@@ -159,4 +166,24 @@ export interface RoleConfigRow {
 /** GET /api/roles 形状。 */
 export interface RoleConfigCatalog {
   roles: RoleConfigRow[];
+}
+
+// 分类级模型默认（change role-model-category-config，item 5/6）。与 cloud CategoryConfigRowView 手动对齐。
+
+/** 单分类目录行 + 分类默认生效值（GET /api/categories 形状）。 */
+export interface CategoryConfigRow {
+  categoryId: string;
+  displayName: string;
+  order: number;
+  /** 分类默认模型生效值（分类覆盖则用覆盖，否则回落全局「默认模型」）。 */
+  effectiveModel: string;
+  /** 是否存在分类默认覆盖（false=继承全局默认模型）。 */
+  modelOverridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/categories 形状。 */
+export interface CategoryConfigCatalog {
+  categories: CategoryConfigRow[];
 }
