@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { App, Button, Card, Form, Input, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPut } from '../api/client';
+import { apiGet, apiPut } from '../api/client';
 import { useRoleConfig, useCategoryConfig } from '../api/queries';
 import type {
   RoleConfigRow,
@@ -10,6 +10,7 @@ import type {
   CategoryConfigRow,
   CategoryConfigCatalog,
   ModelEffectiveSource,
+  RolePromptView,
 } from '../types/api';
 
 const GROUP_LABEL: Record<RoleConfigRow['group'], string> = { browse: '浏览', publish: '发布' };
@@ -54,6 +55,24 @@ export function RolesPage() {
 
   const [editingCat, setEditingCat] = useState<CategoryConfigRow | null>(null);
   const [catModelInput, setCatModelInput] = useState('');
+
+  // 只读 prompt 预览（change role-prompt-visibility）：点开时按需拉取，不常驻查询。
+  const [promptRole, setPromptRole] = useState<RoleConfigRow | null>(null);
+  const [promptView, setPromptView] = useState<RolePromptView | null>(null);
+  const [promptLoading, setPromptLoading] = useState(false);
+
+  const openPrompt = async (row: RoleConfigRow) => {
+    setPromptRole(row);
+    setPromptView(null);
+    setPromptLoading(true);
+    try {
+      setPromptView(await apiGet<RolePromptView>(`/api/roles/${encodeURIComponent(row.roleId)}/prompt`));
+    } catch (e) {
+      setPromptView({ roleId: row.roleId, prompt: null, available: false, note: `加载失败：${(e as Error).message}` });
+    } finally {
+      setPromptLoading(false);
+    }
+  };
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['config', 'roles'] });
@@ -179,15 +198,21 @@ export function RolesPage() {
     },
     {
       title: '操作',
-      width: 90,
-      render: (_: unknown, row) =>
-        row.llmKind === 'text' ? (
-          <Button size="small" onClick={() => openEdit(row)}>
-            编辑
+      width: 180,
+      render: (_: unknown, row) => (
+        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+          {row.llmKind === 'text' ? (
+            <Button size="small" onClick={() => openEdit(row)}>
+              编辑
+            </Button>
+          ) : (
+            <Typography.Text type="secondary">全局</Typography.Text>
+          )}
+          <Button size="small" type="link" style={{ padding: 0 }} onClick={() => openPrompt(row)}>
+            查看 Prompt
           </Button>
-        ) : (
-          <Typography.Text type="secondary">全局配置</Typography.Text>
-        ),
+        </span>
+      ),
     },
   ];
 
@@ -304,6 +329,44 @@ export function RolesPage() {
             </Form.Item>
           </Form>
         )}
+      </Modal>
+
+      <Modal
+        title={promptRole ? `Prompt：${promptRole.displayName}` : ''}
+        open={!!promptRole}
+        onCancel={() => setPromptRole(null)}
+        footer={<Button onClick={() => setPromptRole(null)}>关闭</Button>}
+        width={760}
+      >
+        {promptLoading ? (
+          <Skeleton active />
+        ) : promptView ? (
+          <div>
+            <Alert
+              type={promptView.available ? 'info' : 'warning'}
+              showIcon
+              style={{ marginBottom: 'var(--aidcp-space-3)' }}
+              message={promptView.note}
+            />
+            {promptView.prompt != null && (
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: 440,
+                  overflow: 'auto',
+                  background: '#f6f6f6',
+                  padding: 12,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  margin: 0,
+                }}
+              >
+                {promptView.prompt}
+              </pre>
+            )}
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

@@ -187,3 +187,13 @@ export interface CategoryConfigRow {
 export interface CategoryConfigCatalog {
   categories: CategoryConfigRow[];
 }
+
+/** 角色 prompt 只读预览（change role-prompt-visibility）。GET /api/roles/:roleId/prompt 形状。 */
+export interface RolePromptView {
+  roleId: string;
+  /** 忠实渲染的 prompt（示例数据 + 真实人设）；不可预览时为 null。 */
+  prompt: string | null;
+  available: boolean;
+  /** 占位说明 / 不可预览原因。 */
+  note: string;
+}
