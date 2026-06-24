@@ -188,6 +188,12 @@ export interface CategoryConfigCatalog {
   categories: CategoryConfigRow[];
 }
 
+/** prompt 来源分段（change prompt-viewer-persona-source）：role=角色独有指令 / persona=来自账号人设。 */
+export interface RolePromptSegment {
+  source: 'role' | 'persona';
+  text: string;
+}
+
 /** 角色 prompt 只读预览（change role-prompt-visibility）。GET /api/roles/:roleId/prompt 形状。 */
 export interface RolePromptView {
   roleId: string;
@@ -196,6 +202,8 @@ export interface RolePromptView {
   available: boolean;
   /** 占位说明 / 不可预览原因。 */
   note: string;
+  /** 人设来源分段（change prompt-viewer-persona-source，可选）：有则按段渲染、persona 段加底色；无则回落扁平。 */
+  segments?: RolePromptSegment[];
 }
 
 // 账号人设配置（change account-persona-config，stream F）。与 cloud PersonaConfigRowView 手动对齐。

@@ -348,22 +348,58 @@ export function RolesPage() {
               style={{ marginBottom: 'var(--aidcp-space-3)' }}
               message={promptView.note}
             />
-            {promptView.prompt != null && (
-              <pre
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: 440,
-                  overflow: 'auto',
-                  background: '#f6f6f6',
-                  padding: 12,
-                  borderRadius: 6,
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                  margin: 0,
-                }}
-              >
-                {promptView.prompt}
-              </pre>
+            {promptView.segments && promptView.segments.length > 0 ? (
+              <>
+                {/* 图例：文字 + 色块（不只靠颜色），说明灰底=真实账号人设。 */}
+                <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--aidcp-text-secondary, #888)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ display: 'inline-block', width: 12, height: 12, background: '#d9d9d9', border: '1px solid #bbb', borderRadius: 2 }} />
+                  灰底 = 来自当前账号的真实人设；其余为该角色独有指令
+                </div>
+                <pre
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: 440,
+                    overflow: 'auto',
+                    background: '#fafafa',
+                    padding: 12,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    lineHeight: 1.7,
+                    margin: 0,
+                  }}
+                >
+                  {promptView.segments.map((seg, i) =>
+                    seg.source === 'persona' ? (
+                      <span
+                        key={i}
+                        style={{ background: '#d9d9d9', borderRadius: 3, padding: '1px 3px', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}
+                      >
+                        {seg.text}
+                      </span>
+                    ) : (
+                      <span key={i}>{seg.text}</span>
+                    ),
+                  )}
+                </pre>
+              </>
+            ) : (
+              promptView.prompt != null && (
+                <pre
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: 440,
+                    overflow: 'auto',
+                    background: '#f6f6f6',
+                    padding: 12,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    margin: 0,
+                  }}
+                >
+                  {promptView.prompt}
+                </pre>
+              )
             )}
           </div>
         ) : null}
