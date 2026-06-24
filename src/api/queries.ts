@@ -14,6 +14,7 @@ import type {
   ModelConfig,
   RoleConfigCatalog,
   CategoryConfigCatalog,
+  PersonaConfigCatalog,
 } from '../types/api';
 
 export function useVersion() {
@@ -45,6 +46,14 @@ export function useCategoryConfig() {
   return useQuery({
     queryKey: ['config', 'categories'],
     queryFn: () => apiGet<CategoryConfigCatalog>('/api/categories'),
+  });
+}
+
+/** 账号人设配置目录（change account-persona-config，stream F）。单账号详情在页面内按需 apiGet。 */
+export function usePersonaConfig() {
+  return useQuery({
+    queryKey: ['config', 'personas'],
+    queryFn: () => apiGet<PersonaConfigCatalog>('/api/persona'),
   });
 }
 

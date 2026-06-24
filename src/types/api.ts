@@ -197,3 +197,37 @@ export interface RolePromptView {
   /** 占位说明 / 不可预览原因。 */
   note: string;
 }
+
+// 账号人设配置（change account-persona-config，stream F）。与 cloud PersonaConfigRowView 手动对齐。
+
+/** 人设来源：override=该账号自定义人设 / fallback=回落打包默认人设。 */
+export type PersonaSource = 'override' | 'fallback';
+
+/** 单账号人设目录行（GET /api/persona 形状）。列出所有账号（含回落者）。 */
+export interface PersonaConfigRow {
+  accountId: string;
+  label: string | null;
+  source: PersonaSource;
+  /** 当前生效人设的身份摘要（解析结果），列表一眼识别「这是谁」。 */
+  identityName: string;
+  identityRole: string;
+  /** 仅 override 行带审计；fallback 行为 null。 */
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/persona 形状。 */
+export interface PersonaConfigCatalog {
+  accounts: PersonaConfigRow[];
+}
+
+/** 单账号人设详情（GET /api/persona/:accountId，编辑回显）。 */
+export interface PersonaDetailView {
+  accountId: string;
+  label: string | null;
+  source: PersonaSource;
+  /** 编辑器内容：override→该账号人设文本；fallback→打包默认人设原文（编辑起点）。 */
+  persona: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
