@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
@@ -16,6 +17,21 @@ const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
 const columns: ColumnsType<PanelAccount> = [
   { title: '账号', key: 'account', render: (_, r) => r.label ?? r.accountId },
+  {
+    title: '人设',
+    key: 'persona',
+    // 未绑人设（非 default）→「需设置人设」红标 + 跳转人设页；已绑 → 绿标；default 豁免 → 中性「默认人设」。
+    render: (_, r) =>
+      r.needsPersonaSetup ? (
+        <Link to="/persona">
+          <Tag color="warning">需设置人设</Tag>
+        </Link>
+      ) : r.personaBound ? (
+        <Tag color="green">已绑人设</Tag>
+      ) : (
+        <Tag>默认人设</Tag>
+      ),
+  },
   { title: '分组', dataIndex: 'groupLabel', render: (v: string | null) => v ?? dash },
   {
     title: '运营',

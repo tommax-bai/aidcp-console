@@ -37,6 +37,10 @@ export interface PanelAccount {
   riskStatus: RiskStatus | null;
   riskQuotaLevel: RiskQuotaLevel | null;
   signalCount: number | null;
+  /** 人设绑定状态（派生，multi-account-node-support）：以 persona_config 行存在且非空为准。 */
+  personaBound: boolean;
+  /** 需设置人设（派生）：未绑且非 default。手工镜像 cloud panel-store.ts PanelAccount，两处须同步防漂移。 */
+  needsPersonaSetup: boolean;
 }
 
 export interface LikeRate {
@@ -107,6 +111,14 @@ export interface PanelPublish {
   status: string;
   platformPostId: string | null;
   publishedAt: number;
+  /** 发布账号（change publish-history-account-and-detail）。 */
+  accountId: string;
+  /** 账号展示名（label ?? account_id）。 */
+  accountLabel: string;
+  /** 已发布正文全文（「查看」展示）。 */
+  content: string | null;
+  /** 小红书详情页分享 URL（带 xsec_token）；为 null 时后台显示「无链接」、不给坏链。 */
+  postUrl: string | null;
 }
 
 /** in-flight 发布队列（orchestrator getStatus）。 */

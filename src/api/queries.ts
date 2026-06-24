@@ -82,10 +82,14 @@ export function useAccounts() {
   });
 }
 
-export function usePublished() {
+/** 已发布历史（change publish-history-account-and-detail）；可选按账号过滤。 */
+export function usePublished(accountId?: string) {
   return useQuery({
-    queryKey: ['content', 'published'],
-    queryFn: () => apiGet<{ items: PanelPublish[] }>('/api/content/published'),
+    queryKey: ['content', 'published', accountId ?? 'all'],
+    queryFn: () =>
+      apiGet<{ items: PanelPublish[] }>(
+        `/api/content/published${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
+      ),
   });
 }
 
