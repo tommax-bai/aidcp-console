@@ -16,6 +16,7 @@ import type {
   CategoryConfigCatalog,
   PersonaConfigCatalog,
   QuotaConfigCatalog,
+  LlmUsagePayload,
 } from '../types/api';
 
 export function useVersion() {
@@ -121,5 +122,29 @@ export function useInteractions(accountId?: string) {
         `/api/monitor/interactions${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
       ),
     refetchInterval: 10_000,
+  });
+}
+
+/** token 用量统计（change llm-token-usage-stats）：表格行 + 10 分钟曲线桶，一次取回。 */
+export interface LlmUsageParams {
+  fromMs?: number;
+  toMs?: number;
+  accountId?: string;
+  role?: string;
+  model?: string;
+}
+
+export function useLlmUsage(params: LlmUsageParams) {
+  const qs = new URLSearchParams();
+  if (params.fromMs !== undefined) qs.set('from', String(params.fromMs));
+  if (params.toMs !== undefined) qs.set('to', String(params.toMs));
+  if (params.accountId) qs.set('accountId', params.accountId);
+  if (params.role) qs.set('role', params.role);
+  if (params.model) qs.set('model', params.model);
+  const suffix = qs.toString();
+  return useQuery({
+    queryKey: ['llm-usage', suffix],
+    queryFn: () => apiGet<LlmUsagePayload>(`/api/llm-usage${suffix ? `?${suffix}` : ''}`),
+    refetchInterval: 60_000,
   });
 }

@@ -4,6 +4,7 @@ import {
   DeploymentUnitOutlined,
   FileTextOutlined,
   IdcardOutlined,
+  FundOutlined,
   MonitorOutlined,
   RobotOutlined,
   SafetyOutlined,
@@ -24,6 +25,7 @@ const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
   { key: '/roles', label: '角色配置', icon: <RobotOutlined /> },
   { key: '/quotas', label: '安全限额', icon: <SafetyOutlined /> },
   { key: '/persona', label: '人设', icon: <IdcardOutlined /> },
+  { key: '/usage', label: '用量', icon: <FundOutlined /> },
 ];
 
 /** 当前路径是否命中某入口（'/' 精确匹配，其余按前缀，子路由保持高亮）。 */
