@@ -6,6 +6,7 @@ import {
   IdcardOutlined,
   MonitorOutlined,
   RobotOutlined,
+  SafetyOutlined,
   SettingOutlined,
   TeamOutlined,
   UserOutlined,
@@ -21,6 +22,7 @@ const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
   { key: '/content', label: '内容', icon: <FileTextOutlined /> },
   { key: '/monitor', label: '监控', icon: <MonitorOutlined /> },
   { key: '/roles', label: '角色配置', icon: <RobotOutlined /> },
+  { key: '/quotas', label: '安全限额', icon: <SafetyOutlined /> },
   { key: '/persona', label: '人设', icon: <IdcardOutlined /> },
 ];
 

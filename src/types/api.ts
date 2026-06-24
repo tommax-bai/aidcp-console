@@ -231,3 +231,28 @@ export interface PersonaDetailView {
   updatedAt: string | null;
   updatedBy: string | null;
 }
+
+// 安全限额配置（change safety-quota-config，stream D）。与 cloud QuotaConfigRowView 手动对齐。
+
+/** 限额档位（三档）。 */
+export type QuotaTier = 'conservative' | 'normal' | 'aggressive';
+/** 受限动作（与 cloud RISK_ACTIONS 一致）。 */
+export type QuotaAction = 'view' | 'like' | 'collect' | 'comment' | 'follow' | 'publish' | 'comment_like';
+
+/** 单 (tier,action) 三窗口生效数字 + 来源/审计（GET /api/quotas 形状）。 */
+export interface QuotaConfigRow {
+  tier: QuotaTier;
+  action: QuotaAction;
+  daily: number;
+  perMinute: number;
+  perHour: number;
+  /** 是否存在库内覆盖（false=显示的是派生写死默认，即当前真生效）。 */
+  overridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/quotas 形状。 */
+export interface QuotaConfigCatalog {
+  quotas: QuotaConfigRow[];
+}

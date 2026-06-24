@@ -15,6 +15,7 @@ import type {
   RoleConfigCatalog,
   CategoryConfigCatalog,
   PersonaConfigCatalog,
+  QuotaConfigCatalog,
 } from '../types/api';
 
 export function useVersion() {
@@ -46,6 +47,14 @@ export function useCategoryConfig() {
   return useQuery({
     queryKey: ['config', 'categories'],
     queryFn: () => apiGet<CategoryConfigCatalog>('/api/categories'),
+  });
+}
+
+/** 安全限额配置目录（change safety-quota-config，stream D）。三档×动作×三窗口生效值 + 审计。 */
+export function useQuotaConfig() {
+  return useQuery({
+    queryKey: ['config', 'quotas'],
+    queryFn: () => apiGet<QuotaConfigCatalog>('/api/quotas'),
   });
 }
 

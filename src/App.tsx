@@ -7,6 +7,7 @@ import { AccountsPage } from './pages/AccountsPage';
 import { ContentPage } from './pages/ContentPage';
 import { MonitorPage } from './pages/MonitorPage';
 import { RolesPage } from './pages/RolesPage';
+import { QuotasPage } from './pages/QuotasPage';
 import { PersonaPage } from './pages/PersonaPage';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -29,6 +30,7 @@ const router = createBrowserRouter([
           { path: '/content', element: <ContentPage /> },
           { path: '/monitor', element: <MonitorPage /> },
           { path: '/roles', element: <RolesPage /> },
+          { path: '/quotas', element: <QuotasPage /> },
           { path: '/persona', element: <PersonaPage /> },
           { path: '/settings', element: <SettingsPage /> },
         ],
