@@ -127,8 +127,9 @@ export interface ContentQueue {
   snapshot: unknown | null;
 }
 
-/** 模型凭据视图（change console-model-provider-config）。永不含明文密钥。 */
+/** 单厂商凭据视图（change console-model-provider-config + model-config-volcengine-provider）。永不含明文密钥。 */
 export interface ModelConfigCredential {
+  provider: string;
   field: string;
   configured: boolean;
   maskedHint: string | null;
@@ -136,13 +137,25 @@ export interface ModelConfigCredential {
   source: 'db' | 'env' | 'none';
 }
 
-/** GET /api/config/model 形状。 */
-export interface ModelConfig {
-  provider: string;
+/** 可选文本厂商（下拉项 + 只读 baseUrl）。 */
+export interface TextProviderOption {
+  id: string;
+  displayName: string;
   baseUrl: string;
+}
+
+/** GET /api/config/model 形状（change model-config-volcengine-provider：多厂商）。 */
+export interface ModelConfig {
+  /** 选中的全局文本厂商。 */
+  textProvider: string;
+  /** 图片厂商钉死 dashscope（图片不动）。 */
+  imageProvider: 'dashscope';
   textModel: string;
   imageModel: string;
-  credential: ModelConfigCredential;
+  /** 可选文本厂商列表。 */
+  providers: TextProviderOption[];
+  /** 各厂商凭据状态。 */
+  credentials: ModelConfigCredential[];
   /** 主加密密钥是否就位——凭据能否在后台编辑。 */
   canEditCredential: boolean;
 }
@@ -165,6 +178,8 @@ export interface RoleConfigRow {
   tunableTemperature: boolean;
   /** 当前生效模型（文本类=覆盖/分类默认/全局；图像类=全局图片模型）。 */
   effectiveModel: string;
+  /** 当前生效厂商（change model-config-volcengine-provider）：取自贡献生效模型那一层；图像类恒 dashscope。 */
+  effectiveProvider: string;
   /** 生效模型来源：override=按角色覆盖 / category=继承分类默认 / default=继承全局默认 / image=图像全局。 */
   effectiveSource: ModelEffectiveSource;
   /** 是否存在按角色模型覆盖。 */
@@ -189,6 +204,8 @@ export interface CategoryConfigRow {
   order: number;
   /** 分类默认模型生效值（分类覆盖则用覆盖，否则回落全局「默认模型」）。 */
   effectiveModel: string;
+  /** 分类默认模型的生效厂商（change model-config-volcengine-provider）：覆盖则用同行、否则回落全局文本厂商。 */
+  effectiveProvider: string;
   /** 是否存在分类默认覆盖（false=继承全局默认模型）。 */
   modelOverridden: boolean;
   updatedAt: string | null;

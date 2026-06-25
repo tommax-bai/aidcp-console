@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Card, Form, Input, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
+import { App, Button, Card, Form, Input, InputNumber, Modal, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
-import { useRoleConfig, useCategoryConfig } from '../api/queries';
+import { useRoleConfig, useCategoryConfig, useModelConfig } from '../api/queries';
 import type {
   RoleConfigRow,
   RoleConfigCatalog,
@@ -36,6 +36,12 @@ const SOURCE_TAG: Record<ModelEffectiveSource, { text: string; color: string }> 
   default: { text: '继承默认', color: 'default' },
   image: { text: '图像全局', color: 'purple' },
 };
+// 厂商短标签（change model-config-volcengine-provider）。
+const PROVIDER_TAG: Record<string, { text: string; color: string }> = {
+  dashscope: { text: '百炼', color: 'blue' },
+  volcengine: { text: '火山', color: 'volcano' },
+};
+const providerTag = (id: string) => PROVIDER_TAG[id] ?? { text: id, color: 'default' };
 
 /**
  * 角色配置页（change console-role-model-config + role-model-category-config）。
@@ -46,15 +52,23 @@ const SOURCE_TAG: Record<ModelEffectiveSource, { text: string; color: string }> 
 export function RolesPage() {
   const { data, isLoading } = useRoleConfig();
   const { data: catData, isLoading: catLoading } = useCategoryConfig();
+  const { data: modelCfg } = useModelConfig();
   const { message } = App.useApp();
   const qc = useQueryClient();
 
+  // 文本厂商下拉项（取自模型配置真态；未载入时回退仅 dashscope）。
+  const providerOptions = (modelCfg?.providers ?? [{ id: 'dashscope', displayName: '阿里百炼 DashScope', baseUrl: '' }]).map(
+    (p) => ({ value: p.id, label: p.displayName }),
+  );
+
   const [editing, setEditing] = useState<RoleConfigRow | null>(null);
   const [modelInput, setModelInput] = useState('');
+  const [providerInput, setProviderInput] = useState('dashscope');
   const [tempInput, setTempInput] = useState<number | null>(null);
 
   const [editingCat, setEditingCat] = useState<CategoryConfigRow | null>(null);
   const [catModelInput, setCatModelInput] = useState('');
+  const [catProviderInput, setCatProviderInput] = useState('dashscope');
 
   // 只读 prompt 预览（change role-prompt-visibility）：点开时按需拉取，不常驻查询。
   const [promptRole, setPromptRole] = useState<RoleConfigRow | null>(null);
@@ -79,10 +93,22 @@ export function RolesPage() {
     void qc.invalidateQueries({ queryKey: ['config', 'categories'] });
   };
 
+  const saveErr = (e: unknown) => {
+    const msg = (e as Error).message;
+    message.error(
+      msg === 'model_invalid'
+        ? '模型名无效（保存前探活未通过），未保存'
+        : msg === 'provider_key_missing'
+          ? '所选厂商的密钥未配置，请到「设置」页配置该厂商密钥并重启 cloud'
+          : '保存失败',
+    );
+  };
+
   const save = useMutation({
-    mutationFn: (v: { roleId: string; model: string; temperature?: number | null }) =>
+    mutationFn: (v: { roleId: string; model: string; provider: string; temperature?: number | null }) =>
       apiPut<RoleConfigCatalog>(`/api/roles/${encodeURIComponent(v.roleId)}/config`, {
         model: v.model,
+        provider: v.provider,
         ...(v.temperature !== undefined ? { temperature: v.temperature } : {}),
       }),
     onSuccess: () => {
@@ -90,37 +116,34 @@ export function RolesPage() {
       setEditing(null);
       invalidate();
     },
-    onError: (e) => {
-      const msg = (e as Error).message;
-      message.error(msg === 'model_invalid' ? '模型名无效（保存前探活未通过），未保存' : '保存失败');
-    },
+    onError: saveErr,
   });
 
   const saveCat = useMutation({
-    mutationFn: (v: { categoryId: string; model: string }) =>
+    mutationFn: (v: { categoryId: string; model: string; provider: string }) =>
       apiPut<CategoryConfigCatalog>(`/api/categories/${encodeURIComponent(v.categoryId)}/config`, {
-        // 留空 → null：清除分类覆盖，回落全局默认。
+        // 留空 → null：清除分类覆盖，回落全局默认（provider 随之清空）。
         model: v.model.trim() === '' ? null : v.model.trim(),
+        provider: v.provider,
       }),
     onSuccess: () => {
       message.success('已保存，分类默认即时生效');
       setEditingCat(null);
       invalidate();
     },
-    onError: (e) => {
-      const msg = (e as Error).message;
-      message.error(msg === 'model_invalid' ? '模型名无效（保存前探活未通过），未保存' : '保存失败');
-    },
+    onError: saveErr,
   });
 
   const openEdit = (row: RoleConfigRow) => {
     setEditing(row);
     setModelInput(row.modelOverridden ? row.effectiveModel : '');
+    setProviderInput(row.effectiveProvider || 'dashscope');
     setTempInput(row.temperatureOverride);
   };
   const openCatEdit = (row: CategoryConfigRow) => {
     setEditingCat(row);
     setCatModelInput(row.modelOverridden ? row.effectiveModel : '');
+    setCatProviderInput(row.effectiveProvider || 'dashscope');
   };
 
   // 角色按分类排序（同类相邻，达到「按分类分组查看」）。
@@ -139,6 +162,7 @@ export function RolesPage() {
       dataIndex: 'effectiveModel',
       render: (model: string, row) => (
         <span className="tabular-nums">
+          <Tag color={providerTag(row.effectiveProvider).color}>{providerTag(row.effectiveProvider).text}</Tag>
           {model} {row.modelOverridden ? <Tag color="green">已设</Tag> : <Tag>继承默认</Tag>}
         </span>
       ),
@@ -181,6 +205,7 @@ export function RolesPage() {
       dataIndex: 'effectiveModel',
       render: (model: string, row) => (
         <span className="tabular-nums">
+          <Tag color={providerTag(row.effectiveProvider).color}>{providerTag(row.effectiveProvider).text}</Tag>
           {model} <Tag color={SOURCE_TAG[row.effectiveSource].color}>{SOURCE_TAG[row.effectiveSource].text}</Tag>
         </span>
       ),
@@ -274,6 +299,7 @@ export function RolesPage() {
           save.mutate({
             roleId: editing.roleId,
             model: modelInput.trim(),
+            provider: providerInput,
             ...(editing.tunableTemperature ? { temperature: tempInput } : {}),
           })
         }
@@ -282,11 +308,19 @@ export function RolesPage() {
       >
         {editing && (
           <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="文本模型名" extra="自由输入；留空=取消该角色覆盖（回落分类默认/默认模型）。保存前服务端会探活校验。">
+            <Form.Item label="厂商" extra="火山方舟需先在「设置」页配置其 API 密钥；改厂商需同时填该厂商的模型名。">
+              <Select
+                value={providerInput}
+                onChange={setProviderInput}
+                options={providerOptions}
+                style={{ maxWidth: 280 }}
+              />
+            </Form.Item>
+            <Form.Item label="文本模型名" extra="自由输入；留空=取消该角色覆盖（回落分类默认/默认模型）。保存前服务端按所选厂商探活。">
               <Input
                 value={modelInput}
                 onChange={(e) => setModelInput(e.target.value)}
-                placeholder="如 qwen-turbo / qwen-plus / qwen-max（留空=回落）"
+                placeholder="如 qwen-turbo / 火山 doubao-… / ep-…（留空=回落）"
               />
             </Form.Item>
             {editing.tunableTemperature && (
@@ -311,20 +345,31 @@ export function RolesPage() {
         open={!!editingCat}
         onCancel={() => setEditingCat(null)}
         confirmLoading={saveCat.isPending}
-        onOk={() => editingCat && saveCat.mutate({ categoryId: editingCat.categoryId, model: catModelInput })}
+        onOk={() =>
+          editingCat &&
+          saveCat.mutate({ categoryId: editingCat.categoryId, model: catModelInput, provider: catProviderInput })
+        }
         okText="保存"
         cancelText="取消"
       >
         {editingCat && (
           <Form layout="vertical" requiredMark={false}>
+            <Form.Item label="厂商" extra="火山方舟需先在「设置」页配置其 API 密钥；改厂商需同时填该厂商的模型名。">
+              <Select
+                value={catProviderInput}
+                onChange={setCatProviderInput}
+                options={providerOptions}
+                style={{ maxWidth: 280 }}
+              />
+            </Form.Item>
             <Form.Item
               label="分类默认模型名"
-              extra="该分类下未单独覆盖的角色都用它；留空=回落到「默认模型」。保存前服务端会探活校验。"
+              extra="该分类下未单独覆盖的角色都用它；留空=回落到「默认模型」。保存前服务端按所选厂商探活。"
             >
               <Input
                 value={catModelInput}
                 onChange={(e) => setCatModelInput(e.target.value)}
-                placeholder="如 qwen-turbo / qwen-plus / qwen-max（留空=回落默认模型）"
+                placeholder="如 qwen-turbo / 火山 doubao-… / ep-…（留空=回落默认模型）"
               />
             </Form.Item>
           </Form>
