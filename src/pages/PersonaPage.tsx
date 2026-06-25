@@ -14,7 +14,8 @@ const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
 
 /**
  * 账号人设配置页（change account-persona-config，stream F）。
- * - 按账号配置「人设」（identity / interests / behavior_guidelines / session_limits 等，YAML 文本）。
+ * - 按账号配置「人设」（identity / interests / behavior_guidelines 等，YAML 文本）。
+ *   注：单场会话上限（时长 + 互动预算）已从人设迁出到「安全限额 · 单场会话上限」页（change session-limits-to-quota-layer）。
  * - 缺自定义人设的账号回落系统默认人设（打包 soul.yaml），列表如实标注来源。
  * - 写非乐观——round-trip 后 invalidate 重取真态；非法人设由服务端 soul 校验拦截，诚实拒绝绝不落库。
  * - 留空保存=清除该账号覆盖，回落系统默认。

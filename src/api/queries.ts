@@ -16,6 +16,7 @@ import type {
   CategoryConfigCatalog,
   PersonaConfigCatalog,
   QuotaConfigCatalog,
+  SessionLimitCatalog,
   LlmUsagePayload,
   PanelNotificationContact,
 } from '../types/api';
@@ -57,6 +58,14 @@ export function useQuotaConfig() {
   return useQuery({
     queryKey: ['config', 'quotas'],
     queryFn: () => apiGet<QuotaConfigCatalog>('/api/quotas'),
+  });
+}
+
+/** 单场会话上限配置目录（change session-limits-to-quota-layer）。按账号时长 + 六项互动预算 + 审计。 */
+export function useSessionLimits() {
+  return useQuery({
+    queryKey: ['config', 'session-limits'],
+    queryFn: () => apiGet<SessionLimitCatalog>('/api/session-limits'),
   });
 }
 

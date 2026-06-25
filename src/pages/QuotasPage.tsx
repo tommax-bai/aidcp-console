@@ -1,10 +1,18 @@
 import { useMemo, useState } from 'react';
 import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig } from '../api/queries';
-import type { QuotaConfigRow, QuotaConfigCatalog, QuotaTier, QuotaAction } from '../types/api';
+import { useQuotaConfig, useSessionLimits } from '../api/queries';
+import type {
+  QuotaConfigRow,
+  QuotaConfigCatalog,
+  QuotaTier,
+  QuotaAction,
+  SessionLimitRow,
+  SessionLimitCatalog,
+  SessionInteractionBudget,
+} from '../types/api';
 
 const QUOTA_MAX = 100_000;
 
@@ -24,6 +32,16 @@ const ACTION_LABEL: Record<QuotaAction, { text: string; order: number }> = {
 };
 
 const rowKey = (r: { tier: string; action: string }) => `${r.tier}:${r.action}`;
+
+/** 单场互动预算六项 + 中文标签（顺序即展示顺序，与 cloud SessionInteractionBudget 对齐）。 */
+const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: string }> = [
+  { key: 'likes', label: '点赞' },
+  { key: 'collects', label: '收藏' },
+  { key: 'follows', label: '关注' },
+  { key: 'searches', label: '搜索' },
+  { key: 'comments', label: '评论' },
+  { key: 'comment_likes', label: '评论赞' },
+];
 
 /**
  * 安全限额配置页（change safety-quota-config，stream D）。
@@ -111,6 +129,77 @@ export function QuotasPage() {
     },
   ];
 
+  // ── 单场会话上限（change session-limits-to-quota-layer）──────────────────────
+  const sl = useSessionLimits();
+  const [editingSL, setEditingSL] = useState<SessionLimitRow | null>(null);
+  const [slDuration, setSlDuration] = useState<number | null>(null);
+  const [slBudget, setSlBudget] = useState<Record<keyof SessionInteractionBudget, number | null>>({
+    likes: null,
+    collects: null,
+    follows: null,
+    searches: null,
+    comments: null,
+    comment_likes: null,
+  });
+
+  const openEditSL = (row: SessionLimitRow) => {
+    setEditingSL(row);
+    setSlDuration(row.maxDurationMin);
+    setSlBudget({ ...row.budget });
+  };
+
+  const saveSL = useMutation({
+    mutationFn: (v: { accountId: string; maxDurationMin: number } & SessionInteractionBudget) =>
+      apiPut<SessionLimitCatalog>('/api/session-limits', v),
+    onSuccess: () => {
+      message.success('已保存，单场上限下场会话即生效（无需重启）');
+      setEditingSL(null);
+      void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(
+        msg === 'invalid_value'
+          ? '数字非法（时长≥1、各预算≥0，均须为 ≤10 万整数），未保存'
+          : msg === 'no_valid_fields'
+            ? '未填写任何可改字段，未保存'
+            : '保存失败',
+      );
+    },
+  });
+
+  const slValidBudget = (n: number | null): n is number => n !== null && Number.isInteger(n) && n >= 0 && n <= QUOTA_MAX;
+  const slValidDuration = (n: number | null): n is number => n !== null && Number.isInteger(n) && n >= 1 && n <= QUOTA_MAX;
+  const canSaveSL = slValidDuration(slDuration) && SL_BUDGET_FIELDS.every((f) => slValidBudget(slBudget[f.key]));
+
+  const slRows = useMemo(
+    () => (sl.data?.limits ?? []).slice().sort((a, b) => a.accountId.localeCompare(b.accountId)),
+    [sl.data],
+  );
+
+  const slColumns: ColumnsType<SessionLimitRow> = [
+    { title: '账号', dataIndex: 'accountId', width: 140, render: (a: string) => <span className="tabular-nums">{a}</span> },
+    { title: '单场时长(分钟)', dataIndex: 'maxDurationMin', width: 130, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    ...SL_BUDGET_FIELDS.map(
+      (f): ColumnType<SessionLimitRow> => ({
+        title: f.label,
+        key: f.key,
+        width: 76,
+        render: (_: unknown, row: SessionLimitRow) => <span className="tabular-nums">{row.budget[f.key]}</span>,
+      }),
+    ),
+    { title: '来源', dataIndex: 'overridden', width: 100, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
+    {
+      title: '操作',
+      width: 80,
+      render: (_: unknown, row: SessionLimitRow) => (
+        <Button size="small" onClick={() => openEditSL(row)}>
+          编辑
+        </Button>
+      ),
+    },
+  ];
+
   if (isLoading || !data) {
     return (
       <div className="page-stack">
@@ -137,6 +226,26 @@ export function QuotasPage() {
           dataSource={rows}
           pagination={false}
         />
+      </Card>
+
+      <Card size="small" title="单场会话上限">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="按账号配置单场会话时长（分钟）与单场互动预算（点赞/收藏/关注/搜索/评论/评论赞）。改完下场会话即生效（热加载、无需重启）。库缺行显示的是写死默认（= 当前真生效）。此项原在「人设」中，现已迁出，请在此编辑。"
+        />
+        {sl.isLoading || !sl.data ? (
+          <Skeleton active />
+        ) : (
+          <Table<SessionLimitRow>
+            size="small"
+            rowKey={(r) => r.accountId}
+            columns={slColumns}
+            dataSource={slRows}
+            pagination={false}
+          />
+        )}
       </Card>
 
       <Modal
@@ -173,6 +282,53 @@ export function QuotasPage() {
             <Form.Item label="每小时突发上限">
               <InputNumber value={perHour ?? undefined} onChange={(v) => setPerHour(v ?? null)} min={0} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
             </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title={editingSL ? `编辑单场上限：账号 ${editingSL.accountId}` : ''}
+        open={!!editingSL}
+        onCancel={() => setEditingSL(null)}
+        confirmLoading={saveSL.isPending}
+        okButtonProps={{ disabled: !canSaveSL }}
+        onOk={() =>
+          editingSL &&
+          canSaveSL &&
+          saveSL.mutate({
+            accountId: editingSL.accountId,
+            maxDurationMin: slDuration as number,
+            likes: slBudget.likes as number,
+            collects: slBudget.collects as number,
+            follows: slBudget.follows as number,
+            searches: slBudget.searches as number,
+            comments: slBudget.comments as number,
+            comment_likes: slBudget.comment_likes as number,
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+      >
+        {editingSL && (
+          <Form layout="vertical" requiredMark={false}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              单场时长须为 ≥1 的整数（分钟）；各项互动预算须为 ≥0 的整数；均 ≤100000。保存前服务端会再校验。
+            </Typography.Paragraph>
+            <Form.Item label="单场时长（分钟）">
+              <InputNumber value={slDuration ?? undefined} onChange={(v) => setSlDuration(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            {SL_BUDGET_FIELDS.map((f) => (
+              <Form.Item key={f.key} label={`单场${f.label}上限`}>
+                <InputNumber
+                  value={slBudget[f.key] ?? undefined}
+                  onChange={(v) => setSlBudget((prev) => ({ ...prev, [f.key]: v ?? null }))}
+                  min={0}
+                  max={QUOTA_MAX}
+                  precision={0}
+                  style={{ width: 200 }}
+                />
+              </Form.Item>
+            ))}
           </Form>
         )}
       </Modal>

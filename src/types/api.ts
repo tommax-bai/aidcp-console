@@ -277,6 +277,34 @@ export interface QuotaConfigCatalog {
   quotas: QuotaConfigRow[];
 }
 
+// 单场会话上限配置（change session-limits-to-quota-layer）。与 cloud SessionLimitRowView 手动对齐。
+
+/** 单场互动预算（六项，与 cloud SessionInteractionBudget 一致）。 */
+export interface SessionInteractionBudget {
+  likes: number;
+  collects: number;
+  follows: number;
+  searches: number;
+  comments: number;
+  comment_likes: number;
+}
+
+/** 单账号单场上限生效值 + 来源/审计（GET /api/session-limits 形状）。 */
+export interface SessionLimitRow {
+  accountId: string;
+  maxDurationMin: number;
+  budget: SessionInteractionBudget;
+  /** 是否存在库内覆盖（false=显示的是写死默认，即当前真生效）。 */
+  overridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/session-limits 形状。 */
+export interface SessionLimitCatalog {
+  limits: SessionLimitRow[];
+}
+
 // ── token 用量统计（change llm-token-usage-stats，GET /api/llm-usage 形状，与 cloud 逐字对齐）──
 
 /** 表格一行：按北京日期 × (账号/角色/模型) 聚合。token 量为数值（BIGINT 求和后解析）。 */
