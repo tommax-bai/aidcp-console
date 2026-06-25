@@ -17,6 +17,7 @@ import type {
   PersonaConfigCatalog,
   QuotaConfigCatalog,
   LlmUsagePayload,
+  PanelNotificationContact,
 } from '../types/api';
 
 export function useVersion() {
@@ -150,5 +151,20 @@ export function useLlmUsage(params: LlmUsageParams) {
     queryKey: ['llm-usage', suffix],
     queryFn: () => apiGet<LlmUsagePayload>(`/api/llm-usage${suffix ? `?${suffix}` : ''}`),
     refetchInterval: 60_000,
+  });
+}
+
+/**
+ * 通知联系人名册（change notification-contact-registry）：按账号取联系人列表。
+ * 强制按账号（accountId 必填）—— 不提供全账号合并视图（PII 隔离）；accountId 为空时不查。
+ */
+export function useNotificationContacts(accountId: string | undefined) {
+  return useQuery({
+    queryKey: ['notification-contacts', accountId],
+    enabled: !!accountId,
+    queryFn: () =>
+      apiGet<{ contacts: PanelNotificationContact[] }>(
+        `/api/notification/contacts?accountId=${encodeURIComponent(accountId!)}`,
+      ),
   });
 }

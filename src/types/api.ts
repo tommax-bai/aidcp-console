@@ -308,3 +308,23 @@ export interface LlmUsagePayload {
   buckets: LlmUsageBucket[];
   window: { fromMs: number; toMs: number; clampedToDays: number | null };
 }
+
+/**
+ * 通知联系人（change notification-contact-registry）。给本账号发过通知的人（评论/@/点赞/收藏/关注）。
+ * 时间戳为 epoch ms。手工镜像 cloud NotificationContact，两处须同步防漂移。
+ */
+export interface PanelNotificationContact {
+  senderKey: string;
+  nickname: string | null;
+  userId: string | null;
+  firstReason: string;
+  reasons: string[];
+  firstSeen: number;
+  lastSeen: number;
+  eventCount: number;
+  wechat: string | null;
+  note: string | null;
+  tags: string[];
+  updatedBy: string | null;
+  updatedAt: number | null;
+}

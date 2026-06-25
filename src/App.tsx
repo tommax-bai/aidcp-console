@@ -10,6 +10,7 @@ import { RolesPage } from './pages/RolesPage';
 import { QuotasPage } from './pages/QuotasPage';
 import { PersonaPage } from './pages/PersonaPage';
 import { TokenUsagePage } from './pages/TokenUsagePage';
+import { NotificationContactsPage } from './pages/NotificationContactsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 /** 路由守卫：未鉴权跳登录。 */
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
           { path: '/quotas', element: <QuotasPage /> },
           { path: '/persona', element: <PersonaPage /> },
           { path: '/usage', element: <TokenUsagePage /> },
+          { path: '/notification-contacts', element: <NotificationContactsPage /> },
           { path: '/settings', element: <SettingsPage /> },
         ],
       },

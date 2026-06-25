@@ -5,6 +5,7 @@ import {
   FileTextOutlined,
   IdcardOutlined,
   FundOutlined,
+  ContactsOutlined,
   MonitorOutlined,
   RobotOutlined,
   SafetyOutlined,
@@ -26,6 +27,7 @@ const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
   { key: '/quotas', label: '安全限额', icon: <SafetyOutlined /> },
   { key: '/persona', label: '人设', icon: <IdcardOutlined /> },
   { key: '/usage', label: '用量', icon: <FundOutlined /> },
+  { key: '/notification-contacts', label: '通知联系人', icon: <ContactsOutlined /> },
 ];
 
 /** 当前路径是否命中某入口（'/' 精确匹配，其余按前缀，子路由保持高亮）。 */
