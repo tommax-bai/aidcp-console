@@ -2,6 +2,7 @@ import { Dropdown, Select } from 'antd';
 import {
   DashboardOutlined,
   DeploymentUnitOutlined,
+  DownloadOutlined,
   FileTextOutlined,
   IdcardOutlined,
   FundOutlined,
@@ -16,6 +17,7 @@ import {
 import type { ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { EDGE_DOWNLOAD, edgeDownloadUrl } from '../config/downloads';
 
 /** 主业务入口（顶部居中胶囊导航）。 */
 const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
@@ -82,6 +84,27 @@ export function AppShell() {
               style={{ width: 160 }}
               options={[{ label: '全部账号', value: 'all' }]}
             />
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  { key: 'ver', type: 'group', label: `边缘客户端 v${EDGE_DOWNLOAD.version}` },
+                  ...EDGE_DOWNLOAD.items.map((it) => ({
+                    key: it.key,
+                    label: (
+                      <a href={edgeDownloadUrl(it.file)} download>
+                        {it.label}
+                      </a>
+                    ),
+                  })),
+                ],
+              }}
+            >
+              <button type="button" className="user-trigger" aria-label="下载边缘客户端">
+                <DownloadOutlined />
+                <span>下载客户端</span>
+              </button>
+            </Dropdown>
             <Link
               to="/settings"
               className={`pill__circle${isActive(pathname, '/settings') ? ' pill__circle--active' : ''}`}
