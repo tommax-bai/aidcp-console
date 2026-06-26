@@ -73,11 +73,17 @@ export interface Alert {
   resolvedAt: number | null;
 }
 
-/** 按笔记互动历史（V1 task 9.2）。 */
+/**
+ * 互动流一行（change interaction-feed-enrichment）。
+ * 四类动作；目标 = 笔记动作 noteId / 关注 authorId；title=笔记标题或作者昵称、url=详情页/主页链接，
+ * 均诚实置空（缺失为 undefined，前端回落裸 id、绝不渲染死链）。
+ */
 export interface PanelInteraction {
   accountId: string;
-  noteId: string;
-  action: 'like' | 'collect' | 'comment';
+  targetId: string;
+  action: 'like' | 'collect' | 'comment' | 'follow';
+  title?: string;
+  url?: string;
   interactedAt: number;
 }
 

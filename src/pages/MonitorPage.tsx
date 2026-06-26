@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Badge, Button, Card, Empty, Input, List, Space, Table, Tag, Typography } from 'antd';
+import { Badge, Button, Card, Empty, Input, List, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { usePanelWs, type WsStatus } from '../ws/panelWs';
 import { useAlerts, useInteractions, useDashboardSummary } from '../api/queries';
 import { AccountTotalsTable, AlertSeverityBadge } from '../components';
-import { RISK_ACTION_LABEL, type RiskAction } from '../types/aidcp-enums';
+import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, type RiskAction } from '../types/aidcp-enums';
 import type { PanelInteraction } from '../types/api';
 
 const STATUS_BADGE: Record<WsStatus, 'processing' | 'success' | 'warning' | 'default'> = {
@@ -34,9 +34,28 @@ const interactionColumns: ColumnsType<PanelInteraction> = [
     title: '动作',
     dataIndex: 'action',
     key: 'action',
-    render: (v: string) => <Tag>{RISK_ACTION_LABEL[v as RiskAction] ?? v}</Tag>,
+    render: (v: string) => <Tag color={RISK_ACTION_COLOR[v as RiskAction]}>{RISK_ACTION_LABEL[v as RiskAction] ?? v}</Tag>,
   },
-  { title: '笔记', dataIndex: 'noteId', key: 'noteId', render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+  {
+    // 笔记动作=笔记标题→详情页；关注=作者昵称→主页。诚实置空：无链接显纯文本、无标题回落裸 id，绝不渲染死链。
+    title: (
+      <Tooltip title="笔记/作者链接含时效令牌，较旧的可能已失效；抓不到真实链接时只显文本、不拼假链">
+        <span>目标（笔记/作者）</span>
+      </Tooltip>
+    ),
+    key: 'target',
+    render: (_: unknown, r: PanelInteraction) => {
+      const label = r.title || r.targetId;
+      if (r.url) {
+        return (
+          <a href={r.url} target="_blank" rel="noreferrer">
+            {label}
+          </a>
+        );
+      }
+      return r.title ? <Typography.Text>{label}</Typography.Text> : <Typography.Text code>{label}</Typography.Text>;
+    },
+  },
 ];
 
 /** 运行监控（design PAGE 6）：面板 WS 单一全局流 + 按笔记互动 + 告警只读流 + 真按账号总览（V1 task 10.3）。 */
@@ -104,7 +123,7 @@ export function MonitorPage() {
         <Table
           size="small"
           bordered
-          rowKey={(r) => `${r.accountId}:${r.noteId}:${r.action}`}
+          rowKey={(r) => `${r.accountId}:${r.action}:${r.targetId}`}
           loading={interactions.isLoading}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={interactionColumns}

@@ -36,6 +36,16 @@ export const RISK_QUOTA_COLOR: Record<RiskQuotaLevel, string> = {
   aggressive: 'purple',
 };
 
+/** 互动动作色（change interaction-feed-enrichment）：四类互动各异色便于区分；未知回落默认灰。 */
+export const RISK_ACTION_COLOR: Record<RiskAction, string> = {
+  like: 'magenta',
+  collect: 'gold',
+  comment: 'blue',
+  follow: 'green',
+  publish: 'purple',
+  view: 'default',
+};
+
 /** 告警分级色（V1 用；P3 中性灰不抢视觉）。 */
 export const ALERT_SEVERITY_COLOR: Record<AlertSeverity, string> = {
   P0: 'red',
