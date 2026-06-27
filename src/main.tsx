@@ -5,11 +5,18 @@ import zhCN from 'antd/locale/zh_CN';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthContext';
+import { UnauthorizedError } from './api/client';
 import { aidcpTheme } from './theme';
 import './styles/app.css';
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      // 会话过期的 401 不重试——重试只会再次 401，白等约 1s 退避；其余错误仍重试一次。
+      retry: (failureCount, error) => !(error instanceof UnauthorizedError) && failureCount < 1,
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 
 const rootEl = document.getElementById('root');

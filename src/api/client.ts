@@ -53,7 +53,25 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * 会话失效通知缝：任何请求收到 401 时回调。鉴权上下文注册它，用于「当场关掉登录态 + 清缓存 +
+ * 跳登录页」，不再依赖用户手动刷新整页才被动弹回登录。登录请求显式不触发它（被拒是凭据错误，非会话过期）。
+ */
+let sessionExpiredHandler: (() => void) | null = null;
+export function setSessionExpiredHandler(fn: (() => void) | null): void {
+  sessionExpiredHandler = fn;
+}
+
+interface RequestOptions {
+  /** 默认 true；登录请求设 false：登录被拒是「用户名/密码错误」，不应触发全局会话过期跳转。 */
+  notifySessionExpired?: boolean;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  opts: RequestOptions = {},
+): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('accept', 'application/json');
   if (token) headers.set('authorization', `Bearer ${token}`);
@@ -62,6 +80,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     setToken(null);
+    if (opts.notifySessionExpired !== false) sessionExpiredHandler?.();
     throw new UnauthorizedError();
   }
   if (!res.ok) {
@@ -81,12 +100,16 @@ export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
-export function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+export function apiPost<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+  return request<T>(
+    path,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    opts,
+  );
 }
 
 export function apiPut<T>(path: string, body?: unknown): Promise<T> {

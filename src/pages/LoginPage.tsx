@@ -3,7 +3,7 @@ import { App, Button, Card, Form, Input, Typography } from 'antd';
 import { DeploymentUnitOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError } from '../api/client';
+import { ApiError, UnauthorizedError } from '../api/client';
 
 /** 登录页（design PAGE 1）：非乐观——仅 JWT round-trip 成功后才进入外壳；视觉对齐 isales。 */
 export function LoginPage() {
@@ -20,7 +20,7 @@ export function LoginPage() {
       await login(values.username, values.password);
       navigate('/', { replace: true });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
+      if (e instanceof UnauthorizedError || (e instanceof ApiError && e.status === 401)) {
         setError('用户名或密码错误');
       } else {
         setError('无法连接服务端');
