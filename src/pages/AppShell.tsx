@@ -1,4 +1,4 @@
-import { Dropdown, Select } from 'antd';
+import { Dropdown } from 'antd';
 import {
   DashboardOutlined,
   DeploymentUnitOutlined,
@@ -21,13 +21,13 @@ import { EDGE_DOWNLOAD, edgeDownloadUrl } from '../config/downloads';
 
 /** 主业务入口（顶部居中胶囊导航）。 */
 const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
-  { key: '/', label: '数据看板', icon: <DashboardOutlined /> },
+  { key: '/', label: '数据', icon: <DashboardOutlined /> },
   { key: '/accounts', label: '账号', icon: <TeamOutlined /> },
   { key: '/content', label: '内容', icon: <FileTextOutlined /> },
   { key: '/notification-contacts', label: '互动联系人', icon: <ContactsOutlined /> },
   { key: '/persona', label: '人设', icon: <IdcardOutlined /> },
-  { key: '/roles', label: '角色配置', icon: <RobotOutlined /> },
-  { key: '/quotas', label: '安全限额', icon: <SafetyOutlined /> },
+  { key: '/roles', label: '角色', icon: <RobotOutlined /> },
+  { key: '/quotas', label: '安全', icon: <SafetyOutlined /> },
   { key: '/monitor', label: '监控', icon: <MonitorOutlined /> },
   { key: '/usage', label: '用量', icon: <FundOutlined /> },
 ];
@@ -39,8 +39,8 @@ function isActive(pathname: string, key: string): boolean {
 
 /**
  * 应用外壳（design PAGE 2）：视觉对齐 isales —— 顶部胶囊导航 + 居中内容（弃侧栏）。
- * 左品牌 / 中主业务胶囊 / 右全局账号筛选器 + 设置圆按钮 + 用户菜单。
- * 全局账号筛选器（§3.1）：MVP 仅作用于诚实可切的 roster 表；metrics/monitor 在归因待补时中性化。
+ * 左品牌 / 中主业务胶囊 / 右下载客户端 + 设置圆按钮 + 用户菜单。
+ * 注：原右侧「全局账号筛选器（§3.1）」已移除——归因已流通（V1 task 9.6），按账号切片改由各页面用真实 API 数据各自完成。
  */
 export function AppShell() {
   const location = useLocation();
@@ -76,14 +76,8 @@ export function AppShell() {
             ))}
           </nav>
 
-          {/* 右：全局账号筛选 + 设置 + 用户 */}
+          {/* 右：下载客户端 + 设置 + 用户 */}
           <div className="top-nav__actions">
-            <Select
-              size="small"
-              defaultValue="all"
-              style={{ width: 160 }}
-              options={[{ label: '全部账号', value: 'all' }]}
-            />
             <Dropdown
               trigger={['click']}
               menu={{
@@ -100,9 +94,13 @@ export function AppShell() {
                 ],
               }}
             >
-              <button type="button" className="user-trigger" aria-label="下载边缘客户端">
+              <button
+                type="button"
+                className="user-trigger user-trigger--icon"
+                title="下载客户端"
+                aria-label="下载边缘客户端"
+              >
                 <DownloadOutlined />
-                <span>下载客户端</span>
               </button>
             </Dropdown>
             <Link
@@ -117,9 +115,13 @@ export function AppShell() {
               trigger={['click']}
               menu={{ items: [{ key: 'logout', label: '退出登录', onClick: logout }] }}
             >
-              <button type="button" className="user-trigger" aria-label="用户菜单">
+              <button
+                type="button"
+                className="user-trigger user-trigger--icon"
+                title="管理"
+                aria-label="用户菜单"
+              >
                 <UserOutlined />
-                <span>管理员</span>
               </button>
             </Dropdown>
           </div>

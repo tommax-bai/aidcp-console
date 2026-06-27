@@ -258,6 +258,12 @@ body {
   color: var(--aidcp-foreground);
   background: var(--aidcp-muted);
 }
+/* 仅图标的操作按钮（下载 / 用户菜单）：与设置圆按钮一致的 32px 方形，避免与文字按钮混排时高低不齐。 */
+.user-trigger--icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
 
 /* 窄屏：隐藏主业务胶囊文字与品牌副标题 */
 @media (max-width: 860px) {
