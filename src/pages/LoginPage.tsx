@@ -54,11 +54,11 @@ export function LoginPage() {
               borderRadius: 'var(--aidcp-radius-md)',
               background: 'var(--aidcp-primary)',
               color: '#fff',
-              fontSize: 22,
+              fontSize: 32,
               marginBottom: 'var(--aidcp-space-3)',
             }}
           >
-            <DeploymentUnitOutlined />
+            <DeploymentUnitOutlined className="brand-glyph" />
           </span>
           <Typography.Title level={4} style={{ margin: 0 }}>
             AIDCP 运营管理后台

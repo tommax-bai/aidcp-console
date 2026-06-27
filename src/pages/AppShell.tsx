@@ -54,7 +54,7 @@ export function AppShell() {
           {/* 左：品牌 */}
           <Link to="/" className="brand">
             <span className="brand__logo" aria-hidden="true">
-              <DeploymentUnitOutlined />
+              <DeploymentUnitOutlined className="brand-glyph" />
             </span>
             <span className="brand__text">
               <span className="brand__title">AIDCP</span>
