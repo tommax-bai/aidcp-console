@@ -3,7 +3,7 @@ import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typo
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig, useSessionLimits } from '../api/queries';
+import { useQuotaConfig, useSessionLimits, useResumeConfig } from '../api/queries';
 import type {
   QuotaConfigRow,
   QuotaConfigCatalog,
@@ -12,6 +12,8 @@ import type {
   SessionLimitRow,
   SessionLimitCatalog,
   SessionInteractionBudget,
+  ResumeConfigRow,
+  ResumeConfigCatalog,
 } from '../types/api';
 
 const QUOTA_MAX = 100_000;
@@ -200,6 +202,82 @@ export function QuotasPage() {
     },
   ];
 
+  // ── 自动续场护栏 + 看门狗阈值（change session-auto-resume-with-excursions）─────────
+  // 看门狗阈值在 UI 以「分钟」编辑（更友好），保存时 ×60000 转毫秒；GET 回来的 ms ÷60000 显示。
+  const rc = useResumeConfig();
+  const [editingRC, setEditingRC] = useState<ResumeConfigRow | null>(null);
+  const [rcRest, setRcRest] = useState<number | null>(null);
+  const [rcWinStart, setRcWinStart] = useState<number | null>(null);
+  const [rcWinEnd, setRcWinEnd] = useState<number | null>(null);
+  const [rcDailySessions, setRcDailySessions] = useState<number | null>(null);
+  const [rcDailyMinutes, setRcDailyMinutes] = useState<number | null>(null);
+  const [rcNudgeMin, setRcNudgeMin] = useState<number | null>(null);
+  const [rcEndMin, setRcEndMin] = useState<number | null>(null);
+
+  const fmtMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const winLabel = (s: number, e: number) => (s === e || (s <= 0 && e >= 1440) ? '全天不限' : `${fmtMin(s)}–${fmtMin(e)}`);
+
+  const openEditRC = (row: ResumeConfigRow) => {
+    setEditingRC(row);
+    setRcRest(row.restRatioPct);
+    setRcWinStart(row.activeWindowStartMin);
+    setRcWinEnd(row.activeWindowEndMin);
+    setRcDailySessions(row.dailyMaxSessions);
+    setRcDailyMinutes(row.dailyMaxMinutes);
+    setRcNudgeMin(Math.round(row.idleNudgeMs / 60_000));
+    setRcEndMin(Math.round(row.idleEndMs / 60_000));
+  };
+
+  const saveRC = useMutation({
+    mutationFn: (v: {
+      accountId: string;
+      restRatioPct: number;
+      activeWindowStartMin: number;
+      activeWindowEndMin: number;
+      dailyMaxSessions: number;
+      dailyMaxMinutes: number;
+      idleNudgeMs: number;
+      idleEndMs: number;
+    }) => apiPut<ResumeConfigCatalog>('/api/resume-config', v),
+    onSuccess: () => {
+      message.success('已保存，续场/看门狗配置下场会话即生效（无需重启）');
+      setEditingRC(null);
+      void qc.invalidateQueries({ queryKey: ['config', 'resume-config'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(msg === 'invalid_value' ? '数字非法（见各项范围），未保存' : msg === 'no_valid_fields' ? '未填写任何可改字段，未保存' : '保存失败');
+    },
+  });
+
+  const rcInt = (n: number | null, min: number, max: number): n is number => n !== null && Number.isInteger(n) && n >= min && n <= max;
+  const canSaveRC =
+    rcInt(rcRest, 0, 1000) &&
+    rcInt(rcWinStart, 0, 1440) &&
+    rcInt(rcWinEnd, 0, 1440) &&
+    rcInt(rcDailySessions, 0, 100_000) &&
+    rcInt(rcDailyMinutes, 0, 100_000) &&
+    rcInt(rcNudgeMin, 2, 1440) &&
+    rcInt(rcEndMin, 2, 1440) &&
+    (rcEndMin as number) > (rcNudgeMin as number);
+
+  const rcRows = useMemo(
+    () => (rc.data?.configs ?? []).slice().sort((a, b) => a.accountId.localeCompare(b.accountId)),
+    [rc.data],
+  );
+
+  const rcColumns: ColumnsType<ResumeConfigRow> = [
+    { title: '账号', dataIndex: 'accountId', width: 120, render: (a: string) => <span className="tabular-nums">{a}</span> },
+    { title: '休息比例', dataIndex: 'restRatioPct', width: 90, render: (n: number) => <span className="tabular-nums">{n}%</span> },
+    { title: '活跃时段', key: 'win', width: 130, render: (_: unknown, r: ResumeConfigRow) => <span className="tabular-nums">{winLabel(r.activeWindowStartMin, r.activeWindowEndMin)}</span> },
+    { title: '每日场数', dataIndex: 'dailyMaxSessions', width: 90, render: (n: number) => <span className="tabular-nums">{n === 0 ? '不限' : n}</span> },
+    { title: '每日分钟', dataIndex: 'dailyMaxMinutes', width: 90, render: (n: number) => <span className="tabular-nums">{n === 0 ? '不限' : n}</span> },
+    { title: '轻推(分)', dataIndex: 'idleNudgeMs', width: 86, render: (n: number) => <span className="tabular-nums">{Math.round(n / 60_000)}</span> },
+    { title: '放弃(分)', dataIndex: 'idleEndMs', width: 86, render: (n: number) => <span className="tabular-nums">{Math.round(n / 60_000)}</span> },
+    { title: '来源', dataIndex: 'overridden', width: 96, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
+    { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigRow) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
+  ];
+
   if (isLoading || !data) {
     return (
       <div className="page-stack">
@@ -243,6 +321,26 @@ export function QuotasPage() {
             rowKey={(r) => r.accountId}
             columns={slColumns}
             dataSource={slRows}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      <Card size="small" title="自动续场与看门狗">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="单场正常结束后，按「休息比例」歇一会儿（=单场时长×比例）自动续刷。仅在「活跃时段」内续、受「每日上限」约束、撞风控不续。看门狗：浏览卡住超「轻推」分钟先发恢复滚动，超「放弃」分钟才结束会话。改完下场即生效（热加载）。库缺行显示的是写死默认（休息10% / 全天 / 不限 / 轻推≈2分 / 放弃60分）。"
+        />
+        {rc.isLoading || !rc.data ? (
+          <Skeleton active />
+        ) : (
+          <Table<ResumeConfigRow>
+            size="small"
+            rowKey={(r) => r.accountId}
+            columns={rcColumns}
+            dataSource={rcRows}
             pagination={false}
           />
         )}
@@ -329,6 +427,59 @@ export function QuotasPage() {
                 />
               </Form.Item>
             ))}
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title={editingRC ? `编辑续场/看门狗：账号 ${editingRC.accountId}` : ''}
+        open={!!editingRC}
+        onCancel={() => setEditingRC(null)}
+        confirmLoading={saveRC.isPending}
+        okButtonProps={{ disabled: !canSaveRC }}
+        onOk={() =>
+          editingRC &&
+          canSaveRC &&
+          saveRC.mutate({
+            accountId: editingRC.accountId,
+            restRatioPct: rcRest as number,
+            activeWindowStartMin: rcWinStart as number,
+            activeWindowEndMin: rcWinEnd as number,
+            dailyMaxSessions: rcDailySessions as number,
+            dailyMaxMinutes: rcDailyMinutes as number,
+            idleNudgeMs: (rcNudgeMin as number) * 60_000,
+            idleEndMs: (rcEndMin as number) * 60_000,
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+      >
+        {editingRC && (
+          <Form layout="vertical" requiredMark={false}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              休息比例 0–1000（%）；活跃时段为自午夜分钟数 0–1440（起=止 或 0–1440 视作全天不限）；每日上限 0=不限；看门狗轻推/放弃以分钟计，放弃须大于轻推。保存前服务端会再校验。
+            </Typography.Paragraph>
+            <Form.Item label="休息比例（% of 单场时长）">
+              <InputNumber value={rcRest ?? undefined} onChange={(v) => setRcRest(v ?? null)} min={0} max={1000} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="活跃时段起（自午夜分钟数，0=00:00 / 480=08:00）">
+              <InputNumber value={rcWinStart ?? undefined} onChange={(v) => setRcWinStart(v ?? null)} min={0} max={1440} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="活跃时段止（自午夜分钟数，1440=24:00）">
+              <InputNumber value={rcWinEnd ?? undefined} onChange={(v) => setRcWinEnd(v ?? null)} min={0} max={1440} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="每日续场场数上限（0=不限）">
+              <InputNumber value={rcDailySessions ?? undefined} onChange={(v) => setRcDailySessions(v ?? null)} min={0} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="每日续场累计分钟上限（0=不限）">
+              <InputNumber value={rcDailyMinutes ?? undefined} onChange={(v) => setRcDailyMinutes(v ?? null)} min={0} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="看门狗恢复轻推（分钟，≥2）">
+              <InputNumber value={rcNudgeMin ?? undefined} onChange={(v) => setRcNudgeMin(v ?? null)} min={2} max={1440} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="看门狗放弃结束（分钟，须 > 轻推）">
+              <InputNumber value={rcEndMin ?? undefined} onChange={(v) => setRcEndMin(v ?? null)} min={2} max={1440} precision={0} style={{ width: 200 }} />
+            </Form.Item>
           </Form>
         )}
       </Modal>

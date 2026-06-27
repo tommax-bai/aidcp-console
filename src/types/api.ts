@@ -334,6 +334,33 @@ export interface SessionLimitCatalog {
   limits: SessionLimitRow[];
 }
 
+// 自动续场护栏 + 看门狗阈值配置（change session-auto-resume-with-excursions）。与 cloud ResumeConfigRowView 手动对齐。
+
+/** 单账号续场护栏 + 看门狗阈值生效值 + 来源/审计（GET /api/resume-config 形状）。 */
+export interface ResumeConfigRow {
+  accountId: string;
+  /** 休息比例（百分比，如 10 = 单场时长的 10%）。 */
+  restRatioPct: number;
+  /** 活跃时段窗口起/止（自午夜分钟数，0..1440；0..1440 = 全天不限）。 */
+  activeWindowStartMin: number;
+  activeWindowEndMin: number;
+  /** 每日自动续场上限（场数 / 累计分钟）；0 = 不限。 */
+  dailyMaxSessions: number;
+  dailyMaxMinutes: number;
+  /** 看门狗两段阈值（毫秒）：恢复轻推 / 放弃结束。 */
+  idleNudgeMs: number;
+  idleEndMs: number;
+  /** 是否存在库内覆盖（false=显示的是写死默认）。 */
+  overridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/resume-config 形状。 */
+export interface ResumeConfigCatalog {
+  configs: ResumeConfigRow[];
+}
+
 // ── token 用量统计（change llm-token-usage-stats，GET /api/llm-usage 形状，与 cloud 逐字对齐）──
 
 /** 表格一行：按北京日期 × (账号/角色/模型) 聚合。token 量为数值（BIGINT 求和后解析）。 */

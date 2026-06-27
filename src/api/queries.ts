@@ -17,6 +17,7 @@ import type {
   PersonaConfigCatalog,
   QuotaConfigCatalog,
   SessionLimitCatalog,
+  ResumeConfigCatalog,
   LlmUsagePayload,
   PanelNotificationContact,
 } from '../types/api';
@@ -66,6 +67,14 @@ export function useSessionLimits() {
   return useQuery({
     queryKey: ['config', 'session-limits'],
     queryFn: () => apiGet<SessionLimitCatalog>('/api/session-limits'),
+  });
+}
+
+/** 自动续场护栏 + 看门狗阈值配置目录（change session-auto-resume-with-excursions）。按账号 + 审计。 */
+export function useResumeConfig() {
+  return useQuery({
+    queryKey: ['config', 'resume-config'],
+    queryFn: () => apiGet<ResumeConfigCatalog>('/api/resume-config'),
   });
 }
 
