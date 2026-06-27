@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
 import { useRoleConfig, useCategoryConfig, useModelConfig, useAccounts } from '../api/queries';
+import { makeAccountNamer, accountName } from '../types/accountDisplay';
 import type {
   RoleConfigRow,
   RoleConfigCatalog,
@@ -63,13 +64,11 @@ export function RolesPage() {
   const [previewAccountId, setPreviewAccountId] = useState<string | undefined>(undefined);
   const accountOptions = accounts.map((a) => {
     const noPersona = !a.personaBound && a.accountId !== 'default';
-    const name = a.nickname || a.label || a.accountId;
+    const name = accountName(a);
     return { value: a.accountId, label: noPersona ? `${name}（未配人设）` : name };
   });
-  const accountLabel = (id: string) => {
-    const a = accounts.find((x) => x.accountId === id);
-    return a ? a.nickname || a.label || id : id;
-  };
+  // 统一走诚实回落（真名→运营名→ID），不再内联手写（防漂移）。
+  const accountLabel = makeAccountNamer(accounts);
 
   // 文本厂商下拉项（取自模型配置真态；未载入时回退仅 dashscope）。
   const providerOptions = (modelCfg?.providers ?? [{ id: 'dashscope', displayName: '阿里百炼 DashScope', baseUrl: '' }]).map(

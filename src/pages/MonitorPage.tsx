@@ -5,6 +5,7 @@ import { usePanelWs, type WsStatus } from '../ws/panelWs';
 import { useAlerts, useInteractions, useDashboardSummary } from '../api/queries';
 import { AccountTotalsTable, AlertSeverityBadge } from '../components';
 import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, type RiskAction } from '../types/aidcp-enums';
+import { makeAccountNamer } from '../types/accountDisplay';
 import type { PanelInteraction } from '../types/api';
 
 const STATUS_BADGE: Record<WsStatus, 'processing' | 'success' | 'warning' | 'default'> = {
@@ -22,14 +23,15 @@ const STATUS_LABEL: Record<WsStatus, string> = {
   offline: '离线',
 };
 
-const interactionColumns: ColumnsType<PanelInteraction> = [
+function makeInteractionColumns(nameOf: (id: string) => string): ColumnsType<PanelInteraction> {
+  return [
   {
     title: '时间',
     dataIndex: 'interactedAt',
     key: 'when',
     render: (v: number) => new Date(v).toLocaleString(),
   },
-  { title: '账号', dataIndex: 'accountId', key: 'accountId' },
+  { title: '账号', dataIndex: 'accountId', key: 'accountId', render: (v: string) => nameOf(v) },
   {
     title: '动作',
     dataIndex: 'action',
@@ -56,7 +58,8 @@ const interactionColumns: ColumnsType<PanelInteraction> = [
       return r.title ? <Typography.Text>{label}</Typography.Text> : <Typography.Text code>{label}</Typography.Text>;
     },
   },
-];
+  ];
+}
 
 /** 运行监控（design PAGE 6）：面板 WS 单一全局流 + 按笔记互动 + 告警只读流 + 真按账号总览（V1 task 10.3）。 */
 export function MonitorPage() {
@@ -67,6 +70,9 @@ export function MonitorPage() {
   const interactions = useInteractions();
   const alerts = useAlerts();
   const summary = useDashboardSummary();
+  // 账号名走统一诚实回落（真名→运营名→ID）：互动行/告警只带 accountId，真名从汇总的账号列表 join。
+  const nameOf = makeAccountNamer(summary.data?.accounts ?? []);
+  const interactionColumns = makeInteractionColumns(nameOf);
 
   const togglePause = () => {
     const next = !paused;
@@ -145,7 +151,7 @@ export function MonitorPage() {
                 <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
                 {a.accountId && (
                   <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                    {a.accountId}
+                    {nameOf(a.accountId)}
                   </Typography.Text>
                 )}
                 <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
 import { useAccounts } from '../api/queries';
 import { AccountsTable, RiskControls } from '../components';
+import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
@@ -29,7 +30,7 @@ export function AccountsPage() {
     <Space size={4}>
       {a.operatorStatus === 'paused' ? (
         <Popconfirm
-          title={`确认恢复账号 ${a.accountId}？`}
+          title={`确认恢复账号 ${accountName(a)}？`}
           onConfirm={() => cmd.mutate({ accountId: a.accountId, command: 'resume' })}
         >
           <Button size="small" loading={cmd.isPending}>
@@ -38,7 +39,7 @@ export function AccountsPage() {
         </Popconfirm>
       ) : (
         <Popconfirm
-          title={`确认暂停账号 ${a.accountId}？`}
+          title={`确认暂停账号 ${accountName(a)}？`}
           onConfirm={() => cmd.mutate({ accountId: a.accountId, command: 'pause' })}
         >
           <Button size="small" danger loading={cmd.isPending}>

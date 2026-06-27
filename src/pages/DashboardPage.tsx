@@ -1,6 +1,7 @@
 import { Alert, Button, Card, Col, Empty, List, Row, Statistic, Tag, Typography } from 'antd';
 import { useDashboardSummary } from '../api/queries';
 import { AccountsTable, AccountTotalsTable, AlertSeverityBadge, DispatchControl } from '../components';
+import { makeAccountNamer } from '../types/accountDisplay';
 import type { DashboardSummary } from '../types/api';
 
 const METRICS: { key: string; get: (s: DashboardSummary) => number }[] = [
@@ -28,6 +29,8 @@ function healthLine(s: DashboardSummary): string {
 /** 数据看板首页（design PAGE 3）：今日数据 + 账号状态一览（按级别排序）+ 调度引擎 + 告警 + 真按账号切片。 */
 export function DashboardPage() {
   const { data, isLoading, isError, refetch } = useDashboardSummary();
+  // 告警条目账号名走统一诚实回落（真名→运营名→ID）：告警只带 accountId，真名从同份汇总的账号列表 join。
+  const nameOf = makeAccountNamer(data?.accounts ?? []);
 
   return (
     <div className="page-stack">
@@ -104,7 +107,7 @@ export function DashboardPage() {
                 <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
                 {a.accountId && (
                   <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                    {a.accountId}
+                    {nameOf(a.accountId)}
                   </Typography.Text>
                 )}
                 <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>

@@ -4,9 +4,10 @@ import type { ColumnsType } from 'antd/es/table';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useLlmUsage } from '../api/queries';
+import { useLlmUsage, useAccounts } from '../api/queries';
+import { makeAccountNamer } from '../types/accountDisplay';
 import type { LlmUsageRow } from '../types/api';
-import { roleLabel, accountLabel } from '../types/usageLabels';
+import { roleLabel } from '../types/usageLabels';
 
 const { RangePicker } = DatePicker;
 
@@ -35,6 +36,10 @@ export function TokenUsagePage() {
   const [role, setRole] = useState<string | undefined>();
   const [model, setModel] = useState<string | undefined>();
 
+  // 账号展示名走统一诚实回落（真名→运营名→ID）：用量行只带 accountId，真名从账号列表 join 取。
+  const { data: accountsData } = useAccounts();
+  const nameOf = makeAccountNamer(accountsData?.accounts ?? []);
+
   const fromMs = range[0]?.valueOf();
   const toMs = range[1]?.valueOf();
 
@@ -45,8 +50,8 @@ export function TokenUsagePage() {
 
   const optionRows = optionsQuery.data?.rows ?? [];
   const accountOptions = useMemo(
-    () => distinct(optionRows.map((r) => r.accountId)).map((id) => ({ value: id, label: accountLabel(id) })),
-    [optionRows],
+    () => distinct(optionRows.map((r) => r.accountId)).map((id) => ({ value: id, label: nameOf(id) })),
+    [optionRows, accountsData],
   );
   const roleOptions = useMemo(
     () => distinct(optionRows.map((r) => r.role)).map((t) => ({ value: t, label: roleLabel(t) })),
@@ -91,7 +96,7 @@ export function TokenUsagePage() {
       title: '账号',
       dataIndex: 'accountId',
       width: 150,
-      render: (v: string) => accountLabel(v),
+      render: (v: string) => nameOf(v),
     },
     {
       title: '角色',

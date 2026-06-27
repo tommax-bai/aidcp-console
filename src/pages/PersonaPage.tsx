@@ -3,7 +3,8 @@ import { App, Button, Card, Form, Input, Modal, Skeleton, Table, Tag, Typography
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
-import { usePersonaConfig } from '../api/queries';
+import { usePersonaConfig, useAccounts } from '../api/queries';
+import { makeAccountNamer } from '../types/accountDisplay';
 import type { PersonaConfigRow, PersonaConfigCatalog, PersonaDetailView, PersonaSource } from '../types/api';
 
 // 人设来源标注（自定义 / 系统默认回落）。
@@ -22,6 +23,9 @@ const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
  */
 export function PersonaPage() {
   const { data, isLoading } = usePersonaConfig();
+  const { data: accountsData } = useAccounts();
+  // 账号列展示名走统一诚实回落（真名→运营名→ID）：人设目录只带 label，真名从账号列表 join 取。
+  const nameOf = makeAccountNamer(accountsData?.accounts ?? []);
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -80,12 +84,15 @@ export function PersonaPage() {
     {
       title: '账号',
       dataIndex: 'accountId',
-      render: (id: string, row) => (
-        <span>
-          <strong>{row.label || id}</strong>
-          {row.label && row.label !== id ? <Typography.Text type="secondary"> （{id}）</Typography.Text> : null}
-        </span>
-      ),
+      render: (id: string) => {
+        const name = nameOf(id);
+        return (
+          <span>
+            <strong>{name}</strong>
+            {name !== id ? <Typography.Text type="secondary"> （{id}）</Typography.Text> : null}
+          </span>
+        );
+      },
     },
     {
       title: '当前人设',
@@ -160,7 +167,7 @@ export function PersonaPage() {
       </Card>
 
       <Modal
-        title={editing ? `编辑人设：${editing.label || editing.accountId}` : ''}
+        title={editing ? `编辑人设：${nameOf(editing.accountId)}` : ''}
         open={!!editing}
         onCancel={() => setEditing(null)}
         confirmLoading={save.isPending}

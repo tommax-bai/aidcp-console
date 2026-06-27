@@ -3,7 +3,8 @@ import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typo
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig, useSessionLimits, useResumeConfig } from '../api/queries';
+import { useQuotaConfig, useSessionLimits, useResumeConfig, useAccounts } from '../api/queries';
+import { makeAccountNamer } from '../types/accountDisplay';
 import type {
   QuotaConfigRow,
   QuotaConfigCatalog,
@@ -54,6 +55,9 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
  */
 export function QuotasPage() {
   const { data, isLoading } = useQuotaConfig();
+  const { data: accountsData } = useAccounts();
+  // 单场上限/续场表只带 accountId，账号名走统一诚实回落（真名→运营名→ID）：从账号列表 join。
+  const nameOf = makeAccountNamer(accountsData?.accounts ?? []);
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -180,7 +184,7 @@ export function QuotasPage() {
   );
 
   const slColumns: ColumnsType<SessionLimitRow> = [
-    { title: '账号', dataIndex: 'accountId', width: 140, render: (a: string) => <span className="tabular-nums">{a}</span> },
+    { title: '账号', dataIndex: 'accountId', width: 160, render: (a: string) => nameOf(a) },
     { title: '单场时长(分钟)', dataIndex: 'maxDurationMin', width: 130, render: (n: number) => <span className="tabular-nums">{n}</span> },
     ...SL_BUDGET_FIELDS.map(
       (f): ColumnType<SessionLimitRow> => ({
@@ -267,7 +271,7 @@ export function QuotasPage() {
   );
 
   const rcColumns: ColumnsType<ResumeConfigRow> = [
-    { title: '账号', dataIndex: 'accountId', width: 120, render: (a: string) => <span className="tabular-nums">{a}</span> },
+    { title: '账号', dataIndex: 'accountId', width: 160, render: (a: string) => nameOf(a) },
     { title: '休息比例', dataIndex: 'restRatioPct', width: 90, render: (n: number) => <span className="tabular-nums">{n}%</span> },
     { title: '活跃时段', key: 'win', width: 130, render: (_: unknown, r: ResumeConfigRow) => <span className="tabular-nums">{winLabel(r.activeWindowStartMin, r.activeWindowEndMin)}</span> },
     { title: '每日场数', dataIndex: 'dailyMaxSessions', width: 90, render: (n: number) => <span className="tabular-nums">{n === 0 ? '不限' : n}</span> },
@@ -385,7 +389,7 @@ export function QuotasPage() {
       </Modal>
 
       <Modal
-        title={editingSL ? `编辑单场上限：账号 ${editingSL.accountId}` : ''}
+        title={editingSL ? `编辑单场上限：账号 ${nameOf(editingSL.accountId)}` : ''}
         open={!!editingSL}
         onCancel={() => setEditingSL(null)}
         confirmLoading={saveSL.isPending}
@@ -432,7 +436,7 @@ export function QuotasPage() {
       </Modal>
 
       <Modal
-        title={editingRC ? `编辑续场/看门狗：账号 ${editingRC.accountId}` : ''}
+        title={editingRC ? `编辑续场/看门狗：账号 ${nameOf(editingRC.accountId)}` : ''}
         open={!!editingRC}
         onCancel={() => setEditingRC(null)}
         confirmLoading={saveRC.isPending}

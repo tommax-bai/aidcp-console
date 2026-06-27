@@ -44,7 +44,5 @@ export function roleLabel(tag: string): string {
   return ROLE_LABELS[tag] ?? humanize(tag);
 }
 
-/** 账号 id → 展示名。单租户占位 `default` 显式标注。 */
-export function accountLabel(accountId: string): string {
-  return accountId === 'default' ? '默认账号（单租户）' : accountId;
-}
+// 账号 id → 展示名已统一走 types/accountDisplay.ts 的 makeAccountNamer（真名→运营名→ID），
+// 不再在此另起一份回落（旧 accountLabel 只标 default、其余直露 ID，是裸 ID 漂移的根源，已移除）。
