@@ -89,7 +89,7 @@ export function DashboardPage() {
 
       {/* V1 task 9.6：真按账号今日计数切片（归因已流通，不再「归因待补」）。 */}
       <Card size="small" title="按账号·今日">
-        <AccountTotalsTable rows={data?.totalsByAccount ?? []} loading={isLoading} />
+        <AccountTotalsTable rows={data?.totalsByAccount ?? []} accounts={data?.accounts ?? []} loading={isLoading} />
       </Card>
 
       {/* V1 task 9.5：真未解决告警。 */}

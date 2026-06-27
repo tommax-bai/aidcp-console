@@ -159,7 +159,7 @@ export function MonitorPage() {
 
       {/* V1 task 9.6/10.3：真按账号总览切片（归因已流通）。 */}
       <Card size="small" title="今日按账号">
-        <AccountTotalsTable rows={summary.data?.totalsByAccount ?? []} loading={summary.isLoading} />
+        <AccountTotalsTable rows={summary.data?.totalsByAccount ?? []} accounts={summary.data?.accounts ?? []} loading={summary.isLoading} />
       </Card>
     </div>
   );

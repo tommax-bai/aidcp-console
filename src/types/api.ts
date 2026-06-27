@@ -27,6 +27,8 @@ export interface MeResponse {
 export interface PanelAccount {
   accountId: string;
   label: string | null;
+  /** 登录账号平台真实昵称（change account-real-nickname；未采到为 null，回落 label/accountId）。手工镜像 cloud。 */
+  nickname: string | null;
   platform: string;
   groupLabel: string | null;
   machineLabel: string | null;
@@ -239,6 +241,10 @@ export interface RolePromptView {
   note: string;
   /** 人设来源分段（change prompt-viewer-persona-source，可选）：有则按段渲染、persona 段加底色；无则回落扁平。 */
   segments?: RolePromptSegment[];
+  /** 本次预览所用账号（change prompt-preview-persona-selector，可选）：选了账号才回显；不选则不附。 */
+  accountId?: string;
+  /** 选定账号未配人设、回落默认人设的诚实标志（change prompt-preview-persona-selector，可选）：true=下示为默认人设。 */
+  personaFallback?: boolean;
 }
 
 // 账号人设配置（change account-persona-config，stream F）。与 cloud PersonaConfigRowView 手动对齐。

@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import type { PanelPublish } from '../types/api';
+import { accountDisplayName } from '../types/accountDisplay';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = { published: '已发布', failed: '失败' };
 
@@ -83,7 +84,7 @@ export function ContentPage() {
   const accountOptions = [
     { label: '全部账号', value: '' },
     ...(accounts.data?.accounts ?? []).map((a) => ({
-      label: a.label ?? a.accountId,
+      label: accountDisplayName(a.nickname, a.label, a.accountId),
       value: a.accountId,
     })),
   ];

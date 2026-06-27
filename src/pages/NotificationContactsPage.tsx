@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useAccounts, useNotificationContacts } from '../api/queries';
 import type { PanelNotificationContact } from '../types/api';
+import { accountDisplayName } from '../types/accountDisplay';
 
 // 加入原因 → 中文标签（reason = NotificationItem.kind）。
 const REASON_LABEL: Record<string, { text: string; color: string }> = {
@@ -77,7 +78,7 @@ export function NotificationContactsPage() {
     },
   });
 
-  const accountOptions = (accounts.data?.accounts ?? []).map((a) => ({ label: a.label ?? a.accountId, value: a.accountId }));
+  const accountOptions = (accounts.data?.accounts ?? []).map((a) => ({ label: accountDisplayName(a.nickname, a.label, a.accountId), value: a.accountId }));
 
   const columns: ColumnsType<PanelNotificationContact> = [
     {

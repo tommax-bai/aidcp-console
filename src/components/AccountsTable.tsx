@@ -6,6 +6,7 @@ import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
 import type { PanelAccount } from '../types/api';
 import { OPERATOR_STATUS_LABEL, type RiskStatus } from '../types/aidcp-enums';
+import { accountDisplayName } from '../types/accountDisplay';
 
 const SEVERITY_ORDER: Record<RiskStatus, number> = { frozen: 0, restricted: 1, warned: 2, normal: 3 };
 
@@ -16,7 +17,7 @@ function severityRank(a: PanelAccount): number {
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
 const columns: ColumnsType<PanelAccount> = [
-  { title: '账号', key: 'account', render: (_, r) => r.label ?? r.accountId },
+  { title: '账号', key: 'account', render: (_, r) => accountDisplayName(r.nickname, r.label, r.accountId) },
   {
     title: '人设',
     key: 'persona',
