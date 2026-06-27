@@ -58,8 +58,10 @@ export const aidcpTheme: ThemeConfig = {
     Table: { headerBg: '#fafafa', rowHoverBg: '#f7f7f7', headerColor: '#767676', fontSize: 13, borderColor: '#eee' },
     Tag: { borderRadiusSM: 6 },
     // AntD 的 size="small" 按钮**不收字号**——contentFontSizeSM 缺省回落到基线 fontSize(14)，
-    // 故操作列里的「小按钮」标签实际是 14px，比同格表格数据(Table.fontSize=13)大 1px、又叠 500 字重，
-    // 在密致表格里显得突兀。这里把小按钮内容字号 pin 到 13，与操作列所在的表格文本同口径。
-    Button: { fontWeight: 500, contentFontSizeSM: 13 },
+    // 故操作列里的「小按钮」标签实际是 14px，比同行的 12px 徽标(Tag 用 fontSizeSM=12)/数据大、又叠 500 字重，
+    // 在密致表格里显得突兀。这里把小按钮内容字号 pin 到 12（= fontSizeSM，与同行 Tag/徽标同口径）。
+    // 注：Select size="small" 同样不收字号（select 仍取 token.fontSize=14）且无对应组件 token，
+    // 故其字号在 app.css 的 `.ant-table-cell` 作用域里兜底压到 12，与小按钮一致。
+    Button: { fontWeight: 500, contentFontSizeSM: 12 },
   },
 };

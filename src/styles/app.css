@@ -265,6 +265,22 @@ body {
   justify-content: center;
 }
 
+/* ======================================================================
+ * 表格操作列：小号交互控件字号对齐同行 12px（= fontSizeSM，与 Tag/徽标同口径）
+ * ----------------------------------------------------------------------
+ * size="small" 在 AntD 里只压高度/内距、**不收字号**：小按钮经 theme.ts 的
+ * Button.contentFontSizeSM=12 已收口；但 Select 仍取 token.fontSize=14、且无对应
+ * 组件 token，会在操作列里比同行 12px 徽标大、显突兀。这里在表格单元格作用域内把
+ * 小号 Select 的就地文本兜底压到 12px（同时给小按钮兜底，双保险，不依赖 token 注入路径）。
+ * 仅作用于单元格内的「就地」控件；Select/Dropdown 的浮层菜单走 body portal、不在此选择器内（浮层 14px 合理）。
+ * ====================================================================== */
+.ant-table-cell .ant-btn-sm,
+.ant-table-cell .ant-select-sm .ant-select-selector,
+.ant-table-cell .ant-select-sm .ant-select-selection-item,
+.ant-table-cell .ant-select-sm .ant-select-selection-placeholder {
+  font-size: var(--aidcp-font-size-xs); /* 12px */
+}
+
 /* 窄屏：隐藏主业务胶囊文字与品牌副标题 */
 @media (max-width: 860px) {
   .pill--business .pill__btn span {
