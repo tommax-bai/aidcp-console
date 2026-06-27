@@ -57,6 +57,9 @@ export const aidcpTheme: ThemeConfig = {
     Card: { borderRadiusLG: 12, headerFontSize: 15, paddingLG: 20 },
     Table: { headerBg: '#fafafa', rowHoverBg: '#f7f7f7', headerColor: '#767676', fontSize: 13, borderColor: '#eee' },
     Tag: { borderRadiusSM: 6 },
-    Button: { fontWeight: 500 },
+    // AntD 的 size="small" 按钮**不收字号**——contentFontSizeSM 缺省回落到基线 fontSize(14)，
+    // 故操作列里的「小按钮」标签实际是 14px，比同格表格数据(Table.fontSize=13)大 1px、又叠 500 字重，
+    // 在密致表格里显得突兀。这里把小按钮内容字号 pin 到 13，与操作列所在的表格文本同口径。
+    Button: { fontWeight: 500, contentFontSizeSM: 13 },
   },
 };
