@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { App, Button, Card, Form, Input, InputNumber, Modal, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
-import { useRoleConfig, useCategoryConfig, useModelConfig } from '../api/queries';
+import { useRoleConfig, useCategoryConfig, useModelConfig, useAccounts } from '../api/queries';
 import type {
   RoleConfigRow,
   RoleConfigCatalog,
@@ -53,8 +53,23 @@ export function RolesPage() {
   const { data, isLoading } = useRoleConfig();
   const { data: catData, isLoading: catLoading } = useCategoryConfig();
   const { data: modelCfg } = useModelConfig();
+  const { data: accountsData } = useAccounts();
   const { message } = App.useApp();
   const qc = useQueryClient();
+
+  // 预览人设选择（change prompt-preview-persona-selector）：选一个账号，按其人设带入查看角色 prompt；
+  // 空=系统默认人设。未配人设的账号灰标，预览时由服务端诚实回落默认并标 personaFallback。
+  const accounts = accountsData?.accounts ?? [];
+  const [previewAccountId, setPreviewAccountId] = useState<string | undefined>(undefined);
+  const accountOptions = accounts.map((a) => {
+    const noPersona = !a.personaBound && a.accountId !== 'default';
+    const name = a.nickname || a.label || a.accountId;
+    return { value: a.accountId, label: noPersona ? `${name}（未配人设）` : name };
+  });
+  const accountLabel = (id: string) => {
+    const a = accounts.find((x) => x.accountId === id);
+    return a ? a.nickname || a.label || id : id;
+  };
 
   // 文本厂商下拉项（取自模型配置真态；未载入时回退仅 dashscope）。
   const providerOptions = (modelCfg?.providers ?? [{ id: 'dashscope', displayName: '阿里百炼 DashScope', baseUrl: '' }]).map(
@@ -75,18 +90,30 @@ export function RolesPage() {
   const [promptView, setPromptView] = useState<RolePromptView | null>(null);
   const [promptLoading, setPromptLoading] = useState(false);
 
-  const openPrompt = async (row: RoleConfigRow) => {
-    setPromptRole(row);
+  // 按选定账号人设拉取预览（change prompt-preview-persona-selector）：accountId 空=系统默认人设。
+  const loadPrompt = async (row: RoleConfigRow, accountId: string | undefined) => {
     setPromptView(null);
     setPromptLoading(true);
     try {
-      setPromptView(await apiGet<RolePromptView>(`/api/roles/${encodeURIComponent(row.roleId)}/prompt`));
+      const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+      setPromptView(await apiGet<RolePromptView>(`/api/roles/${encodeURIComponent(row.roleId)}/prompt${qs}`));
     } catch (e) {
       setPromptView({ roleId: row.roleId, prompt: null, available: false, note: `加载失败：${(e as Error).message}` });
     } finally {
       setPromptLoading(false);
     }
   };
+
+  const openPrompt = (row: RoleConfigRow) => {
+    setPromptRole(row);
+    void loadPrompt(row, previewAccountId);
+  };
+
+  // 选定账号变化且弹窗已开 → 按新账号人设重拉刷新（仅响应账号切换，不在打开时重复拉取）。
+  useEffect(() => {
+    if (promptRole) void loadPrompt(promptRole, previewAccountId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewAccountId]);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['config', 'roles'] });
@@ -273,12 +300,29 @@ export function RolesPage() {
         )}
       </Card>
 
-      <Card size="small" title="角色模型配置">
+      <Card
+        size="small"
+        title="角色模型配置"
+        extra={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--aidcp-text-secondary, #888)' }}>预览人设</span>
+            <Select
+              size="small"
+              allowClear
+              placeholder="系统默认人设"
+              style={{ width: 220 }}
+              value={previewAccountId}
+              onChange={(v) => setPreviewAccountId(v ?? undefined)}
+              options={accountOptions}
+            />
+          </span>
+        }
+      >
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。"
+          message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。「预览人设」选一个账号，可按其人设带入查看 Prompt（空=系统默认人设；未配人设账号回落默认并标注）。"
         />
         <Table<RoleConfigRow>
           size="small"
@@ -387,6 +431,19 @@ export function RolesPage() {
           <Skeleton active />
         ) : promptView ? (
           <div>
+            {promptView.accountId && (
+              <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--aidcp-text-secondary, #888)' }}>
+                预览人设来自账号：<strong>{accountLabel(promptView.accountId)}</strong>
+              </div>
+            )}
+            {promptView.personaFallback && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 'var(--aidcp-space-3)' }}
+                message="该账号未配置人设，下面展示的是系统默认人设（非该账号人设）。"
+              />
+            )}
             <Alert
               type={promptView.available ? 'info' : 'warning'}
               showIcon
