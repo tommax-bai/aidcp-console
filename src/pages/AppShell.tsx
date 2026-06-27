@@ -24,7 +24,7 @@ const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
   { key: '/', label: '数据看板', icon: <DashboardOutlined /> },
   { key: '/accounts', label: '账号', icon: <TeamOutlined /> },
   { key: '/content', label: '内容', icon: <FileTextOutlined /> },
-  { key: '/notification-contacts', label: '联系人', icon: <ContactsOutlined /> },
+  { key: '/notification-contacts', label: '互动联系人', icon: <ContactsOutlined /> },
   { key: '/persona', label: '人设', icon: <IdcardOutlined /> },
   { key: '/roles', label: '角色配置', icon: <RobotOutlined /> },
   { key: '/quotas', label: '安全限额', icon: <SafetyOutlined /> },
