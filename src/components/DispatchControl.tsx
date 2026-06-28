@@ -16,9 +16,9 @@ export function DispatchControl({ active }: { active: boolean | null }) {
   const qc = useQueryClient();
 
   const dispatch = useMutation({
-    // 单账号现实：对保留键 default 下发（accountId 信息性）。
+    // retire-default-account：决策引擎是单一全局开关；用保留键 __global__ 下发（云端按 URL 形状匹配、不读账号表，accountId 信息性），绝不用已退役的 default。
     mutationFn: (action: 'start' | 'stop') =>
-      apiPost<DispatchResult>('/api/accounts/default/dispatch', { action }),
+      apiPost<DispatchResult>('/api/accounts/__global__/dispatch', { action }),
     onSuccess: (res) => {
       const label = res.dispatch === 'started' ? '已启动' : '已停止';
       if (res.changed) message.success(`调度${label} — ${res.edgesOnline} 个边缘端在线`);
