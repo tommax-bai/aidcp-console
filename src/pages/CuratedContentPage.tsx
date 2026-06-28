@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import {
   App,
   Alert,
+  Avatar,
   Button,
   Card,
-  Descriptions,
-  Drawer,
+  Divider,
   Empty,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -14,6 +15,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import { HeartOutlined, StarOutlined, MessageOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
@@ -31,6 +33,17 @@ function countCell(v: number | null) {
   return v == null ? <Typography.Text type="secondary">未抓到</Typography.Text> : <span>{v}</span>;
 }
 
+/** 详情浮层里的互动数据单元：图标 + 数值（诚实区分 未抓到/0）+ 文案。 */
+function Stat({ icon, value, label }: { icon: ReactNode; value: number | null; label: string }) {
+  return (
+    <Space size={4} style={{ fontSize: 15 }}>
+      {icon}
+      {value == null ? <Typography.Text type="secondary">未抓到</Typography.Text> : <span>{value}</span>}
+      <Typography.Text type="secondary">{label}</Typography.Text>
+    </Space>
+  );
+}
+
 function timeText(ms: number | null): string {
   return ms == null ? '—' : new Date(ms).toLocaleString();
 }
@@ -40,6 +53,7 @@ function timeText(ms: number | null): string {
  * - 默认「全部账号」合并视图（每行带账号列、服务端分页）查看精选创作灵感语料，可在右上切到单个账号。
  * - 治理：删单条（按行账号路由防越权）、一键清空正文壳行（按单账号执行，全账号视图下禁用）；honest-write 回真实条数、非乐观（重取真态）。
  * - 删除仅清当前快照：之后再浏览到且仍达标会重新纳入（准入不查史）——确认文案如实告知，绝不谎称永久移除。
+ * - 整行可点：点击任意行打开「笔记详情」浮层（简化版小红书详情页）看正文/作者/赞藏评；操作列只留删除（删除点击不触发浮层）。
  */
 export function CuratedContentPage() {
   const { message } = App.useApp();
@@ -133,25 +147,18 @@ export function CuratedContentPage() {
       width: 70,
       render: (v: string) => <Tag color={v === 'comment' ? 'purple' : 'blue'}>{v === 'comment' ? '评论' : '笔记'}</Tag>,
     },
-    { title: '标题', dataIndex: 'title', width: 160, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     {
-      title: '正文',
-      dataIndex: 'body',
-      render: (v: string | null) =>
-        v ? (
-          <Typography.Text style={{ maxWidth: 320 }} ellipsis={{ tooltip: v }}>
-            {v}
-          </Typography.Text>
-        ) : (
-          <Typography.Text type="secondary">空（壳行）</Typography.Text>
-        ),
+      title: '标题',
+      dataIndex: 'title',
+      ellipsis: true,
+      render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text>,
     },
-    { title: '作者', dataIndex: 'author', width: 110, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
-    { title: '赞', dataIndex: 'likeCount', width: 70, render: countCell },
-    { title: '藏', dataIndex: 'collectCount', width: 70, render: countCell },
-    { title: '评', dataIndex: 'commentCount', width: 70, render: countCell },
+    { title: '作者', dataIndex: 'author', width: 120, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    { title: '赞', dataIndex: 'likeCount', width: 80, render: countCell },
+    { title: '藏', dataIndex: 'collectCount', width: 80, render: countCell },
+    { title: '评', dataIndex: 'commentCount', width: 80, render: countCell },
     {
-      title: '机器人动作',
+      title: 'AI 动作',
       key: 'marks',
       width: 130,
       render: (_, row) => (
@@ -162,17 +169,15 @@ export function CuratedContentPage() {
         </Space>
       ),
     },
-    { title: '纳入原因', dataIndex: 'admitReason', width: 150, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    { title: '纳入原因', dataIndex: 'admitReason', width: 160, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     { title: '更新时刻', dataIndex: 'updatedAt', width: 170, render: (v: number) => timeText(v) },
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 80,
+      // 操作列内部一律 stopPropagation：删除点击不触发整行的「打开详情」。
       render: (_, row) => (
-        <Space size={4}>
-          <Button size="small" type="link" onClick={() => setViewing(row)}>
-            查看
-          </Button>
+        <div onClick={(e) => e.stopPropagation()}>
           <Popconfirm
             title="删除这条精选灵感？"
             description="仅清当前快照：之后再浏览到且仍达标会重新纳入，历史点赞/收藏标记不恢复；删后不再进入下次发帖创作素材。"
@@ -184,7 +189,7 @@ export function CuratedContentPage() {
               删除
             </Button>
           </Popconfirm>
-        </Space>
+        </div>
       ),
     },
   ];
@@ -239,6 +244,11 @@ export function CuratedContentPage() {
             columns={allAccountsView ? [accountColumn, ...columns] : columns}
             dataSource={list.data.items}
             loading={list.isLoading}
+            // 整行可点：打开「笔记详情」浮层。
+            onRow={(row) => ({
+              onClick: () => setViewing(row),
+              style: { cursor: 'pointer' },
+            })}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
@@ -280,69 +290,90 @@ export function CuratedContentPage() {
           <Typography.Text type="secondary">
             {allAccountsView
               ? '清理按单账号执行，请先在上方切到具体账号再清理。'
-              : '壳行＝机器人收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。'}
+              : '壳行＝AI 收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。'}
           </Typography.Text>
         </Space>
       </Card>
 
-      <Drawer
-        title={viewing?.title ?? '精选内容详情'}
-        width={560}
-        open={!!viewing}
-        onClose={() => setViewing(null)}
-        extra={
-          viewing?.sourceUrl ? (
-            <Button type="primary" href={viewing.sourceUrl} target="_blank" rel="noopener noreferrer">
-              打开来源
-            </Button>
-          ) : (
-            <Button disabled>无链接</Button>
-          )
-        }
-      >
+      {/* 详情浮层：简化版小红书笔记详情页（作者 / 标题 / 正文 / 赞藏评 / 元信息）。 */}
+      <Modal open={!!viewing} onCancel={() => setViewing(null)} footer={null} width={520} title={null}>
         {viewing && (
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="类型">{viewing.contentType === 'comment' ? '评论' : '笔记'}</Descriptions.Item>
-            <Descriptions.Item label="作者">
-              {viewing.author ?? <Typography.Text type="secondary">—</Typography.Text>}
-            </Descriptions.Item>
-            <Descriptions.Item label="赞 / 藏 / 评">
-              <Space>
-                {countCell(viewing.likeCount)} / {countCell(viewing.collectCount)} / {countCell(viewing.commentCount)}
-              </Space>
-            </Descriptions.Item>
-            <Descriptions.Item label="机器人动作">
-              <Space size={4}>
+          <div>
+            {/* 作者行 */}
+            <Space align="center" style={{ marginBottom: 12 }}>
+              <Avatar style={{ backgroundColor: '#ff2442', verticalAlign: 'middle' }}>
+                {(viewing.author ?? '·').slice(0, 1)}
+              </Avatar>
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  {viewing.author ?? <Typography.Text type="secondary">匿名作者</Typography.Text>}
+                </div>
+                <Tag color={viewing.contentType === 'comment' ? 'purple' : 'blue'} style={{ marginTop: 2 }}>
+                  {viewing.contentType === 'comment' ? '评论' : '笔记'}
+                </Tag>
+              </div>
+            </Space>
+
+            {/* 标题 */}
+            {viewing.title ? (
+              <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 8 }}>
+                {viewing.title}
+              </Typography.Title>
+            ) : null}
+
+            {/* 正文 */}
+            {viewing.body ? (
+              <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>
+                {viewing.body}
+              </Typography.Paragraph>
+            ) : (
+              <Typography.Paragraph type="secondary">正文为空（壳行）</Typography.Paragraph>
+            )}
+
+            {/* 话题 */}
+            {viewing.topics.length > 0 ? (
+              <div style={{ marginBottom: 12 }}>
+                {viewing.topics.map((t) => (
+                  <Tag key={t}>#{t}</Tag>
+                ))}
+              </div>
+            ) : null}
+
+            {/* 互动数据条：赞 / 藏 / 评 */}
+            <Space size="large">
+              <Stat icon={<HeartOutlined style={{ color: '#ff2442' }} />} value={viewing.likeCount} label="赞" />
+              <Stat icon={<StarOutlined style={{ color: '#ffb800' }} />} value={viewing.collectCount} label="藏" />
+              <Stat icon={<MessageOutlined style={{ color: '#999' }} />} value={viewing.commentCount} label="评" />
+            </Space>
+
+            <Divider style={{ margin: '12px 0' }} />
+
+            {/* 元信息（管理用，次要） */}
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Typography.Text type="secondary">
+                AI 动作：
                 {viewing.botCollected ? <Tag color="gold">已收藏</Tag> : null}
                 {viewing.botLiked ? <Tag color="magenta">已点赞</Tag> : null}
-                {!viewing.botCollected && !viewing.botLiked ? <Typography.Text type="secondary">无</Typography.Text> : null}
-              </Space>
-            </Descriptions.Item>
-            <Descriptions.Item label="纳入原因">
-              {viewing.admitReason ?? <Typography.Text type="secondary">—</Typography.Text>}
-            </Descriptions.Item>
-            <Descriptions.Item label="话题">
-              {viewing.topics.length > 0 ? (
-                viewing.topics.map((t) => <Tag key={t}>{t}</Tag>)
+                {!viewing.botCollected && !viewing.botLiked ? '无' : null}
+              </Typography.Text>
+              <Typography.Text type="secondary">纳入原因：{viewing.admitReason ?? '—'}</Typography.Text>
+              <Typography.Text type="secondary">采集时刻：{timeText(viewing.countsCapturedAt)}</Typography.Text>
+              <Typography.Text type="secondary">更新时刻：{timeText(viewing.updatedAt)}</Typography.Text>
+            </Space>
+
+            {/* 来源 */}
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
+              {viewing.sourceUrl ? (
+                <Button type="primary" href={viewing.sourceUrl} target="_blank" rel="noopener noreferrer">
+                  打开来源
+                </Button>
               ) : (
-                <Typography.Text type="secondary">—</Typography.Text>
+                <Button disabled>无来源链接</Button>
               )}
-            </Descriptions.Item>
-            <Descriptions.Item label="采集时刻">{timeText(viewing.countsCapturedAt)}</Descriptions.Item>
-            <Descriptions.Item label="首次纳入">{timeText(viewing.firstSeenAt)}</Descriptions.Item>
-            <Descriptions.Item label="更新时刻">{timeText(viewing.updatedAt)}</Descriptions.Item>
-            <Descriptions.Item label="正文">
-              {viewing.body ? (
-                <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
-                  {viewing.body}
-                </Typography.Paragraph>
-              ) : (
-                <Typography.Text type="secondary">空（壳行）</Typography.Text>
-              )}
-            </Descriptions.Item>
-          </Descriptions>
+            </div>
+          </div>
         )}
-      </Drawer>
+      </Modal>
     </div>
   );
 }
