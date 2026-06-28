@@ -306,7 +306,7 @@ export interface QuotaConfigCatalog {
   quotas: QuotaConfigRow[];
 }
 
-// 单场会话上限配置（change session-limits-to-quota-layer）。与 cloud SessionLimitRowView 手动对齐。
+// 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。与 cloud SessionLimitView 手动对齐。
 
 /** 单场互动预算（六项，与 cloud SessionInteractionBudget 一致）。 */
 export interface SessionInteractionBudget {
@@ -318,9 +318,8 @@ export interface SessionInteractionBudget {
   comment_likes: number;
 }
 
-/** 单账号单场上限生效值 + 来源/审计（GET /api/session-limits 形状）。 */
-export interface SessionLimitRow {
-  accountId: string;
+/** 全局单场上限生效值 + 来源/审计（GET /api/session-limits 形状）。对所有账号生效。 */
+export interface SessionLimitView {
   maxDurationMin: number;
   budget: SessionInteractionBudget;
   /** 是否存在库内覆盖（false=显示的是写死默认，即当前真生效）。 */
@@ -329,16 +328,10 @@ export interface SessionLimitRow {
   updatedBy: string | null;
 }
 
-/** GET /api/session-limits 形状。 */
-export interface SessionLimitCatalog {
-  limits: SessionLimitRow[];
-}
+// 自动续场护栏 + 看门狗阈值配置（全局单例，change restore-auto-resume-and-global-safety-config）。与 cloud ResumeConfigView 手动对齐。
 
-// 自动续场护栏 + 看门狗阈值配置（change session-auto-resume-with-excursions）。与 cloud ResumeConfigRowView 手动对齐。
-
-/** 单账号续场护栏 + 看门狗阈值生效值 + 来源/审计（GET /api/resume-config 形状）。 */
-export interface ResumeConfigRow {
-  accountId: string;
+/** 全局续场护栏 + 看门狗阈值生效值 + 来源/审计（GET /api/resume-config 形状）。对所有账号生效。 */
+export interface ResumeConfigView {
   /** 休息比例（百分比，如 10 = 单场时长的 10%）。 */
   restRatioPct: number;
   /** 活跃时段窗口起/止（自午夜分钟数，0..1440；0..1440 = 全天不限）。 */
@@ -354,11 +347,6 @@ export interface ResumeConfigRow {
   overridden: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
-}
-
-/** GET /api/resume-config 形状。 */
-export interface ResumeConfigCatalog {
-  configs: ResumeConfigRow[];
 }
 
 // ── token 用量统计（change llm-token-usage-stats，GET /api/llm-usage 形状，与 cloud 逐字对齐）──

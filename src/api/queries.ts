@@ -16,8 +16,8 @@ import type {
   CategoryConfigCatalog,
   PersonaConfigCatalog,
   QuotaConfigCatalog,
-  SessionLimitCatalog,
-  ResumeConfigCatalog,
+  SessionLimitView,
+  ResumeConfigView,
   LlmUsagePayload,
   PanelNotificationContact,
 } from '../types/api';
@@ -62,19 +62,19 @@ export function useQuotaConfig() {
   });
 }
 
-/** 单场会话上限配置目录（change session-limits-to-quota-layer）。按账号时长 + 六项互动预算 + 审计。 */
+/** 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。时长 + 六项互动预算 + 审计；对所有账号生效。 */
 export function useSessionLimits() {
   return useQuery({
     queryKey: ['config', 'session-limits'],
-    queryFn: () => apiGet<SessionLimitCatalog>('/api/session-limits'),
+    queryFn: () => apiGet<SessionLimitView>('/api/session-limits'),
   });
 }
 
-/** 自动续场护栏 + 看门狗阈值配置目录（change session-auto-resume-with-excursions）。按账号 + 审计。 */
+/** 自动续场护栏 + 看门狗阈值配置（全局单例，change restore-auto-resume-and-global-safety-config）。对所有账号生效 + 审计。 */
 export function useResumeConfig() {
   return useQuery({
     queryKey: ['config', 'resume-config'],
-    queryFn: () => apiGet<ResumeConfigCatalog>('/api/resume-config'),
+    queryFn: () => apiGet<ResumeConfigView>('/api/resume-config'),
   });
 }
 

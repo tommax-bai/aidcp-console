@@ -3,18 +3,15 @@ import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typo
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig, useSessionLimits, useResumeConfig, useAccounts } from '../api/queries';
-import { makeAccountNamer } from '../types/accountDisplay';
+import { useQuotaConfig, useSessionLimits, useResumeConfig } from '../api/queries';
 import type {
   QuotaConfigRow,
   QuotaConfigCatalog,
   QuotaTier,
   QuotaAction,
-  SessionLimitRow,
-  SessionLimitCatalog,
+  SessionLimitView,
   SessionInteractionBudget,
-  ResumeConfigRow,
-  ResumeConfigCatalog,
+  ResumeConfigView,
 } from '../types/api';
 
 const QUOTA_MAX = 100_000;
@@ -46,18 +43,19 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
   { key: 'comment_likes', label: '评论赞' },
 ];
 
+/** 单行全局表的稳定 key（全局配置只有一行）。 */
+const GLOBAL_ROW_KEY = 'global';
+
 /**
- * 安全限额配置页（change safety-quota-config，stream D）。
- * - 三档（保守/正常/激进）× 7 动作 × 三窗口（每日/每分钟/每小时）的限额数字后台可改。
- * - 改完即时生效（热加载，无需重启）；库缺行处显示的是派生写死默认（= 当前真生效），保存即写覆盖。
+ * 安全配置页（安全 tab）。三块全局配置，自上而下：
+ * 1. 单场会话上限（全局单例）；2. 自动续场与看门狗（全局单例）；3. 安全限额（档位×动作）。
+ * - 单场上限 / 续场看门狗已从「按账号」收敛为「全局通用单例」（对所有账号生效，无 default、无按账号覆盖）。
+ * - 改完即时 / 下场会话即生效（热加载，无需重启）；库缺行处显示的是内置写死默认（= 当前真生效），保存即写覆盖。
  * - 写非乐观——round-trip 后 invalidate 重取真态；非法数字由服务端整块拒，绝不部分落库。
- * - 不碰风控状态机（normal→warned→restricted→frozen 与档位）——本页只改限额数字。
+ * - 不碰风控状态机（normal→warned→restricted→frozen 与档位）——本页只改限额 / 配置数字。
  */
 export function QuotasPage() {
   const { data, isLoading } = useQuotaConfig();
-  const { data: accountsData } = useAccounts();
-  // 单场上限/续场表只带 accountId，账号名走统一诚实回落（真名→运营名→ID）：从账号列表 join。
-  const nameOf = makeAccountNamer(accountsData?.accounts ?? []);
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -135,9 +133,9 @@ export function QuotasPage() {
     },
   ];
 
-  // ── 单场会话上限（change session-limits-to-quota-layer）──────────────────────
+  // ── 单场会话上限（全局单例）─────────────────────────────────────────────────
   const sl = useSessionLimits();
-  const [editingSL, setEditingSL] = useState<SessionLimitRow | null>(null);
+  const [editingSL, setEditingSL] = useState(false);
   const [slDuration, setSlDuration] = useState<number | null>(null);
   const [slBudget, setSlBudget] = useState<Record<keyof SessionInteractionBudget, number | null>>({
     likes: null,
@@ -148,18 +146,18 @@ export function QuotasPage() {
     comment_likes: null,
   });
 
-  const openEditSL = (row: SessionLimitRow) => {
-    setEditingSL(row);
+  const openEditSL = (row: SessionLimitView) => {
+    setEditingSL(true);
     setSlDuration(row.maxDurationMin);
     setSlBudget({ ...row.budget });
   };
 
   const saveSL = useMutation({
-    mutationFn: (v: { accountId: string; maxDurationMin: number } & SessionInteractionBudget) =>
-      apiPut<SessionLimitCatalog>('/api/session-limits', v),
+    mutationFn: (v: { maxDurationMin: number } & SessionInteractionBudget) =>
+      apiPut<SessionLimitView>('/api/session-limits', v),
     onSuccess: () => {
       message.success('已保存，单场上限下场会话即生效（无需重启）');
-      setEditingSL(null);
+      setEditingSL(false);
       void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
     },
     onError: (e) => {
@@ -178,27 +176,23 @@ export function QuotasPage() {
   const slValidDuration = (n: number | null): n is number => n !== null && Number.isInteger(n) && n >= 1 && n <= QUOTA_MAX;
   const canSaveSL = slValidDuration(slDuration) && SL_BUDGET_FIELDS.every((f) => slValidBudget(slBudget[f.key]));
 
-  const slRows = useMemo(
-    () => (sl.data?.limits ?? []).slice().sort((a, b) => a.accountId.localeCompare(b.accountId)),
-    [sl.data],
-  );
+  const slRows = sl.data ? [sl.data] : [];
 
-  const slColumns: ColumnsType<SessionLimitRow> = [
-    { title: '账号', dataIndex: 'accountId', width: 160, render: (a: string) => nameOf(a) },
+  const slColumns: ColumnsType<SessionLimitView> = [
     { title: '单场时长(分钟)', dataIndex: 'maxDurationMin', width: 130, render: (n: number) => <span className="tabular-nums">{n}</span> },
     ...SL_BUDGET_FIELDS.map(
-      (f): ColumnType<SessionLimitRow> => ({
+      (f): ColumnType<SessionLimitView> => ({
         title: f.label,
         key: f.key,
         width: 76,
-        render: (_: unknown, row: SessionLimitRow) => <span className="tabular-nums">{row.budget[f.key]}</span>,
+        render: (_: unknown, row: SessionLimitView) => <span className="tabular-nums">{row.budget[f.key]}</span>,
       }),
     ),
     { title: '来源', dataIndex: 'overridden', width: 100, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
     {
       title: '操作',
       width: 80,
-      render: (_: unknown, row: SessionLimitRow) => (
+      render: (_: unknown, row: SessionLimitView) => (
         <Button size="small" onClick={() => openEditSL(row)}>
           编辑
         </Button>
@@ -206,10 +200,10 @@ export function QuotasPage() {
     },
   ];
 
-  // ── 自动续场护栏 + 看门狗阈值（change session-auto-resume-with-excursions）─────────
+  // ── 自动续场护栏 + 看门狗阈值（全局单例）─────────────────────────────────────
   // 看门狗阈值在 UI 以「分钟」编辑（更友好），保存时 ×60000 转毫秒；GET 回来的 ms ÷60000 显示。
   const rc = useResumeConfig();
-  const [editingRC, setEditingRC] = useState<ResumeConfigRow | null>(null);
+  const [editingRC, setEditingRC] = useState(false);
   const [rcRest, setRcRest] = useState<number | null>(null);
   const [rcWinStart, setRcWinStart] = useState<number | null>(null);
   const [rcWinEnd, setRcWinEnd] = useState<number | null>(null);
@@ -221,8 +215,8 @@ export function QuotasPage() {
   const fmtMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   const winLabel = (s: number, e: number) => (s === e || (s <= 0 && e >= 1440) ? '全天不限' : `${fmtMin(s)}–${fmtMin(e)}`);
 
-  const openEditRC = (row: ResumeConfigRow) => {
-    setEditingRC(row);
+  const openEditRC = (row: ResumeConfigView) => {
+    setEditingRC(true);
     setRcRest(row.restRatioPct);
     setRcWinStart(row.activeWindowStartMin);
     setRcWinEnd(row.activeWindowEndMin);
@@ -234,7 +228,6 @@ export function QuotasPage() {
 
   const saveRC = useMutation({
     mutationFn: (v: {
-      accountId: string;
       restRatioPct: number;
       activeWindowStartMin: number;
       activeWindowEndMin: number;
@@ -242,10 +235,10 @@ export function QuotasPage() {
       dailyMaxMinutes: number;
       idleNudgeMs: number;
       idleEndMs: number;
-    }) => apiPut<ResumeConfigCatalog>('/api/resume-config', v),
+    }) => apiPut<ResumeConfigView>('/api/resume-config', v),
     onSuccess: () => {
       message.success('已保存，续场/看门狗配置下场会话即生效（无需重启）');
-      setEditingRC(null);
+      setEditingRC(false);
       void qc.invalidateQueries({ queryKey: ['config', 'resume-config'] });
     },
     onError: (e) => {
@@ -265,64 +258,34 @@ export function QuotasPage() {
     rcInt(rcEndMin, 2, 1440) &&
     (rcEndMin as number) > (rcNudgeMin as number);
 
-  const rcRows = useMemo(
-    () => (rc.data?.configs ?? []).slice().sort((a, b) => a.accountId.localeCompare(b.accountId)),
-    [rc.data],
-  );
+  const rcRows = rc.data ? [rc.data] : [];
 
-  const rcColumns: ColumnsType<ResumeConfigRow> = [
-    { title: '账号', dataIndex: 'accountId', width: 160, render: (a: string) => nameOf(a) },
+  const rcColumns: ColumnsType<ResumeConfigView> = [
     { title: '休息比例', dataIndex: 'restRatioPct', width: 90, render: (n: number) => <span className="tabular-nums">{n}%</span> },
-    { title: '活跃时段', key: 'win', width: 130, render: (_: unknown, r: ResumeConfigRow) => <span className="tabular-nums">{winLabel(r.activeWindowStartMin, r.activeWindowEndMin)}</span> },
+    { title: '活跃时段', key: 'win', width: 130, render: (_: unknown, r: ResumeConfigView) => <span className="tabular-nums">{winLabel(r.activeWindowStartMin, r.activeWindowEndMin)}</span> },
     { title: '每日场数', dataIndex: 'dailyMaxSessions', width: 90, render: (n: number) => <span className="tabular-nums">{n === 0 ? '不限' : n}</span> },
     { title: '每日分钟', dataIndex: 'dailyMaxMinutes', width: 90, render: (n: number) => <span className="tabular-nums">{n === 0 ? '不限' : n}</span> },
     { title: '轻推(分)', dataIndex: 'idleNudgeMs', width: 86, render: (n: number) => <span className="tabular-nums">{Math.round(n / 60_000)}</span> },
     { title: '放弃(分)', dataIndex: 'idleEndMs', width: 86, render: (n: number) => <span className="tabular-nums">{Math.round(n / 60_000)}</span> },
     { title: '来源', dataIndex: 'overridden', width: 96, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
-    { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigRow) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
+    { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigView) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
   ];
-
-  if (isLoading || !data) {
-    return (
-      <div className="page-stack">
-        <Card size="small" title="安全限额">
-          <Skeleton active />
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="page-stack">
-      <Card size="small" title="安全限额">
+      <Card size="small" title="单场会话上限（全局）">
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="按档位（保守/正常/激进）× 动作配置每日 / 每分钟 / 每小时三个限额。改完即时生效、无需重启。0=禁止该动作。仅改限额数字，不影响风控状态（封号/限流仍由风控自动判定）。"
-        />
-        <Table<QuotaConfigRow>
-          size="small"
-          rowKey={rowKey}
-          columns={columns}
-          dataSource={rows}
-          pagination={false}
-        />
-      </Card>
-
-      <Card size="small" title="单场会话上限">
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="按账号配置单场会话时长（分钟）与单场互动预算（点赞/收藏/关注/搜索/评论/评论赞）。改完下场会话即生效（热加载、无需重启）。库缺行显示的是写死默认（= 当前真生效）。此项原在「人设」中，现已迁出，请在此编辑。"
+          message="配置对所有账号生效的全局单场会话时长（分钟）与单场互动预算（点赞/收藏/关注/搜索/评论/评论赞）。改完下场会话即生效（热加载、无需重启）。未配置时用系统内置默认（= 当前真生效）。此项原按账号，现已收敛为全局通用单例。"
         />
         {sl.isLoading || !sl.data ? (
           <Skeleton active />
         ) : (
-          <Table<SessionLimitRow>
+          <Table<SessionLimitView>
             size="small"
-            rowKey={(r) => r.accountId}
+            rowKey={() => GLOBAL_ROW_KEY}
             columns={slColumns}
             dataSource={slRows}
             pagination={false}
@@ -330,21 +293,41 @@ export function QuotasPage() {
         )}
       </Card>
 
-      <Card size="small" title="自动续场与看门狗">
+      <Card size="small" title="自动续场与看门狗（全局）">
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="单场正常结束后，按「休息比例」歇一会儿（=单场时长×比例）自动续刷。仅在「活跃时段」内续、受「每日上限」约束、撞风控不续。看门狗：浏览卡住超「轻推」分钟先发恢复滚动，超「放弃」分钟才结束会话。改完下场即生效（热加载）。库缺行显示的是写死默认（休息10% / 全天 / 不限 / 轻推≈2分 / 放弃60分）。"
+          message="对所有账号生效的全局续场/看门狗配置。单场正常结束后，按「休息比例」歇一会儿（=单场时长×比例）自动续刷；仅在「活跃时段」内续、受「每日上限」约束、撞风控不续。看门狗：浏览卡住超「轻推」分钟先发恢复滚动，超「放弃」分钟才结束会话。改完下场即生效（热加载）。未配置时用内置默认（休息10% / 全天 / 不限 / 轻推≈2分 / 放弃60分）。"
         />
         {rc.isLoading || !rc.data ? (
           <Skeleton active />
         ) : (
-          <Table<ResumeConfigRow>
+          <Table<ResumeConfigView>
             size="small"
-            rowKey={(r) => r.accountId}
+            rowKey={() => GLOBAL_ROW_KEY}
             columns={rcColumns}
             dataSource={rcRows}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      <Card size="small" title="安全限额">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="按档位（保守/正常/激进）× 动作配置每日 / 每分钟 / 每小时三个限额。改完即时生效、无需重启。0=禁止该动作。仅改限额数字，不影响风控状态（封号/限流仍由风控自动判定）。"
+        />
+        {isLoading || !data ? (
+          <Skeleton active />
+        ) : (
+          <Table<QuotaConfigRow>
+            size="small"
+            rowKey={rowKey}
+            columns={columns}
+            dataSource={rows}
             pagination={false}
           />
         )}
@@ -389,16 +372,14 @@ export function QuotasPage() {
       </Modal>
 
       <Modal
-        title={editingSL ? `编辑单场上限：账号 ${nameOf(editingSL.accountId)}` : ''}
-        open={!!editingSL}
-        onCancel={() => setEditingSL(null)}
+        title="编辑全局单场上限"
+        open={editingSL}
+        onCancel={() => setEditingSL(false)}
         confirmLoading={saveSL.isPending}
         okButtonProps={{ disabled: !canSaveSL }}
         onOk={() =>
-          editingSL &&
           canSaveSL &&
           saveSL.mutate({
-            accountId: editingSL.accountId,
             maxDurationMin: slDuration as number,
             likes: slBudget.likes as number,
             collects: slBudget.collects as number,
@@ -414,7 +395,7 @@ export function QuotasPage() {
         {editingSL && (
           <Form layout="vertical" requiredMark={false}>
             <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-              单场时长须为 ≥1 的整数（分钟）；各项互动预算须为 ≥0 的整数；均 ≤100000。保存前服务端会再校验。
+              对所有账号生效。单场时长须为 ≥1 的整数（分钟）；各项互动预算须为 ≥0 的整数；均 ≤100000。保存前服务端会再校验。
             </Typography.Paragraph>
             <Form.Item label="单场时长（分钟）">
               <InputNumber value={slDuration ?? undefined} onChange={(v) => setSlDuration(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
@@ -436,16 +417,14 @@ export function QuotasPage() {
       </Modal>
 
       <Modal
-        title={editingRC ? `编辑续场/看门狗：账号 ${nameOf(editingRC.accountId)}` : ''}
-        open={!!editingRC}
-        onCancel={() => setEditingRC(null)}
+        title="编辑全局续场/看门狗"
+        open={editingRC}
+        onCancel={() => setEditingRC(false)}
         confirmLoading={saveRC.isPending}
         okButtonProps={{ disabled: !canSaveRC }}
         onOk={() =>
-          editingRC &&
           canSaveRC &&
           saveRC.mutate({
-            accountId: editingRC.accountId,
             restRatioPct: rcRest as number,
             activeWindowStartMin: rcWinStart as number,
             activeWindowEndMin: rcWinEnd as number,
@@ -461,7 +440,7 @@ export function QuotasPage() {
         {editingRC && (
           <Form layout="vertical" requiredMark={false}>
             <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-              休息比例 0–1000（%）；活跃时段为自午夜分钟数 0–1440（起=止 或 0–1440 视作全天不限）；每日上限 0=不限；看门狗轻推/放弃以分钟计，放弃须大于轻推。保存前服务端会再校验。
+              对所有账号生效。休息比例 0–1000（%）；活跃时段为自午夜分钟数 0–1440（起=止 或 0–1440 视作全天不限）；每日上限 0=不限；看门狗轻推/放弃以分钟计，放弃须大于轻推。保存前服务端会再校验。
             </Typography.Paragraph>
             <Form.Item label="休息比例（% of 单场时长）">
               <InputNumber value={rcRest ?? undefined} onChange={(v) => setRcRest(v ?? null)} min={0} max={1000} precision={0} style={{ width: 200 }} />
