@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
+import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Space, Table, Tag, Typography, Alert, theme } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
@@ -45,6 +45,120 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
 
 /** 单行全局表的稳定 key（全局配置只有一行）。 */
 const GLOBAL_ROW_KEY = 'global';
+
+// ── 「可活跃时间」周历掩码（change weekly-active-window）：7 天 × 24 小时 = 168 格 ──
+// 掩码为 168 长的 '0'/'1' 串：'1'=该小时活跃（允许开/续浏览会话）、'0'=休眠。
+// 索引 = 天 × 24 + 小时；天 0..6 = 周一..周日（与 cloud mondayBasedDayIndex 一致）。按服务器本地时间。
+const WEEK_MASK_LEN = 168;
+const WEEK_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const FULL_ACTIVE_MASK = '1'.repeat(WEEK_MASK_LEN); // 全周全天活跃（= 不限）
+const EMPTY_MASK = '0'.repeat(WEEK_MASK_LEN);
+const cellIdx = (day: number, hour: number) => day * 24 + hour;
+const isCellActive = (mask: string, day: number, hour: number) => mask[cellIdx(day, hour)] === '1';
+const setCell = (mask: string, day: number, hour: number, on: boolean) => {
+  const i = cellIdx(day, hour);
+  return mask.slice(0, i) + (on ? '1' : '0') + mask.slice(i + 1);
+};
+const countActive = (mask: string) => mask.split('').filter((c) => c === '1').length;
+const isValidMask = (m: string) => m.length === WEEK_MASK_LEN && /^[01]+$/.test(m);
+/** 视图掩码 → 可编辑串：null / 非法（未配置）一律视作全天活跃（与 cloud 回落同口径）。 */
+const maskForEdit = (m: string | null) => (m && isValidMask(m) ? m : FULL_ACTIVE_MASK);
+/** 预设：工作日（周一–周五）09:00–22:00 活跃，其余休眠。 */
+const workdayMask = () => {
+  let s = '';
+  for (let d = 0; d < 7; d++) for (let h = 0; h < 24; h++) s += d <= 4 && h >= 9 && h < 22 ? '1' : '0';
+  return s;
+};
+
+/**
+ * 周历活跃时段网格（7 天 × 24 小时）。绿=活跃、灰=休眠。
+ * 只读（卡片预览）或可编辑（弹窗）：点格切该小时、点「天」名切整天、点小时号切整列。
+ */
+function WeekActiveGrid({
+  mask,
+  readOnly,
+  onToggleCell,
+  onToggleRow,
+  onToggleCol,
+}: {
+  mask: string;
+  readOnly?: boolean;
+  onToggleCell?: (day: number, hour: number) => void;
+  onToggleRow?: (day: number) => void;
+  onToggleCol?: (hour: number) => void;
+}) {
+  const { token } = theme.useToken();
+  const cell = readOnly ? 13 : 20; // px
+  const labelW = readOnly ? 36 : 44;
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'inline-block', userSelect: 'none' }}>
+        {/* 小时表头（偶数小时标号；可编辑时点号切整列） */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 2 }}>
+          <div style={{ width: labelW, flex: 'none' }} />
+          {hours.map((h) => (
+            <div
+              key={h}
+              onClick={readOnly ? undefined : () => onToggleCol?.(h)}
+              title={readOnly ? undefined : `切换所有天的 ${String(h).padStart(2, '0')}:00`}
+              style={{
+                width: cell,
+                flex: 'none',
+                textAlign: 'center',
+                fontSize: 10,
+                lineHeight: '12px',
+                color: token.colorTextSecondary,
+                cursor: readOnly ? 'default' : 'pointer',
+              }}
+            >
+              {h % 2 === 0 ? h : ''}
+            </div>
+          ))}
+        </div>
+        {/* 7 天 × 24 小时格 */}
+        {WEEK_DAYS.map((label, day) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', marginBottom: 1 }}>
+            <div
+              onClick={readOnly ? undefined : () => onToggleRow?.(day)}
+              title={readOnly ? undefined : `切换整天：${label}`}
+              style={{
+                width: labelW,
+                flex: 'none',
+                fontSize: 12,
+                paddingRight: 4,
+                textAlign: 'right',
+                color: token.colorText,
+                cursor: readOnly ? 'default' : 'pointer',
+              }}
+            >
+              {label}
+            </div>
+            {hours.map((h) => {
+              const on = isCellActive(mask, day, h);
+              return (
+                <div
+                  key={h}
+                  onClick={readOnly ? undefined : () => onToggleCell?.(day, h)}
+                  title={`${label} ${String(h).padStart(2, '0')}:00 — ${on ? '活跃' : '休眠'}`}
+                  style={{
+                    width: cell,
+                    height: cell,
+                    flex: 'none',
+                    boxSizing: 'border-box',
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    background: on ? token.colorSuccess : token.colorFillSecondary,
+                    cursor: readOnly ? 'default' : 'pointer',
+                  }}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * 安全配置页（安全 tab）。三块全局配置，自上而下：
@@ -321,6 +435,48 @@ export function QuotasPage() {
     { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigView) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
   ];
 
+  // ── 可活跃时间（全局周历，change weekly-active-window）：复用 /api/session-limits 同表同接口 ──
+  const [editingWin, setEditingWin] = useState(false);
+  const [winMask, setWinMask] = useState<string>(FULL_ACTIVE_MASK);
+
+  const openEditWin = (row: SessionLimitView) => {
+    setEditingWin(true);
+    setWinMask(maskForEdit(row.activeWeekMask));
+  };
+
+  const saveWin = useMutation({
+    mutationFn: (v: { activeWeekMask: string }) => apiPut<SessionLimitView>('/api/session-limits', v),
+    onSuccess: () => {
+      message.success('已保存，可活跃时间下场会话即生效（无需重启）');
+      setEditingWin(false);
+      void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(msg === 'invalid_value' ? '时段掩码非法（须 168 格 0/1），未保存' : msg === 'no_valid_fields' ? '未改任何字段，未保存' : '保存失败');
+    },
+  });
+  const canSaveWin = isValidMask(winMask);
+
+  const toggleWinCell = (day: number, hour: number) =>
+    setWinMask((m) => setCell(m, day, hour, !isCellActive(m, day, hour)));
+  // 整天 / 整列切换：该天（列）全活跃则清空，否则全开。
+  const toggleWinRow = (day: number) =>
+    setWinMask((m) => {
+      const allOn = Array.from({ length: 24 }, (_, h) => isCellActive(m, day, h)).every(Boolean);
+      let next = m;
+      for (let h = 0; h < 24; h++) next = setCell(next, day, h, !allOn);
+      return next;
+    });
+  const toggleWinCol = (hour: number) =>
+    setWinMask((m) => {
+      const allOn = Array.from({ length: 7 }, (_, d) => isCellActive(m, d, hour)).every(Boolean);
+      let next = m;
+      for (let d = 0; d < 7; d++) next = setCell(next, d, hour, !allOn);
+      return next;
+    });
+  const invertWin = () => setWinMask((m) => m.split('').map((c) => (c === '1' ? '0' : '1')).join(''));
+
   return (
     <div className="page-stack">
       <Card size="small" title="单场会话上限（全局）">
@@ -380,6 +536,31 @@ export function QuotasPage() {
             dataSource={rcRows}
             pagination={false}
           />
+        )}
+      </Card>
+
+      <Card size="small" title="可活跃时间（全局）">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="按周 × 天 × 小时配置「允许活跃」的时段，对所有账号生效（按服务器本地时间）。绿=活跃（允许开 / 续浏览会话）、灰=休眠（不开；会话运行中跨入休眠时段则结束当前会话）。改完下场会话即生效（热加载、无需重启）。未配置 = 全周全天活跃（不限）。窗口重开后由边端重连驱动续上。"
+        />
+        {sl.isLoading || !sl.data ? (
+          <Skeleton active />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {sl.data.activeWeekMask ? <Tag color="green">已配置</Tag> : <Tag>全天活跃（未配置）</Tag>}
+              <Typography.Text type="secondary">
+                活跃 {countActive(maskForEdit(sl.data.activeWeekMask))} / 168 小时
+              </Typography.Text>
+              <Button size="small" onClick={() => openEditWin(sl.data!)}>
+                编辑
+              </Button>
+            </div>
+            <WeekActiveGrid mask={maskForEdit(sl.data.activeWeekMask)} readOnly />
+          </div>
         )}
       </Card>
 
@@ -566,6 +747,43 @@ export function QuotasPage() {
             </Form.Item>
           </Form>
         )}
+      </Modal>
+
+      <Modal
+        title="编辑可活跃时间（全局）"
+        open={editingWin}
+        onCancel={() => setEditingWin(false)}
+        confirmLoading={saveWin.isPending}
+        okButtonProps={{ disabled: !canSaveWin }}
+        onOk={() => canSaveWin && saveWin.mutate({ activeWeekMask: winMask })}
+        okText="保存"
+        cancelText="取消"
+        width={760}
+      >
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+          对所有账号生效、按服务器本地时间。点格切换该小时 活跃/休眠；点「天」名切整天、点小时号切整列。绿=活跃、灰=休眠。全部活跃 = 不限（= 未配置）。
+        </Typography.Paragraph>
+        <Space style={{ marginBottom: 12 }} wrap>
+          <Button size="small" onClick={() => setWinMask(FULL_ACTIVE_MASK)}>
+            全部活跃
+          </Button>
+          <Button size="small" onClick={() => setWinMask(EMPTY_MASK)}>
+            全部休眠
+          </Button>
+          <Button size="small" onClick={() => setWinMask(workdayMask())}>
+            工作时间（周一–周五 9–22）
+          </Button>
+          <Button size="small" onClick={invertWin}>
+            反选
+          </Button>
+          <Typography.Text type="secondary">活跃 {countActive(winMask)} / 168 小时</Typography.Text>
+        </Space>
+        <WeekActiveGrid
+          mask={winMask}
+          onToggleCell={toggleWinCell}
+          onToggleRow={toggleWinRow}
+          onToggleCol={toggleWinCol}
+        />
       </Modal>
     </div>
   );
