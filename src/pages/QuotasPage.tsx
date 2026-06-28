@@ -200,6 +200,56 @@ export function QuotasPage() {
     },
   ];
 
+  // ── 互动质量阈值（全局单例，change engagement-ratio-config）：复用 /api/session-limits 同表同接口 ──
+  // 收藏门槛 = 收藏:赞 ≥ 1:N（N=collectSaveLikeDenom）；关注门槛 = 粉丝:赞藏 ≥ 1:N（N=followFansDenom）。N 越大越宽松。
+  const [editingRatio, setEditingRatio] = useState(false);
+  const [ratioCollect, setRatioCollect] = useState<number | null>(null);
+  const [ratioFollow, setRatioFollow] = useState<number | null>(null);
+
+  const openEditRatio = (row: SessionLimitView) => {
+    setEditingRatio(true);
+    setRatioCollect(row.collectSaveLikeDenom);
+    setRatioFollow(row.followFansDenom);
+  };
+
+  const saveRatio = useMutation({
+    mutationFn: (v: { collectSaveLikeDenom: number; followFansDenom: number }) =>
+      apiPut<SessionLimitView>('/api/session-limits', v),
+    onSuccess: () => {
+      message.success('已保存，互动质量阈值下场会话即生效（无需重启）');
+      setEditingRatio(false);
+      void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(
+        msg === 'invalid_value'
+          ? '分母非法（须为 ≥1 的整数），未保存'
+          : msg === 'no_valid_fields'
+            ? '未填写任何可改字段，未保存'
+            : '保存失败',
+      );
+    },
+  });
+
+  const ratioValidDenom = (n: number | null): n is number => n !== null && Number.isInteger(n) && n >= 1 && n <= QUOTA_MAX;
+  const canSaveRatio = ratioValidDenom(ratioCollect) && ratioValidDenom(ratioFollow);
+
+  const ratioColumns: ColumnsType<SessionLimitView> = [
+    { title: '收藏门槛（收藏:赞 ≥）', key: 'collect', width: 180, render: (_: unknown, r: SessionLimitView) => <span className="tabular-nums">1 : {r.collectSaveLikeDenom}</span> },
+    { title: '关注门槛（粉丝:赞藏 ≥）', key: 'follow', width: 190, render: (_: unknown, r: SessionLimitView) => <span className="tabular-nums">1 : {r.followFansDenom}</span> },
+    { title: '来源', dataIndex: 'overridden', width: 100, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
+    {
+      title: '操作',
+      width: 80,
+      render: (_: unknown, row: SessionLimitView) => (
+        <Button size="small" onClick={() => openEditRatio(row)}>
+          编辑
+        </Button>
+      ),
+    },
+  ];
+
   // ── 自动续场护栏 + 看门狗阈值（全局单例）─────────────────────────────────────
   // 看门狗阈值在 UI 以「分钟」编辑（更友好），保存时 ×60000 转毫秒；GET 回来的 ms ÷60000 显示。
   const rc = useResumeConfig();
@@ -287,6 +337,26 @@ export function QuotasPage() {
             size="small"
             rowKey={() => GLOBAL_ROW_KEY}
             columns={slColumns}
+            dataSource={slRows}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      <Card size="small" title="互动质量阈值（全局）">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="对所有账号生效的「收藏 / 关注」质量门槛——在 AI 判断之上再加一道客观比例下限。收藏门槛：仅当笔记「收藏数 : 点赞数 ≥ 1:N」才收藏（默认 1:3；N 越大越宽松，挡掉赞高藏低的泛娱乐笔记）。关注门槛：仅当作者「粉丝数 : 获赞与收藏 ≥ 1:N」才关注（默认 1:8；挡掉靠爆款堆赞藏却转化差的号）。改完下场会话即生效（热加载、无需重启）。未配置时用内置默认（= 当前真生效）。"
+        />
+        {sl.isLoading || !sl.data ? (
+          <Skeleton active />
+        ) : (
+          <Table<SessionLimitView>
+            size="small"
+            rowKey={() => GLOBAL_ROW_KEY}
+            columns={ratioColumns}
             dataSource={slRows}
             pagination={false}
           />
@@ -412,6 +482,37 @@ export function QuotasPage() {
                 />
               </Form.Item>
             ))}
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title="编辑互动质量阈值"
+        open={editingRatio}
+        onCancel={() => setEditingRatio(false)}
+        confirmLoading={saveRatio.isPending}
+        okButtonProps={{ disabled: !canSaveRatio }}
+        onOk={() =>
+          canSaveRatio &&
+          saveRatio.mutate({
+            collectSaveLikeDenom: ratioCollect as number,
+            followFansDenom: ratioFollow as number,
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+      >
+        {editingRatio && (
+          <Form layout="vertical" requiredMark={false}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              对所有账号生效。填「1:N」里的 N（≥1 的整数，N 越大门槛越宽松）。收藏门槛默认 3（1:3）；关注门槛默认 8（1:8）。保存前服务端会再校验。
+            </Typography.Paragraph>
+            <Form.Item label="收藏门槛分母 N（收藏:赞 ≥ 1:N）">
+              <InputNumber value={ratioCollect ?? undefined} onChange={(v) => setRatioCollect(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="关注门槛分母 N（粉丝:赞藏 ≥ 1:N）">
+              <InputNumber value={ratioFollow ?? undefined} onChange={(v) => setRatioFollow(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
           </Form>
         )}
       </Modal>
