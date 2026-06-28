@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   App,
   Alert,
@@ -19,9 +19,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
 import { useAccounts, useCuratedContents, useCuratedFacets } from '../api/queries';
 import type { PanelCuratedContent } from '../types/api';
-import { accountDisplayName } from '../types/accountDisplay';
+import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
 const PAGE_SIZE = 20;
+
+/** 账号筛选哨兵：选「全部账号」时不带 accountId（全账号合并视图）。 */
+const ALL_ACCOUNTS = '__all__';
 
 /** 计数单元：诚实区分 null（边端未抓到）与 0（真实为零）。 */
 function countCell(v: number | null) {
@@ -34,8 +37,8 @@ function timeText(ms: number | null): string {
 
 /**
  * 精选内容池管理页（change curated-content-admin-page）。
- * - 按账号严格隔离（必选账号、默认第一个、绝不跨账号合并＝PII 隔离）查看精选创作灵感语料。
- * - 治理：删单条（误纳入/低质/隐私）、一键清空正文壳行；honest-write 回真实条数、非乐观（重取真态）。
+ * - 默认「全部账号」合并视图（每行带账号列、服务端分页）查看精选创作灵感语料，可在右上切到单个账号。
+ * - 治理：删单条（按行账号路由防越权）、一键清空正文壳行（按单账号执行，全账号视图下禁用）；honest-write 回真实条数、非乐观（重取真态）。
  * - 删除仅清当前快照：之后再浏览到且仍达标会重新纳入（准入不查史）——确认文案如实告知，绝不谎称永久移除。
  */
 export function CuratedContentPage() {
@@ -43,22 +46,20 @@ export function CuratedContentPage() {
   const qc = useQueryClient();
   const accounts = useAccounts();
 
-  const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  // 默认「全部账号」：全账号合并视图，每行带归属账号、删除按行账号路由。可在右上切到单个账号。
+  const [accountId, setAccountId] = useState<string>(ALL_ACCOUNTS);
   const [contentType, setContentType] = useState<'note' | 'comment' | undefined>(undefined);
   const [admitReason, setAdmitReason] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [viewing, setViewing] = useState<PanelCuratedContent | null>(null);
 
-  // 默认选中第一个账号（必须先选账号才加载内容；空账号≠功能坏）。
-  useEffect(() => {
-    if (!accountId && accounts.data?.accounts?.length) {
-      setAccountId(accounts.data.accounts[0].accountId);
-    }
-  }, [accounts.data, accountId]);
+  const effectiveAccountId = accountId === ALL_ACCOUNTS ? undefined : accountId;
+  const allAccountsView = effectiveAccountId === undefined;
+  const namer = makeAccountNamer(accounts.data?.accounts ?? []);
 
   const offset = (page - 1) * PAGE_SIZE;
-  const list = useCuratedContents(accountId, { contentType, admitReason, limit: PAGE_SIZE, offset });
-  const facets = useCuratedFacets(accountId);
+  const list = useCuratedContents(effectiveAccountId, { contentType, admitReason, limit: PAGE_SIZE, offset });
+  const facets = useCuratedFacets(effectiveAccountId);
 
   // 切账号 / 筛选时回到第一页。
   const resetTo = (fn: () => void) => {
@@ -71,7 +72,9 @@ export function CuratedContentPage() {
   };
 
   const del = useMutation({
-    mutationFn: (id: number) => apiDelete<{ deleted: number }>(`/api/curated/contents/${id}?accountId=${encodeURIComponent(accountId!)}`),
+    // 删除按行账号路由（全账号视图下每行账号不同），account_id 进 query 防越权。
+    mutationFn: (row: PanelCuratedContent) =>
+      apiDelete<{ deleted: number }>(`/api/curated/contents/${row.id}?accountId=${encodeURIComponent(row.accountId)}`),
     // honest：删 1 才「已删除」；删 0 如实告知已不存在，绝不笼统报成功。
     onSuccess: (res) => {
       if (res.deleted === 1) message.success('已删除（仅清当前快照）');
@@ -82,7 +85,7 @@ export function CuratedContentPage() {
   });
 
   const clearEmpty = useMutation({
-    mutationFn: () => apiPost<{ deleted: number }>(`/api/curated/contents/clear-empty`, { accountId }),
+    mutationFn: () => apiPost<{ deleted: number }>(`/api/curated/contents/clear-empty`, { accountId: effectiveAccountId }),
     onSuccess: (res) => {
       message.success(`已清理 ${res.deleted} 条空正文壳行`);
       invalidateCurated();
@@ -90,10 +93,13 @@ export function CuratedContentPage() {
     onError: () => message.error('清理失败'),
   });
 
-  const accountOptions = (accounts.data?.accounts ?? []).map((a) => ({
-    label: accountDisplayName(a.nickname, a.label, a.accountId),
-    value: a.accountId,
-  }));
+  const accountOptions = [
+    { label: '全部账号', value: ALL_ACCOUNTS },
+    ...(accounts.data?.accounts ?? []).map((a) => ({
+      label: accountDisplayName(a.nickname, a.label, a.accountId),
+      value: a.accountId,
+    })),
+  ];
 
   const reasonOptions = useMemo(() => {
     const opts = (facets.data?.admitReasons ?? []).map((r) => ({
@@ -111,6 +117,14 @@ export function CuratedContentPage() {
         .reduce((sum, r) => sum + r.count, 0),
     [facets.data],
   );
+
+  // 全账号视图下前置「账号」列，标明每行精选归属（单账号视图不显示）。
+  const accountColumn: ColumnsType<PanelCuratedContent>[number] = {
+    title: '账号',
+    dataIndex: 'accountId',
+    width: 130,
+    render: (id: string) => <span>{namer(id)}</span>,
+  };
 
   const columns: ColumnsType<PanelCuratedContent> = [
     {
@@ -164,7 +178,7 @@ export function CuratedContentPage() {
             description="仅清当前快照：之后再浏览到且仍达标会重新纳入，历史点赞/收藏标记不恢复；删后不再进入下次发帖创作素材。"
             okText="删除"
             okButtonProps={{ danger: true }}
-            onConfirm={() => del.mutate(row.id)}
+            onConfirm={() => del.mutate(row)}
           >
             <Button size="small" type="link" danger loading={del.isPending}>
               删除
@@ -222,7 +236,7 @@ export function CuratedContentPage() {
             size="small"
             bordered
             rowKey="id"
-            columns={columns}
+            columns={allAccountsView ? [accountColumn, ...columns] : columns}
             dataSource={list.data.items}
             loading={list.isLoading}
             pagination={{
@@ -237,12 +251,12 @@ export function CuratedContentPage() {
         ) : (
           <Empty
             description={
-              !accountId
-                ? '请选择账号'
-                : list.isLoading
-                  ? '加载中…'
-                  : list.isError
-                    ? '服务不可用'
+              list.isLoading
+                ? '加载中…'
+                : list.isError
+                  ? '服务不可用'
+                  : allAccountsView
+                    ? '暂无精选内容'
                     : '该账号暂无精选内容'
             }
           />
@@ -257,14 +271,16 @@ export function CuratedContentPage() {
             okText="清理"
             okButtonProps={{ danger: true }}
             onConfirm={() => clearEmpty.mutate()}
-            disabled={!accountId}
+            disabled={allAccountsView}
           >
-            <Button size="small" danger loading={clearEmpty.isPending} disabled={!accountId}>
+            <Button size="small" danger loading={clearEmpty.isPending} disabled={allAccountsView}>
               清空正文壳行（约 {emptyShellEstimate} 条）
             </Button>
           </Popconfirm>
           <Typography.Text type="secondary">
-            壳行＝机器人收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。
+            {allAccountsView
+              ? '清理按单账号执行，请先在上方切到具体账号再清理。'
+              : '壳行＝机器人收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。'}
           </Typography.Text>
         </Space>
       </Card>

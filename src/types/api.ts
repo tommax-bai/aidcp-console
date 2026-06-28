@@ -429,6 +429,8 @@ export interface LlmUsagePayload {
  * 时间戳为 epoch ms。手工镜像 cloud NotificationContact，两处须同步防漂移。
  */
 export interface PanelNotificationContact {
+  /** 该联系人归属账号（全账号视图下区分同一人在不同账号下的两行 + 路由人工字段写入）。手工镜像 cloud。 */
+  accountId: string;
   senderKey: string;
   nickname: string | null;
   userId: string | null;

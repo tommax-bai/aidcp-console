@@ -175,23 +175,25 @@ export function useLlmUsage(params: LlmUsageParams) {
 }
 
 /**
- * 通知联系人名册（change notification-contact-registry）：按账号取联系人列表。
- * 强制按账号（accountId 必填）—— 不提供全账号合并视图（PII 隔离）；accountId 为空时不查。
+ * 通知联系人名册（change notification-contact-registry）：取联系人列表。
+ * accountId 给定＝按账号；undefined＝全账号合并视图（每行带 accountId）。
+ * 显式传 limit（默认取后端上限 1000）：全账号视图把上限从「每账号」抬到「合计」，避免默认 200 静默截断；
+ * 页面据返回条数 == limit 判断是否触顶并诚实提示。
  */
-export function useNotificationContacts(accountId: string | undefined) {
+export function useNotificationContacts(accountId: string | undefined, limit = 1000) {
+  const qs = new URLSearchParams();
+  if (accountId) qs.set('accountId', accountId);
+  qs.set('limit', String(limit));
   return useQuery({
-    queryKey: ['notification-contacts', accountId],
-    enabled: !!accountId,
+    queryKey: ['notification-contacts', accountId ?? 'all', limit],
     queryFn: () =>
-      apiGet<{ contacts: PanelNotificationContact[] }>(
-        `/api/notification/contacts?accountId=${encodeURIComponent(accountId!)}`,
-      ),
+      apiGet<{ contacts: PanelNotificationContact[] }>(`/api/notification/contacts?${qs.toString()}`),
   });
 }
 
 /**
- * 精选内容池（change curated-content-admin-page）：按账号隔离的分页只读。
- * 强制按账号（accountId 必填，为空不查）—— 不提供全账号合并视图（PII 隔离）。
+ * 精选内容池（change curated-content-admin-page）：分页只读。
+ * accountId 给定＝按账号；undefined＝全账号合并视图（每行带 accountId，服务端分页+一致 total）。
  */
 export interface CuratedFilters {
   contentType?: 'note' | 'comment';
@@ -211,22 +213,21 @@ export function useCuratedContents(accountId: string | undefined, filters: Curat
     queryKey: [
       'curated',
       'contents',
-      accountId,
+      accountId ?? 'all',
       filters.contentType ?? '',
       filters.admitReason ?? '',
       filters.limit ?? 50,
       filters.offset ?? 0,
     ],
-    enabled: !!accountId,
     queryFn: () => apiGet<CuratedContentList>(`/api/curated/contents?${qs.toString()}`),
   });
 }
 
-/** 精选筛选面：驱动纳入原因下拉 + 清理前影响预览（按账号，accountId 必填）。 */
+/** 精选筛选面：驱动纳入原因下拉 + 清理前影响预览（accountId 给定＝按账号；undefined＝全账号合并统计）。 */
 export function useCuratedFacets(accountId: string | undefined) {
   return useQuery({
-    queryKey: ['curated', 'facets', accountId],
-    enabled: !!accountId,
-    queryFn: () => apiGet<CuratedFacets>(`/api/curated/facets?accountId=${encodeURIComponent(accountId!)}`),
+    queryKey: ['curated', 'facets', accountId ?? 'all'],
+    queryFn: () =>
+      apiGet<CuratedFacets>(`/api/curated/facets${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`),
   });
 }
