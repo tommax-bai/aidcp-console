@@ -13,6 +13,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import { HeartOutlined, StarOutlined, MessageOutlined } from '@ant-design/icons';
@@ -46,6 +47,30 @@ function Stat({ icon, value, label }: { icon: ReactNode; value: number | null; l
 
 function timeText(ms: number | null): string {
   return ms == null ? '—' : new Date(ms).toLocaleString();
+}
+
+/**
+ * 「纳入原因」机器码 → 中文友好文案（云端 evaluateAdmission / markBotAction / archiveComment 产出的码）。
+ * 未知码原样兜底（诚实：不假装认识陌生码）；含 content_missing 标注「未抓到正文」（壳行）。
+ */
+function admitReasonLabel(raw: string | null): string {
+  if (raw == null || raw === '') return '—';
+  const missing = raw.includes('content_missing');
+  if (raw.startsWith('confirmed_like')) {
+    const suffix = raw.slice('confirmed_like'.length).replace(/^:/, '').trim();
+    return suffix ? `AI 点赞评论（${suffix}）` : 'AI 点赞评论';
+  }
+  if (raw.startsWith('bot_collect')) {
+    return missing ? 'AI 已收藏（未抓到正文）' : 'AI 已收藏';
+  }
+  switch (raw) {
+    case 'collect_floor':
+      return '高收藏';
+    case 'collect_ratio':
+      return '高收藏比率';
+    default:
+      return raw;
+  }
 }
 
 /**
@@ -117,7 +142,8 @@ export function CuratedContentPage() {
 
   const reasonOptions = useMemo(() => {
     const opts = (facets.data?.admitReasons ?? []).map((r) => ({
-      label: `${r.admitReason ?? '（无原因）'}（${r.count}）`,
+      // 标签中文化、原始码保留为 value（API 按原始码精确过滤，不能改 value）。
+      label: `${admitReasonLabel(r.admitReason)}（${r.count}）`,
       value: r.admitReason ?? '',
     }));
     return [{ label: '全部原因', value: '' }, ...opts];
@@ -169,7 +195,14 @@ export function CuratedContentPage() {
         </Space>
       ),
     },
-    { title: '纳入原因', dataIndex: 'admitReason', width: 160, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    {
+      title: '纳入原因',
+      dataIndex: 'admitReason',
+      width: 160,
+      // 中文文案，悬浮显示原始机器码（便于排查）。
+      render: (v: string | null) =>
+        v ? <Tooltip title={v}>{admitReasonLabel(v)}</Tooltip> : <Typography.Text type="secondary">—</Typography.Text>,
+    },
     { title: '更新时刻', dataIndex: 'updatedAt', width: 170, render: (v: number) => timeText(v) },
     {
       title: '操作',
@@ -356,7 +389,9 @@ export function CuratedContentPage() {
                 {viewing.botLiked ? <Tag color="magenta">已点赞</Tag> : null}
                 {!viewing.botCollected && !viewing.botLiked ? '无' : null}
               </Typography.Text>
-              <Typography.Text type="secondary">纳入原因：{viewing.admitReason ?? '—'}</Typography.Text>
+              <Typography.Text type="secondary">
+                纳入原因：{admitReasonLabel(viewing.admitReason)}
+              </Typography.Text>
               <Typography.Text type="secondary">采集时刻：{timeText(viewing.countsCapturedAt)}</Typography.Text>
               <Typography.Text type="secondary">更新时刻：{timeText(viewing.updatedAt)}</Typography.Text>
             </Space>
