@@ -88,26 +88,29 @@ function WeekActiveGrid({
   onToggleCol?: (hour: number) => void;
 }) {
   const { token } = theme.useToken();
-  const cell = readOnly ? 13 : 20; // px
-  const labelW = readOnly ? 36 : 44;
+  // 格子横向**铺满卡片宽度**（flex 等分），不再用固定小尺寸挤在左侧；窄屏低于最小宽度时容器横向滚动。
+  const cellH = readOnly ? 18 : 26; // px：高度固定
+  const cellMinW = readOnly ? 14 : 18; // px：单格最小宽（决定何时出现横向滚动）
+  const labelW = 52; // px：星期标签列固定宽
+  const minWidth = labelW + 24 * cellMinW + 8;
   const hours = Array.from({ length: 24 }, (_, h) => h);
+  const cellFlex = { flex: '1 1 0', minWidth: cellMinW } as const;
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <div style={{ display: 'inline-block', userSelect: 'none' }}>
-        {/* 小时表头（偶数小时标号；可编辑时点号切整列） */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 2 }}>
-          <div style={{ width: labelW, flex: 'none' }} />
+    <div style={{ width: '100%', overflowX: 'auto' }}>
+      <div style={{ width: '100%', minWidth, userSelect: 'none' }}>
+        {/* 小时表头（偶数小时标号；可编辑时点号切整列）。gap 与下方天行一致，保证小时号与格子列对齐。 */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, marginBottom: 3 }}>
+          <div style={{ flex: `0 0 ${labelW}px` }} />
           {hours.map((h) => (
             <div
               key={h}
               onClick={readOnly ? undefined : () => onToggleCol?.(h)}
               title={readOnly ? undefined : `切换所有天的 ${String(h).padStart(2, '0')}:00`}
               style={{
-                width: cell,
-                flex: 'none',
+                ...cellFlex,
                 textAlign: 'center',
-                fontSize: 10,
-                lineHeight: '12px',
+                fontSize: 11,
+                lineHeight: '14px',
                 color: token.colorTextSecondary,
                 cursor: readOnly ? 'default' : 'pointer',
               }}
@@ -118,15 +121,14 @@ function WeekActiveGrid({
         </div>
         {/* 7 天 × 24 小时格 */}
         {WEEK_DAYS.map((label, day) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', marginBottom: 1 }}>
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
             <div
               onClick={readOnly ? undefined : () => onToggleRow?.(day)}
               title={readOnly ? undefined : `切换整天：${label}`}
               style={{
-                width: labelW,
-                flex: 'none',
+                flex: `0 0 ${labelW}px`,
                 fontSize: 12,
-                paddingRight: 4,
+                paddingRight: 6,
                 textAlign: 'right',
                 color: token.colorText,
                 cursor: readOnly ? 'default' : 'pointer',
@@ -142,13 +144,14 @@ function WeekActiveGrid({
                   onClick={readOnly ? undefined : () => onToggleCell?.(day, h)}
                   title={`${label} ${String(h).padStart(2, '0')}:00 — ${on ? '活跃' : '休眠'}`}
                   style={{
-                    width: cell,
-                    height: cell,
-                    flex: 'none',
+                    ...cellFlex,
+                    height: cellH,
                     boxSizing: 'border-box',
-                    border: `1px solid ${token.colorBorderSecondary}`,
+                    borderRadius: 2,
+                    border: `1px solid ${on ? token.colorSuccess : token.colorBorderSecondary}`,
                     background: on ? token.colorSuccess : token.colorFillSecondary,
                     cursor: readOnly ? 'default' : 'pointer',
+                    transition: 'background 0.12s',
                   }}
                 />
               );
