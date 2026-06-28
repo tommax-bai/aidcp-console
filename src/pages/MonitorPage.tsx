@@ -3,7 +3,7 @@ import { Badge, Button, Card, Empty, Input, List, Space, Table, Tag, Tooltip, Ty
 import type { ColumnsType } from 'antd/es/table';
 import { usePanelWs, type WsStatus } from '../ws/panelWs';
 import { useAlerts, useInteractions, useDashboardSummary } from '../api/queries';
-import { AccountTotalsTable, AlertSeverityBadge } from '../components';
+import { AccountTotalsTable, AlertSeverityBadge, ProfileLink } from '../components';
 import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, type RiskAction } from '../types/aidcp-enums';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { PanelInteraction } from '../types/api';
@@ -31,7 +31,13 @@ function makeInteractionColumns(nameOf: (id: string) => string): ColumnsType<Pan
     key: 'when',
     render: (v: number) => new Date(v).toLocaleString(),
   },
-  { title: '账号', dataIndex: 'accountId', key: 'accountId', render: (v: string) => nameOf(v) },
+  {
+    title: '账号',
+    dataIndex: 'accountId',
+    key: 'accountId',
+    // 账号名可点：跳转其小红书主页（v = accountId = xhs userid）。非真实 id 回落纯文本。
+    render: (v: string) => <ProfileLink userId={v}>{nameOf(v)}</ProfileLink>,
+  },
   {
     title: '动作',
     dataIndex: 'action',
@@ -151,7 +157,7 @@ export function MonitorPage() {
                 <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
                 {a.accountId && (
                   <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                    {nameOf(a.accountId)}
+                    <ProfileLink userId={a.accountId}>{nameOf(a.accountId)}</ProfileLink>
                   </Typography.Text>
                 )}
                 <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>

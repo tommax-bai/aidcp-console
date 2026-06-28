@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
 import { usePersonaConfig, useAccounts } from '../api/queries';
+import { ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { PersonaConfigRow, PersonaConfigCatalog, PersonaDetailView, PersonaSource } from '../types/api';
 
@@ -88,7 +89,10 @@ export function PersonaPage() {
         const name = nameOf(id);
         return (
           <span>
-            <strong>{name}</strong>
+            {/* 账号名可点：跳转其小红书主页（id = xhs userid）。非真实 id 回落纯文本。 */}
+            <ProfileLink userId={id}>
+              <strong>{name}</strong>
+            </ProfileLink>
             {name !== id ? <Typography.Text type="secondary"> （{id}）</Typography.Text> : null}
           </span>
         );

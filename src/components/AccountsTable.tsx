@@ -4,6 +4,7 @@ import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
+import { ProfileLink } from './ProfileLink';
 import type { PanelAccount } from '../types/api';
 import { OPERATOR_STATUS_LABEL, type RiskStatus } from '../types/aidcp-enums';
 import { accountDisplayName } from '../types/accountDisplay';
@@ -17,7 +18,14 @@ function severityRank(a: PanelAccount): number {
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
 const columns: ColumnsType<PanelAccount> = [
-  { title: '账号', key: 'account', render: (_, r) => accountDisplayName(r.nickname, r.label, r.accountId) },
+  {
+    title: '账号',
+    key: 'account',
+    // 账号名可点：跳转其小红书主页（accountId = 登录派生的 xhs userid）。非真实 id 回落纯文本。
+    render: (_, r) => (
+      <ProfileLink userId={r.accountId}>{accountDisplayName(r.nickname, r.label, r.accountId)}</ProfileLink>
+    ),
+  },
   {
     title: '人设',
     key: 'persona',

@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Col, Empty, List, Row, Statistic, Tag, Typography } from 'antd';
 import { useDashboardSummary } from '../api/queries';
-import { AccountsTable, AccountTotalsTable, AlertSeverityBadge, DispatchControl } from '../components';
+import { AccountsTable, AccountTotalsTable, AlertSeverityBadge, DispatchControl, ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { DashboardSummary } from '../types/api';
 
@@ -107,7 +107,7 @@ export function DashboardPage() {
                 <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
                 {a.accountId && (
                   <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                    {nameOf(a.accountId)}
+                    <ProfileLink userId={a.accountId}>{nameOf(a.accountId)}</ProfileLink>
                   </Typography.Text>
                 )}
                 <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>

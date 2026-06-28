@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
 import { useRoleConfig, useCategoryConfig, useModelConfig, useAccounts } from '../api/queries';
+import { ProfileLink } from '../components';
 import { makeAccountNamer, accountName } from '../types/accountDisplay';
 import type {
   RoleConfigRow,
@@ -432,7 +433,11 @@ export function RolesPage() {
           <div>
             {promptView.accountId && (
               <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--aidcp-text-secondary, #888)' }}>
-                预览人设来自账号：<strong>{accountLabel(promptView.accountId)}</strong>
+                {/* 账号名可点：跳转其小红书主页（accountId = xhs userid）。非真实 id 回落纯文本。 */}
+                预览人设来自账号：
+                <strong>
+                  <ProfileLink userId={promptView.accountId}>{accountLabel(promptView.accountId)}</ProfileLink>
+                </strong>
               </div>
             )}
             {promptView.personaFallback && (

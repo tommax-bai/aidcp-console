@@ -3,6 +3,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { RISK_ACTIONS, RISK_ACTION_LABEL } from '../types/aidcp-enums';
 import type { AccountTotals, PanelAccount } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
+import { ProfileLink } from './ProfileLink';
 
 /**
  * 真按账号今日计数切片（V1 task 9.6 / 10.3）。
@@ -25,7 +26,13 @@ export function AccountTotalsTable({
     return a ? accountDisplayName(a.nickname, a.label, a.accountId) : accountId;
   };
   const columns: ColumnsType<AccountTotals> = [
-    { title: '账号', key: 'accountId', fixed: 'left', render: (_, r) => nameOf(r.accountId) },
+    {
+      title: '账号',
+      key: 'accountId',
+      fixed: 'left',
+      // 账号名可点：跳转其小红书主页（accountId = xhs userid）。非真实 id 回落纯文本。
+      render: (_, r) => <ProfileLink userId={r.accountId}>{nameOf(r.accountId)}</ProfileLink>,
+    },
     ...RISK_ACTIONS.map((a) => ({
       title: RISK_ACTION_LABEL[a],
       key: a,

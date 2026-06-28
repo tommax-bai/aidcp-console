@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useAccounts, useNotificationContacts } from '../api/queries';
+import { ProfileLink } from '../components';
 import type { PanelNotificationContact } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
@@ -84,11 +85,12 @@ export function NotificationContactsPage() {
     {
       title: '昵称',
       dataIndex: 'nickname',
+      // 联系人昵称可点：跳转其小红书主页（userId = 通知行解析出的主页 id）。无 userId 时回落纯文本，绝不渲染死链。
       render: (n: string | null, row) => (
-        <span>
+        <ProfileLink userId={row.userId}>
           {n ? <strong>{n}</strong> : <Tag>昵称缺失</Tag>}
           {row.userId ? <Typography.Text type="secondary"> · {row.userId}</Typography.Text> : null}
-        </span>
+        </ProfileLink>
       ),
     },
     {

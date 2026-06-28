@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
+import { ProfileLink } from '../components';
 import type { PanelPublish } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
@@ -16,7 +17,12 @@ function buildColumns(onView: (row: PanelPublish) => void): ColumnsType<PanelPub
       title: '账号',
       dataIndex: 'accountLabel',
       width: 140,
-      render: (v: string, row) => <Tag>{v || row.accountId}</Tag>,
+      // 账号名可点：跳转其小红书主页（row.accountId = xhs userid）。非真实 id 回落纯文本。
+      render: (v: string, row) => (
+        <Tag>
+          <ProfileLink userId={row.accountId}>{v || row.accountId}</ProfileLink>
+        </Tag>
+      ),
     },
     { title: '标题', dataIndex: 'title', render: (v: string | null) => v ?? '—' },
     {
@@ -177,7 +183,10 @@ export function ContentPage() {
       >
         {viewing && (
           <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="账号">{viewing.accountLabel || viewing.accountId}</Descriptions.Item>
+            <Descriptions.Item label="账号">
+              {/* 账号名可点：跳转其小红书主页（viewing.accountId = xhs userid）。非真实 id 回落纯文本。 */}
+              <ProfileLink userId={viewing.accountId}>{viewing.accountLabel || viewing.accountId}</ProfileLink>
+            </Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color={viewing.status === 'published' ? 'green' : viewing.status === 'failed' ? 'red' : 'default'}>
                 {PUBLISH_STATUS_LABEL[viewing.status] ?? viewing.status}

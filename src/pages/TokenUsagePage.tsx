@@ -5,6 +5,7 @@ import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useLlmUsage, useAccounts } from '../api/queries';
+import { ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { LlmUsageRow } from '../types/api';
 import { roleLabel } from '../types/usageLabels';
@@ -96,7 +97,8 @@ export function TokenUsagePage() {
       title: '账号',
       dataIndex: 'accountId',
       width: 150,
-      render: (v: string) => nameOf(v),
+      // 账号名可点：跳转其小红书主页（v = accountId = xhs userid）。非真实 id 回落纯文本。
+      render: (v: string) => <ProfileLink userId={v}>{nameOf(v)}</ProfileLink>,
     },
     {
       title: '角色',
