@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { ContentPage } from './pages/ContentPage';
+import { CuratedContentPage } from './pages/CuratedContentPage';
 import { MonitorPage } from './pages/MonitorPage';
 import { RolesPage } from './pages/RolesPage';
 import { QuotasPage } from './pages/QuotasPage';
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
           { path: '/', element: <DashboardPage /> },
           { path: '/accounts', element: <AccountsPage /> },
           { path: '/content', element: <ContentPage /> },
+          { path: '/curated', element: <CuratedContentPage /> },
           { path: '/monitor', element: <MonitorPage /> },
           { path: '/roles', element: <RolesPage /> },
           { path: '/quotas', element: <QuotasPage /> },

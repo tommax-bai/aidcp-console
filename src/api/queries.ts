@@ -20,6 +20,8 @@ import type {
   ResumeConfigView,
   LlmUsagePayload,
   PanelNotificationContact,
+  CuratedContentList,
+  CuratedFacets,
 } from '../types/api';
 
 export function useVersion() {
@@ -184,5 +186,47 @@ export function useNotificationContacts(accountId: string | undefined) {
       apiGet<{ contacts: PanelNotificationContact[] }>(
         `/api/notification/contacts?accountId=${encodeURIComponent(accountId!)}`,
       ),
+  });
+}
+
+/**
+ * 精选内容池（change curated-content-admin-page）：按账号隔离的分页只读。
+ * 强制按账号（accountId 必填，为空不查）—— 不提供全账号合并视图（PII 隔离）。
+ */
+export interface CuratedFilters {
+  contentType?: 'note' | 'comment';
+  admitReason?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function useCuratedContents(accountId: string | undefined, filters: CuratedFilters) {
+  const qs = new URLSearchParams();
+  if (accountId) qs.set('accountId', accountId);
+  if (filters.contentType) qs.set('contentType', filters.contentType);
+  if (filters.admitReason) qs.set('admitReason', filters.admitReason);
+  if (filters.limit !== undefined) qs.set('limit', String(filters.limit));
+  if (filters.offset !== undefined) qs.set('offset', String(filters.offset));
+  return useQuery({
+    queryKey: [
+      'curated',
+      'contents',
+      accountId,
+      filters.contentType ?? '',
+      filters.admitReason ?? '',
+      filters.limit ?? 50,
+      filters.offset ?? 0,
+    ],
+    enabled: !!accountId,
+    queryFn: () => apiGet<CuratedContentList>(`/api/curated/contents?${qs.toString()}`),
+  });
+}
+
+/** 精选筛选面：驱动纳入原因下拉 + 清理前影响预览（按账号，accountId 必填）。 */
+export function useCuratedFacets(accountId: string | undefined) {
+  return useQuery({
+    queryKey: ['curated', 'facets', accountId],
+    enabled: !!accountId,
+    queryFn: () => apiGet<CuratedFacets>(`/api/curated/facets?accountId=${encodeURIComponent(accountId!)}`),
   });
 }

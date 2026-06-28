@@ -135,6 +135,43 @@ export interface ContentQueue {
   snapshot: unknown | null;
 }
 
+// ── 精选内容后台管理（change curated-content-admin-page）────────────────────────
+// ⚠ 与 cloud `src/cache/curated-content-store.ts` 的 CuratedPanelRow/CuratedPanelListResult/CuratedFacets
+//   手工镜像，两处须同步防漂移。诚实置空：计数 null=未抓到（区别真实 0）；时间戳为 epoch ms（number）。
+export type CuratedContentType = 'note' | 'comment';
+
+export interface PanelCuratedContent {
+  id: number;
+  accountId: string;
+  contentType: CuratedContentType;
+  sourceId: string;
+  title: string | null;
+  body: string | null;
+  author: string | null;
+  sourceUrl: string | null;
+  topics: string[];
+  likeCount: number | null;
+  collectCount: number | null;
+  commentCount: number | null;
+  countsCapturedAt: number | null;
+  botLiked: boolean;
+  botCollected: boolean;
+  admitReason: string | null;
+  firstSeenAt: number;
+  updatedAt: number;
+}
+
+export interface CuratedContentList {
+  items: PanelCuratedContent[];
+  total: number;
+}
+
+export interface CuratedFacets {
+  admitReasons: { admitReason: string | null; count: number; botActionCount: number }[];
+  noteCount: number;
+  commentCount: number;
+}
+
 /** 单厂商凭据视图（change console-model-provider-config + model-config-volcengine-provider）。永不含明文密钥。 */
 export interface ModelConfigCredential {
   provider: string;
