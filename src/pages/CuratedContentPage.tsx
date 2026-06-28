@@ -16,7 +16,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { HeartOutlined, StarOutlined, MessageOutlined } from '@ant-design/icons';
+import { HeartOutlined, StarOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
@@ -182,7 +182,6 @@ export function CuratedContentPage() {
     { title: '作者', dataIndex: 'author', width: 120, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     { title: '赞', dataIndex: 'likeCount', width: 80, render: countCell },
     { title: '藏', dataIndex: 'collectCount', width: 80, render: countCell },
-    { title: '评', dataIndex: 'commentCount', width: 80, render: countCell },
     {
       title: 'AI 动作',
       key: 'marks',
@@ -372,11 +371,10 @@ export function CuratedContentPage() {
               </div>
             ) : null}
 
-            {/* 互动数据条：赞 / 藏 / 评 */}
+            {/* 互动数据条：赞 / 藏（评论数全链路未采集，刻意不展示） */}
             <Space size="large">
               <Stat icon={<HeartOutlined style={{ color: '#ff2442' }} />} value={viewing.likeCount} label="赞" />
               <Stat icon={<StarOutlined style={{ color: '#ffb800' }} />} value={viewing.collectCount} label="藏" />
-              <Stat icon={<MessageOutlined style={{ color: '#999' }} />} value={viewing.commentCount} label="评" />
             </Space>
 
             <Divider style={{ margin: '12px 0' }} />
