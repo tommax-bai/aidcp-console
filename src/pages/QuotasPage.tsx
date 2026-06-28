@@ -482,6 +482,31 @@ export function QuotasPage() {
 
   return (
     <div className="page-stack">
+      <Card size="small" title="可活跃时间（全局）">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="按周 × 天 × 小时配置「允许活跃」的时段，对所有账号生效（按服务器本地时间）。绿=活跃（允许开 / 续浏览会话）、灰=休眠（不开；会话运行中跨入休眠时段则结束当前会话）。改完下场会话即生效（热加载、无需重启）。未配置 = 全周全天活跃（不限）。窗口重开时自动续上（无需等边端重连）。"
+        />
+        {sl.isLoading || !sl.data ? (
+          <Skeleton active />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {sl.data.activeWeekMask ? <Tag color="green">已配置</Tag> : <Tag>全天活跃（未配置）</Tag>}
+              <Typography.Text type="secondary">
+                活跃 {countActive(maskForEdit(sl.data.activeWeekMask))} / 168 小时
+              </Typography.Text>
+              <Button size="small" onClick={() => openEditWin(sl.data!)}>
+                编辑
+              </Button>
+            </div>
+            <WeekActiveGrid mask={maskForEdit(sl.data.activeWeekMask)} readOnly />
+          </div>
+        )}
+      </Card>
+
       <Card size="small" title="单场会话上限（全局）">
         <Alert
           type="info"
@@ -539,31 +564,6 @@ export function QuotasPage() {
             dataSource={rcRows}
             pagination={false}
           />
-        )}
-      </Card>
-
-      <Card size="small" title="可活跃时间（全局）">
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="按周 × 天 × 小时配置「允许活跃」的时段，对所有账号生效（按服务器本地时间）。绿=活跃（允许开 / 续浏览会话）、灰=休眠（不开；会话运行中跨入休眠时段则结束当前会话）。改完下场会话即生效（热加载、无需重启）。未配置 = 全周全天活跃（不限）。窗口重开后由边端重连驱动续上。"
-        />
-        {sl.isLoading || !sl.data ? (
-          <Skeleton active />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {sl.data.activeWeekMask ? <Tag color="green">已配置</Tag> : <Tag>全天活跃（未配置）</Tag>}
-              <Typography.Text type="secondary">
-                活跃 {countActive(maskForEdit(sl.data.activeWeekMask))} / 168 小时
-              </Typography.Text>
-              <Button size="small" onClick={() => openEditWin(sl.data!)}>
-                编辑
-              </Button>
-            </div>
-            <WeekActiveGrid mask={maskForEdit(sl.data.activeWeekMask)} readOnly />
-          </div>
         )}
       </Card>
 
