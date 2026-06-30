@@ -13,18 +13,18 @@
  */
 
 export const EDGE_DOWNLOAD = {
-  /** 当前发布版本（显示用；改包时一并改）。Windows 走 0.2.0；mac 暂滞留 0.1.0（见下）。 */
+  /** 当前发布版本（显示用；改包时一并改）。 */
   version: '0.2.0',
   /** 同机 Nginx 静态目录前缀（相对路径=同源，无需写域名/端口）。 */
   base: '/downloads',
   /**
    * 各平台安装包（文件名须与 `/opt/aidcp/downloads/` 下实际文件一致）。
-   * 注：2026-06-30 只在 Windows 机上重打了 0.2.0；mac 的 dmg 需在 macOS 上构建，
-   * 故 mac 两项仍指向 0.1.0，并在 label 上显式标注版本，避免与头部 v0.2.0 混淆。
+   * 三平台均 0.2.0（2026-06-30：Windows 本地重打；mac dmg 经 GitHub Actions
+   * 的 macOS runner 构建，见 aidcp-edge/.github/workflows/build-desktop.yml）。
    */
   items: [
-    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）· v0.1.0', file: 'AIDCP-0.1.0-arm64.dmg' },
-    { key: 'mac-x64', label: 'macOS · Intel · v0.1.0', file: 'AIDCP-0.1.0.dmg' },
+    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.2.0-arm64.dmg' },
+    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.2.0.dmg' },
     { key: 'win-x64', label: 'Windows · x64', file: 'AIDCP Setup 0.2.0.exe' },
   ],
 } as const;
