@@ -37,7 +37,20 @@ export function AccountTotalsTable({
       title: RISK_ACTION_LABEL[a],
       key: a,
       align: 'right' as const,
-      render: (_: unknown, r: AccountTotals) => r.totals[a] ?? 0,
+      // 用量可见（change decouple-quota-hit-from-risk）：显示「用了 / 上限」，撞当日上限标红。
+      // 上限缺省（后端拿不到 controller）时回落只显用量数字。节奏用量 ≠ 平台风控，配色与风控徽标区分。
+      render: (_: unknown, r: AccountTotals) => {
+        const used = r.totals[a] ?? 0;
+        const cap = r.quotas?.[a];
+        if (cap === undefined) return used;
+        const hit = r.saturated?.includes(a) ?? used >= cap;
+        return (
+          <span style={{ color: hit ? '#cf1322' : undefined, fontWeight: hit ? 600 : undefined }}>
+            {used}
+            <span style={{ color: '#bfbfbf' }}> / {cap}</span>
+          </span>
+        );
+      },
     })),
   ];
   return (
