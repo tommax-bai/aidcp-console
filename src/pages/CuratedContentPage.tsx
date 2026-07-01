@@ -64,6 +64,8 @@ function admitReasonLabel(raw: string | null): string {
     return missing ? 'AI 已收藏（未抓到正文）' : 'AI 已收藏';
   }
   switch (raw) {
+    case 'llm_eval':
+      return 'AI 评估选入';
     case 'collect_floor':
       return '高收藏';
     case 'collect_ratio':

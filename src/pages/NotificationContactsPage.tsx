@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { App, Alert, Button, Card, Empty, Form, Input, Modal, Select, Table, Tag, Typography } from 'antd';
+import { App, Alert, Card, Empty, Input, Select, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
@@ -27,12 +27,17 @@ function reasonTag(r: string) {
   return <Tag color={m?.color}>{m?.text ?? r}</Tag>;
 }
 
+/** 可就地编辑的人工字段。 */
+type EditField = 'wechat' | 'note' | 'tags';
+/** 行主键（与 Table rowKey 同口径）：账号 + senderKey，全账号视图下区分同一人不同账号两行。 */
+const rowKeyOf = (r: PanelNotificationContact) => `${r.accountId}::${r.senderKey}`;
+
 /**
  * 通知联系人页（change notification-contact-registry）。
  * - 按账号维度记录给该账号发过通知的人（评论/@/点赞/收藏/关注），机器字段（昵称/原因/次数/时间）只读、
- *   人工字段（微信/标签/备注）可编辑。
+ *   人工字段（微信/标签/备注）就地编辑：点击单元格即进入编辑，失焦（点到外部）即保存，无独立编辑弹窗。
  * - 默认「全部账号」合并视图（每行带账号列），可在右上切到单个账号；人工字段写入按行账号路由隔离。
- * - 写非乐观——round-trip 后 invalidate 重取真态。诚实口径见顶部 Alert。
+ * - 乐观改缓存（就地编辑立即反映）→ 失败回滚 + 报错、落定后 invalidate 重取服务端真态；仅在值确有变化时才落库。
  */
 export function NotificationContactsPage() {
   const { message } = App.useApp();
@@ -48,16 +53,18 @@ export function NotificationContactsPage() {
   // 返回条数触顶＝可能被截断（按最近时间排序，旧的会被裁掉）；诚实提示，勿把截断当完整。
   const capped = (contacts.data?.contacts?.length ?? 0) >= CONTACTS_LIMIT;
 
-  const [editing, setEditing] = useState<PanelNotificationContact | null>(null);
-  const [wechat, setWechat] = useState('');
-  const [note, setNote] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+  // 就地编辑态：当前编辑的单元格（行 + 字段）+ 该单元格的草稿值。
+  const [edit, setEdit] = useState<{ rowKey: string; field: EditField } | null>(null);
+  const [draft, setDraft] = useState(''); // 微信 / 备注 的文本草稿
+  const [draftTags, setDraftTags] = useState<string[]>([]); // 标签草稿
 
-  const openEdit = (row: PanelNotificationContact) => {
-    setEditing(row);
-    setWechat(row.wechat ?? '');
-    setNote(row.note ?? '');
-    setTags(row.tags ?? []);
+  const isEditing = (row: PanelNotificationContact, field: EditField) =>
+    edit?.rowKey === rowKeyOf(row) && edit.field === field;
+
+  const beginEdit = (row: PanelNotificationContact, field: EditField) => {
+    setEdit({ rowKey: rowKeyOf(row), field });
+    if (field === 'tags') setDraftTags(row.tags ?? []);
+    else setDraft(((field === 'wechat' ? row.wechat : row.note) ?? '').toString());
   };
 
   // 标签建议：当前列表里已用过的标签，方便复用。
@@ -74,16 +81,73 @@ export function NotificationContactsPage() {
         `/api/notification/contacts/${encodeURIComponent(v.accountId)}/${encodeURIComponent(v.senderKey)}`,
         { wechat: v.wechat || null, note: v.note || null, tags: v.tags },
       ),
+    // 乐观改本地缓存：就地编辑立即反映到表格 → 同一行其它字段的后续保存能读到最新兄弟值。
+    // 每格保存都是「整对象 PUT」，若沿用旧的非乐观（写后要等 refetch 才更新表格），连改两格时
+    // 后一次会用渲染时快照里的旧兄弟值覆盖前一次刚存的字段（静默回退）。乐观补丁关掉这个竞态。
+    // 失败照常回滚 + 报错（不静默假成功）；onSettled 无论成败都 invalidate 重取服务端真态对账。
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: ['notification-contacts'] });
+      const prev = qc.getQueriesData<{ contacts: PanelNotificationContact[] }>({
+        queryKey: ['notification-contacts'],
+      });
+      qc.setQueriesData<{ contacts: PanelNotificationContact[] }>(
+        { queryKey: ['notification-contacts'] },
+        (old) =>
+          old
+            ? {
+                ...old,
+                contacts: old.contacts.map((c) =>
+                  c.accountId === v.accountId && c.senderKey === v.senderKey
+                    ? { ...c, wechat: v.wechat || null, note: v.note || null, tags: v.tags }
+                    : c,
+                ),
+              }
+            : old,
+      );
+      return { prev };
+    },
     onSuccess: () => {
       message.success('已保存');
-      setEditing(null);
-      void qc.invalidateQueries({ queryKey: ['notification-contacts'] });
     },
-    onError: (e) => {
+    onError: (e, _v, ctx) => {
+      ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data)); // 回滚乐观补丁
       const msg = (e as Error).message;
       message.error(msg === 'invalid_value' || msg.startsWith('bad_request') ? '输入有误，未保存' : '保存失败');
     },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['notification-contacts'] });
+    },
   });
+
+  // 失焦即存：仅当值确有变化才落库；被编辑字段随同行其它人工字段一并 PUT（后端整对象写）。
+  const commit = (row: PanelNotificationContact) => {
+    if (!edit) return;
+    const field = edit.field;
+    setEdit(null);
+    if (field === 'tags') {
+      const prev = row.tags ?? [];
+      const unchanged = prev.length === draftTags.length && prev.every((t, i) => t === draftTags[i]);
+      if (unchanged) return;
+      save.mutate({
+        accountId: row.accountId,
+        senderKey: row.senderKey,
+        wechat: row.wechat ?? '',
+        note: row.note ?? '',
+        tags: draftTags,
+      });
+      return;
+    }
+    const value = draft.trim();
+    const prev = ((field === 'wechat' ? row.wechat : row.note) ?? '').trim();
+    if (value === prev) return;
+    save.mutate({
+      accountId: row.accountId,
+      senderKey: row.senderKey,
+      wechat: field === 'wechat' ? value : (row.wechat ?? ''),
+      note: field === 'note' ? value : (row.note ?? ''),
+      tags: row.tags ?? [],
+    });
+  };
 
   const accountOptions = [
     { label: '全部账号', value: ALL_ACCOUNTS },
@@ -131,24 +195,81 @@ export function NotificationContactsPage() {
       ),
     },
     {
+      // 就地编辑：点击进入 tags 选择，失焦保存。
       title: '标签',
       dataIndex: 'tags',
-      render: (ts: string[]) =>
-        ts.length ? (
-          ts.map((t) => (
-            <Tag key={t} color="processing">
-              {t}
-            </Tag>
-          ))
+      width: 240,
+      render: (ts: string[], row) =>
+        isEditing(row, 'tags') ? (
+          <Select
+            size="small"
+            mode="tags"
+            autoFocus
+            defaultOpen
+            style={{ width: '100%', minWidth: 180 }}
+            value={draftTags}
+            onChange={setDraftTags}
+            onBlur={() => commit(row)}
+            options={tagSuggestions}
+            tokenSeparators={[',', ' ']}
+            placeholder="输入后回车添加；可复用已有标签"
+          />
         ) : (
-          <Typography.Text type="secondary">—</Typography.Text>
+          <div className="editable-cell" onClick={() => beginEdit(row, 'tags')} title="点击编辑">
+            {ts.length ? (
+              ts.map((t) => (
+                <Tag key={t} color="processing">
+                  {t}
+                </Tag>
+              ))
+            ) : (
+              <Typography.Text type="secondary">—</Typography.Text>
+            )}
+          </div>
         ),
     },
     {
+      // 就地编辑：点击进入输入框，回车或失焦保存。
       title: '微信',
       dataIndex: 'wechat',
-      width: 140,
-      render: (w: string | null) => (w ? w : <Typography.Text type="secondary">—</Typography.Text>),
+      width: 160,
+      render: (w: string | null, row) =>
+        isEditing(row, 'wechat') ? (
+          <Input
+            size="small"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(row)}
+            onPressEnter={() => commit(row)}
+            placeholder="微信号，可留空"
+          />
+        ) : (
+          <div className="editable-cell" onClick={() => beginEdit(row, 'wechat')} title="点击编辑">
+            {w ? w : <Typography.Text type="secondary">—</Typography.Text>}
+          </div>
+        ),
+    },
+    {
+      // 就地编辑：点击进入多行输入，失焦保存（回车换行、不触发保存）。
+      title: '备注',
+      dataIndex: 'note',
+      render: (nt: string | null, row) =>
+        isEditing(row, 'note') ? (
+          <Input.TextArea
+            size="small"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(row)}
+            autoSize={{ minRows: 1, maxRows: 4 }}
+            placeholder="备注，可留空"
+          />
+        ) : (
+          <div className="editable-cell" onClick={() => beginEdit(row, 'note')} title="点击编辑">
+            {nt ? nt : <Typography.Text type="secondary">—</Typography.Text>}
+          </div>
+        ),
     },
     {
       title: '互动次数',
@@ -179,15 +300,6 @@ export function NotificationContactsPage() {
         </Typography.Text>
       ),
     },
-    {
-      title: '操作',
-      width: 90,
-      render: (_: unknown, row) => (
-        <Button size="small" onClick={() => openEdit(row)}>
-          编辑
-        </Button>
-      ),
-    },
   ];
 
   return (
@@ -210,7 +322,7 @@ export function NotificationContactsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="本页记录给各账号发过通知的人（评论 / @ / 点赞 / 收藏 / 关注），均取自通知页。默认全部账号，可在右上切到单个账号。"
+          message="本页记录给各账号发过通知的人（评论 / @ / 点赞 / 收藏 / 关注），均取自通知页。默认全部账号，可在右上切到单个账号。「微信 / 标签 / 备注」可直接点击单元格就地编辑，点到外部即保存。"
           description="仅记录功能上线后巡视扫到的人，不回填历史；「添加时间」为云端首次扫到的时间，上线后第一轮巡视会把存量未读集中记到上线时间附近。联系人按账号 + 主页ID（取不到则昵称）聚合。"
         />
         {capped ? (
@@ -223,7 +335,7 @@ export function NotificationContactsPage() {
         ) : null}
         <Table<PanelNotificationContact>
           size="small"
-          rowKey={(r) => `${r.accountId}::${r.senderKey}`}
+          rowKey={rowKeyOf}
           columns={allAccountsView ? [accountColumn, ...columns] : columns}
           dataSource={contacts.data?.contacts ?? []}
           loading={contacts.isLoading}
@@ -231,42 +343,6 @@ export function NotificationContactsPage() {
           locale={{ emptyText: <Empty description="暂无通知联系人" /> }}
         />
       </Card>
-
-      <Modal
-        title={editing ? `编辑联系人：${editing.nickname ?? '昵称缺失'}` : ''}
-        open={!!editing}
-        onCancel={() => setEditing(null)}
-        confirmLoading={save.isPending}
-        onOk={() => editing && save.mutate({ accountId: editing.accountId, senderKey: editing.senderKey, wechat, note, tags })}
-        okText="保存"
-        cancelText="取消"
-      >
-        {editing ? (
-          <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="微信" extra="预留字段，手动填写，可留空">
-              <Input value={wechat} onChange={(e) => setWechat(e.target.value)} placeholder="手动填写微信号，可留空" />
-            </Form.Item>
-            <Form.Item label="标签">
-              <Select
-                mode="tags"
-                value={tags}
-                onChange={setTags}
-                options={tagSuggestions}
-                placeholder="输入后回车添加；可复用已有标签"
-                tokenSeparators={[',', ' ']}
-              />
-            </Form.Item>
-            <Form.Item label="备注">
-              <Input.TextArea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                autoSize={{ minRows: 2, maxRows: 6 }}
-                placeholder="可留空"
-              />
-            </Form.Item>
-          </Form>
-        ) : null}
-      </Modal>
     </div>
   );
 }

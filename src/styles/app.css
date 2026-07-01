@@ -209,6 +209,8 @@ body {
   color: var(--aidcp-muted-foreground);
   text-decoration: none;
   line-height: 1;
+  white-space: nowrap; /* 中文标签整体不换行——杜绝被压缩时挤成竖排字 */
+  flex-shrink: 0; /* 按钮不被压缩：宽度不足由媒体查询切「仅图标」态，而非压字换行 */
   transition: background 0.15s, color 0.15s;
 }
 .pill__btn:hover {
@@ -289,12 +291,37 @@ body {
   font-size: var(--aidcp-font-size-xs); /* 12px */
 }
 
-/* 窄屏：隐藏主业务胶囊文字与品牌副标题 */
-@media (max-width: 860px) {
+/* 窄屏：主业务胶囊仅留图标。
+   10 个带中文标签的 tab 约需 ~1120px 视口才容得下；再窄先隐藏文字、只留图标，
+   而不是压缩按钮把中文标签挤成竖排字（配合上方 .pill__btn 的 nowrap / flex-shrink:0）。*/
+@media (max-width: 1160px) {
   .pill--business .pill__btn span {
     display: none;
   }
+  /* 仅图标态收紧内距、去掉图标与文字间的空隙，胶囊更紧凑 */
+  .pill--business .pill__btn {
+    gap: 0;
+    padding: 6px 10px;
+  }
+}
+/* 更窄：品牌副标题也隐藏，给顶栏腾地方 */
+@media (max-width: 860px) {
   .brand__sub {
     display: none;
   }
+}
+
+/* ======================================================================
+ * 就地编辑单元格（通知联系人：微信 / 标签 / 备注 点击即改、失焦即存）
+ * ====================================================================== */
+.editable-cell {
+  cursor: text;
+  min-height: 24px;
+  padding: 2px 6px;
+  margin: -2px -6px; /* 视觉不占位：hover 高亮外扩、但不撑大行高 */
+  border-radius: var(--aidcp-radius-sm);
+  transition: background 0.12s;
+}
+.editable-cell:hover {
+  background: var(--aidcp-muted);
 }
