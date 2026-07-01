@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { App, Button, Card, Form, Input, InputNumber, Modal, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,7 +30,6 @@ const CATEGORY_META: Record<string, { label: string; order: number }> = {
   image: { label: '图像类', order: 5 },
 };
 const categoryLabel = (key: string) => CATEGORY_META[key]?.label ?? key;
-const categoryOrder = (key: string) => CATEGORY_META[key]?.order ?? 99;
 // 生效来源标注（覆盖 / 继承分类 / 继承默认 / 图像全局）。
 const SOURCE_TAG: Record<ModelEffectiveSource, { text: string; color: string }> = {
   override: { text: '已覆盖', color: 'green' },
@@ -173,14 +172,10 @@ export function RolesPage() {
     setCatProviderInput(row.effectiveProvider || 'dashscope');
   };
 
-  // 角色按分类排序（同类相邻，达到「按分类分组查看」）。
-  const sortedRoles = useMemo(
-    () =>
-      (data?.roles ?? [])
-        .slice()
-        .sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category) || a.roleId.localeCompare(b.roleId)),
-    [data],
-  );
+  // 角色按「用户访问小红书的顺序」展示：顺序源头是云端 role-catalog 的 ROLE_CATALOG 数组
+  // （浏览闭环=访问先后、发布=管线依赖链），API 原样透出；此处直接沿用后端顺序、不再按分类/字母重排。
+  // 分类改为行内标签（上方「分类默认模型」表仍按分类）。
+  const sortedRoles = data?.roles ?? [];
 
   const catColumns: ColumnsType<CategoryConfigRow> = [
     { title: '分类', dataIndex: 'displayName', render: (n: string) => <strong>{n}</strong> },
