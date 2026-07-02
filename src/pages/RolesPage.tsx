@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { App, Button, Card, Form, Input, InputNumber, Modal, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
+import { App, Button, Card, Form, Input, InputNumber, Modal, Segmented, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
@@ -92,12 +92,16 @@ export function RolesPage() {
   );
 
   const [editing, setEditing] = useState<RoleConfigRow | null>(null);
+  // 模型来源显式二态：inherit=跟随上层默认（清除本行覆盖）；custom=为本行单独锁定模型。
+  // 取代原先「靠字符串是否变动来推断覆盖/继承」的隐式逻辑，避免误钉、并支持把继承值主动固定为覆盖。
+  const [modelMode, setModelMode] = useState<'inherit' | 'custom'>('inherit');
   const [modelInput, setModelInput] = useState('');
   const [providerInput, setProviderInput] = useState('dashscope');
   const [tempInput, setTempInput] = useState<number | null>(null);
   const [thinkingInput, setThinkingInput] = useState<ThinkingModeApi>('default');
 
   const [editingCat, setEditingCat] = useState<CategoryConfigRow | null>(null);
+  const [catModelMode, setCatModelMode] = useState<'inherit' | 'custom'>('inherit');
   const [catModelInput, setCatModelInput] = useState('');
   const [catProviderInput, setCatProviderInput] = useState('dashscope');
   const [catThinkingInput, setCatThinkingInput] = useState<ThinkingModeApi>('default');
@@ -190,21 +194,45 @@ export function RolesPage() {
 
   const openEdit = (row: RoleConfigRow) => {
     setEditing(row);
-    // 带入当前生效模型（含从分类/默认继承来的值），让操作者看到真实现值再改；
-    // 是否为按角色覆盖由 row.modelOverridden 记录，保存时据此决定「继承态不因预填而被误钉成覆盖」。
+    // 来源二态按当前是否有覆盖初始化；无论哪态都带入当前生效模型，作为切到「自定义」时的起始值
+    //（继承值也能被一键固定为覆盖）。
+    setModelMode(row.modelOverridden ? 'custom' : 'inherit');
     setModelInput(row.effectiveModel);
     setProviderInput(row.effectiveProvider || 'dashscope');
     setTempInput(row.temperatureOverride);
-    // 思考模式：有覆盖用覆盖、否则 'default'（不覆盖、继承分类/default）。
+    // 思考模式：有覆盖用覆盖、否则 'default'（不覆盖、继承分类/default）；与模型来源相互独立。
     setThinkingInput(row.thinkingModeOverride ?? 'default');
   };
   const openCatEdit = (row: CategoryConfigRow) => {
     setEditingCat(row);
-    // 同角色编辑：带入当前生效模型（继承则为全局「默认模型」），保存时按 modelOverridden 保持继承态。
+    setCatModelMode(row.modelOverridden ? 'custom' : 'inherit');
     setCatModelInput(row.effectiveModel);
     setCatProviderInput(row.effectiveProvider || 'dashscope');
     setCatThinkingInput(row.thinkingModeOverridden ? row.effectiveThinkingMode : 'default');
   };
+
+  // 思考「开启」可用性：自定义且已填模型 → 按当前「厂商+模型」的前端镜像（与云端 buildThinkingParams 同源）；
+  // 继承/未填 → 用后端对当前生效模型算好的真态。thinkingOnAvailable 独立于模型来源（后端分开存）。
+  const roleThinkingOnOk =
+    editing == null
+      ? false
+      : modelMode === 'custom' && modelInput.trim()
+        ? thinkingOnSupported(providerInput, modelInput)
+        : editing.thinkingOnAvailable;
+  const catThinkingOnOk =
+    editingCat == null
+      ? false
+      : catModelMode === 'custom' && catModelInput.trim()
+        ? thinkingOnSupported(catProviderInput, catModelInput)
+        : editingCat.thinkingOnAvailable;
+  // 一旦「开启」变不可用（切来源 / 换模型 / 换厂商后目标模型不支持非流式思考），把已选的 on 收回 default，
+  // 避免「禁用却仍选中 on」的误导状态、也防止把不支持思考的组合静默存成 on（红线：别误导、绝不静默假成功）。
+  useEffect(() => {
+    if (editing && thinkingInput === 'on' && !roleThinkingOnOk) setThinkingInput('default');
+  }, [editing, thinkingInput, roleThinkingOnOk]);
+  useEffect(() => {
+    if (editingCat && catThinkingInput === 'on' && !catThinkingOnOk) setCatThinkingInput('default');
+  }, [editingCat, catThinkingInput, catThinkingOnOk]);
 
   // 角色按「用户访问小红书的顺序」展示：顺序源头是云端 role-catalog 的 ROLE_CATALOG 数组
   // （浏览闭环=访问先后、发布=管线依赖链），API 原样透出；此处直接沿用后端顺序、不再按分类/字母重排。
@@ -389,15 +417,17 @@ export function RolesPage() {
         confirmLoading={save.isPending}
         onOk={() => {
           if (!editing) return;
+          const custom = modelMode === 'custom';
           const m = modelInput.trim();
-          // 预填的是「当前生效模型」（可能是继承值）。只有「本就是继承 且 模型和厂商都没动」时才送空维持继承，
-          // 不把继承误钉成按角色覆盖；一旦改了模型或厂商就带着现值建/改覆盖（由后端按厂商探活，无效则诚实报错、
-          // 绝不静默丢弃厂商改动）；手动清空=显式回落。
-          const providerUnchanged = providerInput === (editing.effectiveProvider || 'dashscope');
-          const model = !editing.modelOverridden && m === editing.effectiveModel && providerUnchanged ? '' : m;
+          // 自定义但没填模型名 = 无意义空覆盖 → 诚实拦下，别让它退化成静默回落。
+          if (custom && !m) {
+            message.warning('「自定义」需填写模型名，或切回「继承」');
+            return;
+          }
+          // 继承 → 送空清除本角色模型覆盖；自定义 → 送当前值建/改覆盖（后端按厂商探活）。
           save.mutate({
             roleId: editing.roleId,
-            model,
+            model: custom ? m : '',
             provider: providerInput,
             ...(editing.tunableTemperature ? { temperature: tempInput } : {}),
             thinkingMode: thinkingInput,
@@ -408,28 +438,45 @@ export function RolesPage() {
       >
         {editing && (
           <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="厂商" extra="火山方舟需先在「设置」页配置其 API 密钥；改厂商需同时填该厂商的模型名。">
-              <Select
-                value={providerInput}
-                onChange={setProviderInput}
-                options={providerOptions}
-                style={{ maxWidth: 280 }}
-              />
-            </Form.Item>
             <Form.Item
-              label="文本模型名"
-              extra={
-                editing.modelOverridden
-                  ? '已按本角色覆盖，已带出当前值。改成别的值=更新覆盖；清空=取消覆盖（回落分类默认/默认模型）。保存前服务端按所选厂商探活。'
-                  : `当前继承自${editing.effectiveSource === 'category' ? '分类默认' : '默认模型'}，已带出其值。改成别的值=建立本角色覆盖；保持不动=继续继承；清空=显式回落。保存前服务端按所选厂商探活。`
-              }
+              label="模型来源"
+              extra="继承=跟随分类默认 / 默认模型（随上层变动）；自定义=为本角色单独锁定一个模型。"
             >
-              <Input
-                value={modelInput}
-                onChange={(e) => setModelInput(e.target.value)}
-                placeholder="如 qwen-turbo / 火山 doubao-… / ep-…（留空=回落）"
+              <Segmented
+                value={modelMode}
+                onChange={(v) => setModelMode(v as 'inherit' | 'custom')}
+                options={[
+                  { label: '继承', value: 'inherit' },
+                  { label: '自定义', value: 'custom' },
+                ]}
               />
             </Form.Item>
+            {modelMode === 'inherit' ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 'var(--aidcp-space-4)' }}
+                message={`跟随${editing.effectiveSource === 'category' ? '分类默认' : '默认模型'}（随上层变动）。当前生效：${providerTag(editing.effectiveProvider).text} ${editing.effectiveModel}。保存即取消本角色的模型覆盖。`}
+              />
+            ) : (
+              <>
+                <Form.Item label="厂商" extra="火山方舟需先在「设置」页配置其 API 密钥。">
+                  <Select
+                    value={providerInput}
+                    onChange={setProviderInput}
+                    options={providerOptions}
+                    style={{ maxWidth: 280 }}
+                  />
+                </Form.Item>
+                <Form.Item label="文本模型名" extra="为本角色单独锁定模型；保存前服务端按所选厂商探活。">
+                  <Input
+                    value={modelInput}
+                    onChange={(e) => setModelInput(e.target.value)}
+                    placeholder="如 qwen-turbo / 火山 doubao-… / ep-…"
+                  />
+                </Form.Item>
+              </>
+            )}
             {editing.tunableTemperature && (
               <Form.Item label="温度" extra="0–1；留空=用代码默认。判定类角色不开放此项。">
                 <InputNumber
@@ -452,11 +499,7 @@ export function RolesPage() {
                 onChange={(v) => setThinkingInput(v)}
                 style={{ maxWidth: 320 }}
                 options={(() => {
-                  // 有模型名 → 用前端镜像按当前「厂商+模型」判定（与云端 buildThinkingParams 同源、逐字一致，
-                  // 对预填的生效值结果同于后端真态，又能随厂商/模型改动即时重算）；清空后回落后端对生效模型的真态。
-                  const onOk = modelInput.trim()
-                    ? thinkingOnSupported(providerInput, modelInput)
-                    : editing.thinkingOnAvailable;
+                  const onOk = roleThinkingOnOk;
                   return [
                     { value: 'default', label: '默认（跟模型走）' },
                     { value: 'off', label: '关闭（强制不思考）' },
@@ -480,15 +523,16 @@ export function RolesPage() {
         confirmLoading={saveCat.isPending}
         onOk={() => {
           if (!editingCat) return;
+          const custom = catModelMode === 'custom';
           const m = catModelInput.trim();
-          // 与角色编辑同理：预填当前生效模型（继承则为全局默认）；仅「本是继承 且 模型和厂商都没动」才送空维持继承
-          //（后端归 null）；改了模型或厂商就带现值落库、由后端探活，绝不静默丢弃厂商改动。
-          const providerUnchanged = catProviderInput === (editingCat.effectiveProvider || 'dashscope');
-          const model =
-            !editingCat.modelOverridden && m === editingCat.effectiveModel && providerUnchanged ? '' : m;
+          if (custom && !m) {
+            message.warning('「自定义」需填写模型名，或切回「继承」');
+            return;
+          }
+          // 继承 → 送空（后端归 null）清除分类默认覆盖；自定义 → 送当前值设为分类默认（后端按厂商探活）。
           saveCat.mutate({
             categoryId: editingCat.categoryId,
-            model,
+            model: custom ? m : '',
             provider: catProviderInput,
             thinkingMode: catThinkingInput,
           });
@@ -498,28 +542,48 @@ export function RolesPage() {
       >
         {editingCat && (
           <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="厂商" extra="火山方舟需先在「设置」页配置其 API 密钥；改厂商需同时填该厂商的模型名。">
-              <Select
-                value={catProviderInput}
-                onChange={setCatProviderInput}
-                options={providerOptions}
-                style={{ maxWidth: 280 }}
-              />
-            </Form.Item>
             <Form.Item
-              label="分类默认模型名"
-              extra={
-                editingCat.modelOverridden
-                  ? '该分类下未单独覆盖的角色都用它，已带出当前值。改成别的值=更新；清空=回落到「默认模型」。保存前服务端按所选厂商探活。'
-                  : '当前继承自全局「默认模型」，已带出其值。改成别的值=设为该分类默认；保持不动=继续继承；清空=显式回落。保存前服务端按所选厂商探活。'
-              }
+              label="模型来源"
+              extra="继承=跟随全局「默认模型」（随其变动）；自定义=为该分类单独设一个默认模型。"
             >
-              <Input
-                value={catModelInput}
-                onChange={(e) => setCatModelInput(e.target.value)}
-                placeholder="如 qwen-turbo / 火山 doubao-… / ep-…（留空=回落默认模型）"
+              <Segmented
+                value={catModelMode}
+                onChange={(v) => setCatModelMode(v as 'inherit' | 'custom')}
+                options={[
+                  { label: '继承', value: 'inherit' },
+                  { label: '自定义', value: 'custom' },
+                ]}
               />
             </Form.Item>
+            {catModelMode === 'inherit' ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 'var(--aidcp-space-4)' }}
+                message={`跟随全局「默认模型」（设置页，随其变动）。当前生效：${providerTag(editingCat.effectiveProvider).text} ${editingCat.effectiveModel}。保存即取消该分类的默认模型覆盖。`}
+              />
+            ) : (
+              <>
+                <Form.Item label="厂商" extra="火山方舟需先在「设置」页配置其 API 密钥。">
+                  <Select
+                    value={catProviderInput}
+                    onChange={setCatProviderInput}
+                    options={providerOptions}
+                    style={{ maxWidth: 280 }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label="分类默认模型名"
+                  extra="该分类下未单独覆盖的角色都用它；保存前服务端按所选厂商探活。"
+                >
+                  <Input
+                    value={catModelInput}
+                    onChange={(e) => setCatModelInput(e.target.value)}
+                    placeholder="如 qwen-turbo / 火山 doubao-… / ep-…"
+                  />
+                </Form.Item>
+              </>
+            )}
             <Form.Item
               label="分类默认思考模式"
               extra="该分类下未单独覆盖的角色都用它；默认=跟模型走。开启需该分类默认模型支持（非流式可思考）。"
@@ -529,11 +593,7 @@ export function RolesPage() {
                 onChange={(v) => setCatThinkingInput(v)}
                 style={{ maxWidth: 320 }}
                 options={(() => {
-                  // 同角色编辑：有模型名 → 前端镜像按当前「厂商+模型」判定（同源、对预填值同于后端真态、随改动即时重算）；
-                  // 清空后回落后端对生效模型的真态。
-                  const onOk = catModelInput.trim()
-                    ? thinkingOnSupported(catProviderInput, catModelInput)
-                    : editingCat.thinkingOnAvailable;
+                  const onOk = catThinkingOnOk;
                   return [
                     { value: 'default', label: '默认（跟模型走）' },
                     { value: 'off', label: '关闭（强制不思考）' },
