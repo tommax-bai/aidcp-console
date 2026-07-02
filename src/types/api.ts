@@ -137,6 +137,11 @@ export interface PanelPublish {
   content: string | null;
   /** 小红书详情页分享 URL（带 xsec_token）；为 null 时后台显示「无链接」、不给坏链。 */
   postUrl: string | null;
+  /**
+   * 内容版本号（change edit-note-draft-before-publish）：0=未编辑，>0=已在控制台改过（原飞书卡片已失效）。
+   * 审批时快照此值随授权带回（「审=发」凭证）；待审草稿据此渲染生命周期标签。
+   */
+  contentVersion: number;
 }
 
 /** in-flight 发布队列（orchestrator getStatus）。 */
