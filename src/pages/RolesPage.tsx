@@ -190,7 +190,9 @@ export function RolesPage() {
 
   const openEdit = (row: RoleConfigRow) => {
     setEditing(row);
-    setModelInput(row.modelOverridden ? row.effectiveModel : '');
+    // 带入当前生效模型（含从分类/默认继承来的值），让操作者看到真实现值再改；
+    // 是否为按角色覆盖由 row.modelOverridden 记录，保存时据此决定「继承态不因预填而被误钉成覆盖」。
+    setModelInput(row.effectiveModel);
     setProviderInput(row.effectiveProvider || 'dashscope');
     setTempInput(row.temperatureOverride);
     // 思考模式：有覆盖用覆盖、否则 'default'（不覆盖、继承分类/default）。
@@ -198,7 +200,8 @@ export function RolesPage() {
   };
   const openCatEdit = (row: CategoryConfigRow) => {
     setEditingCat(row);
-    setCatModelInput(row.modelOverridden ? row.effectiveModel : '');
+    // 同角色编辑：带入当前生效模型（继承则为全局「默认模型」），保存时按 modelOverridden 保持继承态。
+    setCatModelInput(row.effectiveModel);
     setCatProviderInput(row.effectiveProvider || 'dashscope');
     setCatThinkingInput(row.thinkingModeOverridden ? row.effectiveThinkingMode : 'default');
   };
@@ -384,16 +387,22 @@ export function RolesPage() {
         open={!!editing}
         onCancel={() => setEditing(null)}
         confirmLoading={save.isPending}
-        onOk={() =>
-          editing &&
+        onOk={() => {
+          if (!editing) return;
+          const m = modelInput.trim();
+          // 预填的是「当前生效模型」（可能是继承值）。只有「本就是继承 且 模型和厂商都没动」时才送空维持继承，
+          // 不把继承误钉成按角色覆盖；一旦改了模型或厂商就带着现值建/改覆盖（由后端按厂商探活，无效则诚实报错、
+          // 绝不静默丢弃厂商改动）；手动清空=显式回落。
+          const providerUnchanged = providerInput === (editing.effectiveProvider || 'dashscope');
+          const model = !editing.modelOverridden && m === editing.effectiveModel && providerUnchanged ? '' : m;
           save.mutate({
             roleId: editing.roleId,
-            model: modelInput.trim(),
+            model,
             provider: providerInput,
             ...(editing.tunableTemperature ? { temperature: tempInput } : {}),
             thinkingMode: thinkingInput,
-          })
-        }
+          });
+        }}
         okText="保存"
         cancelText="取消"
       >
@@ -407,7 +416,14 @@ export function RolesPage() {
                 style={{ maxWidth: 280 }}
               />
             </Form.Item>
-            <Form.Item label="文本模型名" extra="自由输入；留空=取消该角色覆盖（回落分类默认/默认模型）。保存前服务端按所选厂商探活。">
+            <Form.Item
+              label="文本模型名"
+              extra={
+                editing.modelOverridden
+                  ? '已按本角色覆盖，已带出当前值。改成别的值=更新覆盖；清空=取消覆盖（回落分类默认/默认模型）。保存前服务端按所选厂商探活。'
+                  : `当前继承自${editing.effectiveSource === 'category' ? '分类默认' : '默认模型'}，已带出其值。改成别的值=建立本角色覆盖；保持不动=继续继承；清空=显式回落。保存前服务端按所选厂商探活。`
+              }
+            >
               <Input
                 value={modelInput}
                 onChange={(e) => setModelInput(e.target.value)}
@@ -436,6 +452,8 @@ export function RolesPage() {
                 onChange={(v) => setThinkingInput(v)}
                 style={{ maxWidth: 320 }}
                 options={(() => {
+                  // 有模型名 → 用前端镜像按当前「厂商+模型」判定（与云端 buildThinkingParams 同源、逐字一致，
+                  // 对预填的生效值结果同于后端真态，又能随厂商/模型改动即时重算）；清空后回落后端对生效模型的真态。
                   const onOk = modelInput.trim()
                     ? thinkingOnSupported(providerInput, modelInput)
                     : editing.thinkingOnAvailable;
@@ -460,15 +478,21 @@ export function RolesPage() {
         open={!!editingCat}
         onCancel={() => setEditingCat(null)}
         confirmLoading={saveCat.isPending}
-        onOk={() =>
-          editingCat &&
+        onOk={() => {
+          if (!editingCat) return;
+          const m = catModelInput.trim();
+          // 与角色编辑同理：预填当前生效模型（继承则为全局默认）；仅「本是继承 且 模型和厂商都没动」才送空维持继承
+          //（后端归 null）；改了模型或厂商就带现值落库、由后端探活，绝不静默丢弃厂商改动。
+          const providerUnchanged = catProviderInput === (editingCat.effectiveProvider || 'dashscope');
+          const model =
+            !editingCat.modelOverridden && m === editingCat.effectiveModel && providerUnchanged ? '' : m;
           saveCat.mutate({
             categoryId: editingCat.categoryId,
-            model: catModelInput,
+            model,
             provider: catProviderInput,
             thinkingMode: catThinkingInput,
-          })
-        }
+          });
+        }}
         okText="保存"
         cancelText="取消"
       >
@@ -484,7 +508,11 @@ export function RolesPage() {
             </Form.Item>
             <Form.Item
               label="分类默认模型名"
-              extra="该分类下未单独覆盖的角色都用它；留空=回落到「默认模型」。保存前服务端按所选厂商探活。"
+              extra={
+                editingCat.modelOverridden
+                  ? '该分类下未单独覆盖的角色都用它，已带出当前值。改成别的值=更新；清空=回落到「默认模型」。保存前服务端按所选厂商探活。'
+                  : '当前继承自全局「默认模型」，已带出其值。改成别的值=设为该分类默认；保持不动=继续继承；清空=显式回落。保存前服务端按所选厂商探活。'
+              }
             >
               <Input
                 value={catModelInput}
@@ -501,6 +529,8 @@ export function RolesPage() {
                 onChange={(v) => setCatThinkingInput(v)}
                 style={{ maxWidth: 320 }}
                 options={(() => {
+                  // 同角色编辑：有模型名 → 前端镜像按当前「厂商+模型」判定（同源、对预填值同于后端真态、随改动即时重算）；
+                  // 清空后回落后端对生效模型的真态。
                   const onOk = catModelInput.trim()
                     ? thinkingOnSupported(catProviderInput, catModelInput)
                     : editingCat.thinkingOnAvailable;
