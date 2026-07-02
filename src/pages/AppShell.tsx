@@ -1,5 +1,6 @@
 import { Dropdown } from 'antd';
 import {
+  ClockCircleOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   DownloadOutlined,
@@ -25,6 +26,7 @@ const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
   { key: '/', label: '数据', icon: <DashboardOutlined /> },
   { key: '/accounts', label: '账号', icon: <TeamOutlined /> },
   { key: '/content', label: '内容', icon: <FileTextOutlined /> },
+  { key: '/content-schedule', label: '排期', icon: <ClockCircleOutlined /> },
   { key: '/curated', label: '精选', icon: <BulbOutlined /> },
   { key: '/notification-contacts', label: '互动联系人', icon: <ContactsOutlined /> },
   { key: '/persona', label: '人设', icon: <IdcardOutlined /> },

@@ -23,6 +23,8 @@ import type {
   PanelNotificationContact,
   CuratedContentList,
   CuratedFacets,
+  ContentScheduleGlobalView,
+  ContentScheduleCatalog,
 } from '../types/api';
 
 export function useVersion() {
@@ -78,6 +80,22 @@ export function useResumeConfig() {
   return useQuery({
     queryKey: ['config', 'resume-config'],
     queryFn: () => apiGet<ResumeConfigView>('/api/resume-config'),
+  });
+}
+
+/** 全局「内容可自动时段」周历格（change content-schedule-auto-publish，Phase 1）。fail-closed：null=不自动。 */
+export function useContentScheduleGlobal() {
+  return useQuery({
+    queryKey: ['config', 'content-schedule', 'global'],
+    queryFn: () => apiGet<ContentScheduleGlobalView>('/api/content-schedule/global'),
+  });
+}
+
+/** 每账号内容排期目录（change content-schedule-auto-publish，Phase 1 只发帖）。总开关/发帖开关/日上限/时段来源。 */
+export function useContentSchedule() {
+  return useQuery({
+    queryKey: ['config', 'content-schedule'],
+    queryFn: () => apiGet<ContentScheduleCatalog>('/api/content-schedule'),
   });
 }
 

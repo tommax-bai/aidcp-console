@@ -477,3 +477,54 @@ export interface PanelNotificationContact {
   updatedBy: string | null;
   updatedAt: number | null;
 }
+
+// ── 内容排期（change content-schedule-auto-publish，Phase 1 只做发帖）。手工镜像 cloud DTO，两处须同步防漂移。 ──
+
+/**
+ * 全局「内容可自动时段」周历格（GET/PUT /api/content-schedule/global）。
+ * 与浏览掩码（SessionLimitView.activeWeekMask）物理分开、语义不同：本格治「何时允许自动发帖」。
+ * 语义 fail-closed：null / 非法 = 全 0 = 不自动（与浏览掩码 null=全天活跃刻意相反）。
+ */
+export interface ContentScheduleGlobalView {
+  contentActiveMask: string | null;
+  /** 是否存在库内覆盖（false=未配=全 0=不自动）。 */
+  overridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/**
+ * 每账号内容排期一行（GET /api/content-schedule）。Phase 1 只暴露发帖字段。
+ * 时段来源 maskSource：'override'=该账号自定义时段（v1 无编辑入口，仅回显）、'global'=继承全局内容格。
+ */
+export interface ContentScheduleRow {
+  accountId: string;
+  label: string | null;
+  nickname: string | null;
+  /** 总开关：false=该账号完全不自动（零回归默认）。 */
+  autoEnabled: boolean;
+  /** 发帖开关。 */
+  postEnabled: boolean;
+  /** 发帖日上限；0=该动作不自动（与开关双保险）。 */
+  postDailyCap: number;
+  maskSource: 'override' | 'global';
+  hasOverrideMask: boolean;
+  /** 侧表有行（false=纯默认=未配）。 */
+  configured: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /api/content-schedule 形状。 */
+export interface ContentScheduleCatalog {
+  rows: ContentScheduleRow[];
+}
+
+/** PUT /api/content-schedule/:accountId 请求体（部分字段；服务端整块校验、非法拒不部分落库）。 */
+export interface ContentSchedulePatch {
+  autoEnabled?: boolean;
+  postEnabled?: boolean;
+  postDailyCap?: number;
+  /** 每账号时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。v1 前端不写此字段（留缝）。 */
+  contentActiveMask?: string | null;
+}
