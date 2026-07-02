@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Input, Table, Tag, Typography } from 'antd';
+import { Input, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
@@ -70,6 +70,7 @@ export function AccountsTable({
   severitySorted = false,
   actionsColumn,
   onEditGroup,
+  onEditGroupChat,
 }: {
   accounts: PanelAccount[];
   loading?: boolean;
@@ -82,10 +83,42 @@ export function AccountsTable({
    * 不传 →「分组」列保持纯文本（只读视图如仪表盘不受影响）。
    */
   onEditGroup?: (accountId: string, groupLabel: string | null) => void;
+  /**
+   * 可选：关联群聊引流码就地编辑保存回调（change account-group-chat-injection）。
+   * 传入 →「群聊引流」列点击即变多行文本框、失焦保存（**verbatim，不 trim 内容**；全空白=清空，回 null）；
+   * 不传 → 该列只读（只读视图不受影响）。/comment group:on 时该码注入评论。
+   */
+  onEditGroupChat?: (accountId: string, groupChatInfo: string | null) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  // 群聊引流码就地编辑：独立状态，绝不与分组编辑共用 editingId（否则同行两列会一起进编辑态）。
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [draftChat, setDraftChat] = useState('');
   const rows = severitySorted ? [...accounts].sort((a, b) => severityRank(a) - severityRank(b)) : accounts;
+
+  // 跨账号「同码」检测（change account-group-chat-injection）：同一串非空码配到多个账号 = 引流指纹，给告警提示。
+  const codeCounts = new Map<string, number>();
+  for (const a of accounts) {
+    if (a.groupChatInfo) codeCounts.set(a.groupChatInfo, (codeCounts.get(a.groupChatInfo) ?? 0) + 1);
+  }
+  const isDupCode = (c: string | null): boolean => !!c && (codeCounts.get(c) ?? 0) > 1;
+  const codePreview = (c: string): string => {
+    const oneLine = c.replace(/\s+/g, ' ').trim();
+    return oneLine.length > 16 ? `${oneLine.slice(0, 16)}…` : oneLine;
+  };
+
+  const beginEditChat = (r: PanelAccount) => {
+    setEditingChatId(r.accountId);
+    setDraftChat(r.groupChatInfo ?? '');
+  };
+  // 非乐观 + verbatim：仅值变化才下发；全空白 → 清空（null），否则原样（不 trim 内容，保留 emoji/换行/首尾空白）。
+  const commitChat = (r: PanelAccount) => {
+    if (editingChatId !== r.accountId) return;
+    setEditingChatId(null);
+    const prev = r.groupChatInfo ?? '';
+    if (draftChat !== prev) onEditGroupChat?.(r.accountId, draftChat.trim() === '' ? null : draftChat);
+  };
 
   const beginEdit = (r: PanelAccount) => {
     setEditingId(r.accountId);
@@ -128,9 +161,46 @@ export function AccountsTable({
   const baseCols: ColumnsType<PanelAccount> = columns.map((c) =>
     (c as { dataIndex?: string }).dataIndex === 'groupLabel' ? groupColumn : c,
   );
+
+  // 「群聊引流」列：传 onEditGroupChat → 点击即编辑（多行文本框，verbatim）；否则只读（read-only 零回归，不加列）。
+  const groupChatColumn: ColumnsType<PanelAccount>[number] | null = onEditGroupChat
+    ? {
+        title: '群聊引流',
+        key: 'groupChatInfo',
+        render: (_, r) =>
+          editingChatId === r.accountId ? (
+            <Input.TextArea
+              size="small"
+              autoFocus
+              autoSize={{ minRows: 2, maxRows: 8 }}
+              value={draftChat}
+              onChange={(e) => setDraftChat(e.target.value)}
+              onBlur={() => commitChat(r)}
+              placeholder="粘贴群聊引流码（原样保存，含 emoji/换行）；留空清除"
+              style={{ minWidth: 240 }}
+            />
+          ) : r.groupChatInfo ? (
+            <div className="editable-cell" onClick={() => beginEditChat(r)} title="点击编辑群聊引流码">
+              <Space size={4} wrap>
+                <Tag color="green">已配</Tag>
+                {isDupCode(r.groupChatInfo) && <Tag color="warning">多账号同码</Tag>}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {codePreview(r.groupChatInfo)}
+                </Typography.Text>
+              </Space>
+            </div>
+          ) : (
+            <div className="editable-cell" onClick={() => beginEditChat(r)} title="点击设置群聊引流码">
+              {dash}
+            </div>
+          ),
+      }
+    : null;
+
+  const withGroupChat: ColumnsType<PanelAccount> = groupChatColumn ? [...baseCols, groupChatColumn] : baseCols;
   const cols: ColumnsType<PanelAccount> = actionsColumn
-    ? [...baseCols, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
-    : baseCols;
+    ? [...withGroupChat, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
+    : withGroupChat;
   return (
     <Table
       size="small"

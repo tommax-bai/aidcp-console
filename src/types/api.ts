@@ -32,6 +32,8 @@ export interface PanelAccount {
   platform: string;
   groupLabel: string | null;
   machineLabel: string | null;
+  /** 关联群聊引流码（change account-group-chat-injection；verbatim，未配为 null）。手工镜像 cloud panel-store.ts。 */
+  groupChatInfo: string | null;
   /** 运营暂停态（durable，区别于验证码 pausedEdges）。 */
   operatorStatus: 'active' | 'paused';
   pausedAt: number | null;

@@ -39,6 +39,19 @@ export function AccountsPage() {
     onError: () => message.error('分组保存失败'),
   });
 
+  // 关联群聊引流码就地编辑（change account-group-chat-injection）：非乐观、verbatim（body 原样透传，不 trim）；诚实文案。
+  const groupChatCmd = useMutation({
+    mutationFn: (v: { accountId: string; groupChatInfo: string | null }) =>
+      apiPut<{ accountId: string; groupChatInfo: string | null }>(`/api/accounts/${v.accountId}/group-chat-info`, {
+        groupChatInfo: v.groupChatInfo,
+      }),
+    onSuccess: (res) => {
+      message.success(res.groupChatInfo ? '已保存关联群聊引流码' : '已清除关联群聊引流码');
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: () => message.error('群聊引流码保存失败'),
+  });
+
   const actions = (a: PanelAccount) => (
     <Space size={4}>
       {a.operatorStatus === 'paused' ? (
@@ -72,6 +85,7 @@ export function AccountsPage() {
           loading={isLoading}
           actionsColumn={actions}
           onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
+          onEditGroupChat={(accountId, groupChatInfo) => groupChatCmd.mutate({ accountId, groupChatInfo })}
         />
       </Card>
     </div>
