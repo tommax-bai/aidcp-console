@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Statistic, Tag, Typography } from 'antd';
 import { useDashboardSummary, useResolveAlert } from '../api/queries';
 import { AccountsTable, AccountTotalsTable, AlertSeverityBadge, DispatchControl, ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
@@ -123,14 +123,17 @@ export function DashboardPage() {
                   </Popconfirm>,
                 ]}
               >
-                <AlertSeverityBadge severity={a.severity} />
-                <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
-                {a.accountId && (
-                  <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                    <ProfileLink userId={a.accountId}>{nameOf(a.accountId)}</ProfileLink>
-                  </Typography.Text>
-                )}
-                <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>
+                {/* 单一内容块 + actions：List.Item 用 space-between 布局，内容须包一层才不被 action 拉散、保持左对齐居中。 */}
+                <Space size={8} align="center" wrap>
+                  <AlertSeverityBadge severity={a.severity} />
+                  <Typography.Text>{a.title}</Typography.Text>
+                  {a.accountId && (
+                    <Typography.Text type="secondary">
+                      <ProfileLink userId={a.accountId}>{nameOf(a.accountId)}</ProfileLink>
+                    </Typography.Text>
+                  )}
+                  <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>
+                </Space>
               </List.Item>
             )}
           />

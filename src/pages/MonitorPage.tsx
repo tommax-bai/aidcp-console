@@ -172,15 +172,18 @@ export function MonitorPage() {
                   </Popconfirm>,
                 ]}
               >
-                <AlertSeverityBadge severity={a.severity} />
-                <Tag>{a.type}</Tag>
-                <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>
-                {a.accountId && (
-                  <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                    <ProfileLink userId={a.accountId}>{nameOf(a.accountId)}</ProfileLink>
-                  </Typography.Text>
-                )}
-                <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>
+                {/* 单一内容块 + actions：List.Item 用 space-between 布局，内容须包一层才不被 action 拉散、保持左对齐居中。 */}
+                <Space size={8} align="center" wrap>
+                  <AlertSeverityBadge severity={a.severity} />
+                  <Tag style={{ marginInlineEnd: 0 }}>{a.type}</Tag>
+                  <Typography.Text>{a.title}</Typography.Text>
+                  {a.accountId && (
+                    <Typography.Text type="secondary">
+                      <ProfileLink userId={a.accountId}>{nameOf(a.accountId)}</ProfileLink>
+                    </Typography.Text>
+                  )}
+                  <Typography.Text type="secondary">{new Date(a.createdAt).toLocaleString()}</Typography.Text>
+                </Space>
               </List.Item>
             )}
           />
