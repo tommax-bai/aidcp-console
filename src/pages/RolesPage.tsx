@@ -12,6 +12,7 @@ import type {
   CategoryConfigRow,
   CategoryConfigCatalog,
   ModelEffectiveSource,
+  ThinkingModeApi,
   RolePromptView,
 } from '../types/api';
 
@@ -43,6 +44,21 @@ const PROVIDER_TAG: Record<string, { text: string; color: string }> = {
   volcengine: { text: '火山', color: 'volcano' },
 };
 const providerTag = (id: string) => PROVIDER_TAG[id] ?? { text: id, color: 'default' };
+
+// 思考模式（change role-thinking-mode-config）：三态标签 + 与 cloud buildThinkingParams 同源的"可开启"判定。
+const THINKING_TAG: Record<'default' | 'off' | 'on', { text: string; color: string }> = {
+  default: { text: '跟模型', color: 'default' },
+  off: { text: '关思考', color: 'blue' },
+  on: { text: '开思考', color: 'green' },
+};
+/** DashScope Qwen 开思考需流式（本期不支持）→ 不可开启；火山豆包 / DashScope DeepSeek 非流式可开；未知失败安全。 */
+function thinkingOnSupported(provider: string, model: string): boolean {
+  const p = (provider || '').trim().toLowerCase();
+  const m = (model || '').trim().toLowerCase();
+  if (p === 'volcengine') return true;
+  if (p === 'dashscope') return m.startsWith('deepseek');
+  return false;
+}
 
 /**
  * 角色配置页（change console-role-model-config + role-model-category-config）。
@@ -79,10 +95,12 @@ export function RolesPage() {
   const [modelInput, setModelInput] = useState('');
   const [providerInput, setProviderInput] = useState('dashscope');
   const [tempInput, setTempInput] = useState<number | null>(null);
+  const [thinkingInput, setThinkingInput] = useState<ThinkingModeApi>('default');
 
   const [editingCat, setEditingCat] = useState<CategoryConfigRow | null>(null);
   const [catModelInput, setCatModelInput] = useState('');
   const [catProviderInput, setCatProviderInput] = useState('dashscope');
+  const [catThinkingInput, setCatThinkingInput] = useState<ThinkingModeApi>('default');
 
   // 只读 prompt 预览（change role-prompt-visibility）：点开时按需拉取，不常驻查询。
   const [promptRole, setPromptRole] = useState<RoleConfigRow | null>(null);
@@ -131,11 +149,19 @@ export function RolesPage() {
   };
 
   const save = useMutation({
-    mutationFn: (v: { roleId: string; model: string; provider: string; temperature?: number | null }) =>
+    mutationFn: (v: {
+      roleId: string;
+      model: string;
+      provider: string;
+      temperature?: number | null;
+      thinkingMode: ThinkingModeApi;
+    }) =>
       apiPut<RoleConfigCatalog>(`/api/roles/${encodeURIComponent(v.roleId)}/config`, {
         model: v.model,
         provider: v.provider,
         ...(v.temperature !== undefined ? { temperature: v.temperature } : {}),
+        // 思考模式（change role-thinking-mode-config）：与模型独立发；'default' = 清除覆盖（回落）。
+        thinkingMode: v.thinkingMode,
       }),
     onSuccess: () => {
       message.success('已保存，按角色即时生效');
@@ -146,11 +172,13 @@ export function RolesPage() {
   });
 
   const saveCat = useMutation({
-    mutationFn: (v: { categoryId: string; model: string; provider: string }) =>
+    mutationFn: (v: { categoryId: string; model: string; provider: string; thinkingMode: ThinkingModeApi }) =>
       apiPut<CategoryConfigCatalog>(`/api/categories/${encodeURIComponent(v.categoryId)}/config`, {
         // 留空 → null：清除分类覆盖，回落全局默认（provider 随之清空）。
         model: v.model.trim() === '' ? null : v.model.trim(),
         provider: v.provider,
+        // 分类思考模式（change role-thinking-mode-config）：'default' = 清除覆盖（回落）。
+        thinkingMode: v.thinkingMode,
       }),
     onSuccess: () => {
       message.success('已保存，分类默认即时生效');
@@ -165,11 +193,14 @@ export function RolesPage() {
     setModelInput(row.modelOverridden ? row.effectiveModel : '');
     setProviderInput(row.effectiveProvider || 'dashscope');
     setTempInput(row.temperatureOverride);
+    // 思考模式：有覆盖用覆盖、否则 'default'（不覆盖、继承分类/default）。
+    setThinkingInput(row.thinkingModeOverride ?? 'default');
   };
   const openCatEdit = (row: CategoryConfigRow) => {
     setEditingCat(row);
     setCatModelInput(row.modelOverridden ? row.effectiveModel : '');
     setCatProviderInput(row.effectiveProvider || 'dashscope');
+    setCatThinkingInput(row.thinkingModeOverridden ? row.effectiveThinkingMode : 'default');
   };
 
   // 角色按「用户访问小红书的顺序」展示：顺序源头是云端 role-catalog 的 ROLE_CATALOG 数组
@@ -188,6 +219,12 @@ export function RolesPage() {
           {model} {row.modelOverridden ? <Tag color="green">已设</Tag> : <Tag>继承默认</Tag>}
         </span>
       ),
+    },
+    {
+      title: '思考',
+      dataIndex: 'effectiveThinkingMode',
+      width: 100,
+      render: (m: ThinkingModeApi) => <Tag color={THINKING_TAG[m].color}>{THINKING_TAG[m].text}</Tag>,
     },
     {
       title: '操作',
@@ -239,6 +276,20 @@ export function RolesPage() {
       render: (t: number | null, row) =>
         row.tunableTemperature ? (
           t === null ? <Typography.Text type="secondary">默认</Typography.Text> : <span className="tabular-nums">{t}</span>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
+    {
+      title: '思考',
+      dataIndex: 'effectiveThinkingMode',
+      width: 110,
+      render: (m: ThinkingModeApi, row) =>
+        row.llmKind === 'text' ? (
+          <Tag color={THINKING_TAG[m].color}>
+            {THINKING_TAG[m].text}
+            {row.thinkingModeSource === 'category' ? '·类' : ''}
+          </Tag>
         ) : (
           <Typography.Text type="secondary">—</Typography.Text>
         ),
@@ -340,6 +391,7 @@ export function RolesPage() {
             model: modelInput.trim(),
             provider: providerInput,
             ...(editing.tunableTemperature ? { temperature: tempInput } : {}),
+            thinkingMode: thinkingInput,
           })
         }
         okText="保存"
@@ -375,6 +427,30 @@ export function RolesPage() {
                 />
               </Form.Item>
             )}
+            <Form.Item
+              label="思考模式"
+              extra="默认=跟模型走（当前行为）；关闭=强制不思考（判定/口语撰写类推荐）；开启=强制深度思考（仅发布审批类值得）。"
+            >
+              <Select
+                value={thinkingInput}
+                onChange={(v) => setThinkingInput(v)}
+                style={{ maxWidth: 320 }}
+                options={(() => {
+                  const onOk = modelInput.trim()
+                    ? thinkingOnSupported(providerInput, modelInput)
+                    : editing.thinkingOnAvailable;
+                  return [
+                    { value: 'default', label: '默认（跟模型走）' },
+                    { value: 'off', label: '关闭（强制不思考）' },
+                    {
+                      value: 'on',
+                      label: onOk ? '开启（强制深度思考）' : '开启（该模型开思考需流式，暂不可用）',
+                      disabled: !onOk,
+                    },
+                  ];
+                })()}
+              />
+            </Form.Item>
           </Form>
         )}
       </Modal>
@@ -386,7 +462,12 @@ export function RolesPage() {
         confirmLoading={saveCat.isPending}
         onOk={() =>
           editingCat &&
-          saveCat.mutate({ categoryId: editingCat.categoryId, model: catModelInput, provider: catProviderInput })
+          saveCat.mutate({
+            categoryId: editingCat.categoryId,
+            model: catModelInput,
+            provider: catProviderInput,
+            thinkingMode: catThinkingInput,
+          })
         }
         okText="保存"
         cancelText="取消"
@@ -409,6 +490,30 @@ export function RolesPage() {
                 value={catModelInput}
                 onChange={(e) => setCatModelInput(e.target.value)}
                 placeholder="如 qwen-turbo / 火山 doubao-… / ep-…（留空=回落默认模型）"
+              />
+            </Form.Item>
+            <Form.Item
+              label="分类默认思考模式"
+              extra="该分类下未单独覆盖的角色都用它；默认=跟模型走。开启需该分类默认模型支持（非流式可思考）。"
+            >
+              <Select
+                value={catThinkingInput}
+                onChange={(v) => setCatThinkingInput(v)}
+                style={{ maxWidth: 320 }}
+                options={(() => {
+                  const onOk = catModelInput.trim()
+                    ? thinkingOnSupported(catProviderInput, catModelInput)
+                    : editingCat.thinkingOnAvailable;
+                  return [
+                    { value: 'default', label: '默认（跟模型走）' },
+                    { value: 'off', label: '关闭（强制不思考）' },
+                    {
+                      value: 'on',
+                      label: onOk ? '开启（强制深度思考）' : '开启（该模型开思考需流式，暂不可用）',
+                      disabled: !onOk,
+                    },
+                  ];
+                })()}
               />
             </Form.Item>
           </Form>

@@ -218,6 +218,9 @@ export interface ModelConfig {
 /** 生效模型来源（change role-model-category-config）：覆盖 / 继承分类 / 继承默认 / 图像全局。 */
 export type ModelEffectiveSource = 'override' | 'category' | 'default' | 'image';
 
+/** 思考模式三态（change role-thinking-mode-config）。default=不干预、跟模型走。 */
+export type ThinkingModeApi = 'default' | 'off' | 'on';
+
 /** 单角色目录行 + 生效值（GET /api/roles 形状）。 */
 export interface RoleConfigRow {
   roleId: string;
@@ -239,6 +242,14 @@ export interface RoleConfigRow {
   modelOverridden: boolean;
   /** 温度覆盖（null=用代码默认）。 */
   temperatureOverride: number | null;
+  /** 当前生效思考模式（change role-thinking-mode-config）：role→分类→default 回落后的三态。 */
+  effectiveThinkingMode: ThinkingModeApi;
+  /** 按角色思考模式覆盖（null=未覆盖）。 */
+  thinkingModeOverride: 'off' | 'on' | null;
+  /** 生效思考模式来源。 */
+  thinkingModeSource: 'override' | 'category' | 'default';
+  /** 生效模型是否支持"开启(on)"：false 表示需流式（如 DashScope Qwen）本期不支持，前端禁用"开启"。 */
+  thinkingOnAvailable: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -261,6 +272,12 @@ export interface CategoryConfigRow {
   effectiveProvider: string;
   /** 是否存在分类默认覆盖（false=继承全局默认模型）。 */
   modelOverridden: boolean;
+  /** 分类默认思考模式（change role-thinking-mode-config）：覆盖则用覆盖、否则 default。 */
+  effectiveThinkingMode: ThinkingModeApi;
+  /** 是否存在分类思考模式覆盖。 */
+  thinkingModeOverridden: boolean;
+  /** 该分类默认模型是否支持"开启(on)"（false 前端禁用开启）。 */
+  thinkingOnAvailable: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
 }
