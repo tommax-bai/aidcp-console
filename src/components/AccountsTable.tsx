@@ -149,10 +149,15 @@ export function AccountsTable({
               onBlur={() => commit(r)}
               onPressEnter={() => commit(r)}
               placeholder="分组名，留空清除"
+              style={{ fontSize: 12 }}
             />
           ) : (
             <div className="editable-cell" onClick={() => beginEdit(r)} title="点击编辑">
-              {r.groupLabel ? r.groupLabel : dash}
+              {r.groupLabel ? (
+                <Typography.Text style={{ fontSize: 12 }}>{r.groupLabel}</Typography.Text>
+              ) : (
+                dash
+              )}
             </div>
           ),
       }
