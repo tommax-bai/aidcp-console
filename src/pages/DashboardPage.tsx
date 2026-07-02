@@ -114,7 +114,6 @@ export function DashboardPage() {
                     onConfirm={() => resolveAlert.mutate(a.id)}
                   >
                     <Button
-                      type="link"
                       size="small"
                       loading={resolveAlert.isPending && resolveAlert.variables === a.id}
                     >
