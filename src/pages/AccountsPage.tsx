@@ -1,6 +1,6 @@
 import { App, Button, Card, Popconfirm, Space } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '../api/client';
+import { apiPost, apiPut } from '../api/client';
 import { useAccounts } from '../api/queries';
 import { AccountsTable, RiskControls } from '../components';
 import { accountName } from '../types/accountDisplay';
@@ -24,6 +24,19 @@ export function AccountsPage() {
       void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
     onError: () => message.error('调度下发失败'),
+  });
+
+  // 分组标签就地编辑（change editable-account-group-label）：非乐观，round-trip 后拉真态；诚实文案。
+  const groupCmd = useMutation({
+    mutationFn: (v: { accountId: string; groupLabel: string | null }) =>
+      apiPut<{ accountId: string; groupLabel: string | null }>(`/api/accounts/${v.accountId}/group-label`, {
+        groupLabel: v.groupLabel,
+      }),
+    onSuccess: (res) => {
+      message.success(res.groupLabel ? `已设置分组「${res.groupLabel}」` : '已清除分组');
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: () => message.error('分组保存失败'),
   });
 
   const actions = (a: PanelAccount) => (
@@ -54,7 +67,12 @@ export function AccountsPage() {
   return (
     <div className="page-stack">
       <Card size="small" title="账号">
-        <AccountsTable accounts={data?.accounts ?? []} loading={isLoading} actionsColumn={actions} />
+        <AccountsTable
+          accounts={data?.accounts ?? []}
+          loading={isLoading}
+          actionsColumn={actions}
+          onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
+        />
       </Card>
     </div>
   );

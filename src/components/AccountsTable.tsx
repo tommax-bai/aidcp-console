@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Table, Tag, Typography } from 'antd';
+import { Input, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
@@ -69,17 +69,68 @@ export function AccountsTable({
   loading,
   severitySorted = false,
   actionsColumn,
+  onEditGroup,
 }: {
   accounts: PanelAccount[];
   loading?: boolean;
   severitySorted?: boolean;
   /** 可选操作列（如 pause/resume 按钮）；只读视图不传。 */
   actionsColumn?: (account: PanelAccount) => ReactNode;
+  /**
+   * 可选：分组标签就地编辑保存回调（change editable-account-group-label）。
+   * 传入 →「分组」列点击即变输入框、回车/失焦保存（trim 后空 = 清空，回 null）；
+   * 不传 →「分组」列保持纯文本（只读视图如仪表盘不受影响）。
+   */
+  onEditGroup?: (accountId: string, groupLabel: string | null) => void;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const rows = severitySorted ? [...accounts].sort((a, b) => severityRank(a) - severityRank(b)) : accounts;
+
+  const beginEdit = (r: PanelAccount) => {
+    setEditingId(r.accountId);
+    setDraft(r.groupLabel ?? '');
+  };
+  // 非乐观：仅当值变化才下发（trim 后空 = 清空 → null）；提交即退出编辑，回车+失焦的 double-commit 由 editingId 守卫幂等。
+  const commit = (r: PanelAccount) => {
+    if (editingId !== r.accountId) return;
+    setEditingId(null);
+    const next = draft.trim();
+    const prev = r.groupLabel ?? '';
+    if (next !== prev) onEditGroup?.(r.accountId, next === '' ? null : next);
+  };
+
+  // 「分组」列：传 onEditGroup → 点击即编辑（复用通知联系人页 .editable-cell 模式）；否则纯文本（read-only 零回归）。
+  const groupColumn: ColumnsType<PanelAccount>[number] = onEditGroup
+    ? {
+        title: '分组',
+        key: 'groupLabel',
+        render: (_, r) =>
+          editingId === r.accountId ? (
+            <Input
+              size="small"
+              autoFocus
+              value={draft}
+              maxLength={64}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => commit(r)}
+              onPressEnter={() => commit(r)}
+              placeholder="分组名，留空清除"
+            />
+          ) : (
+            <div className="editable-cell" onClick={() => beginEdit(r)} title="点击编辑">
+              {r.groupLabel ? r.groupLabel : dash}
+            </div>
+          ),
+      }
+    : { title: '分组', dataIndex: 'groupLabel', render: (v: string | null) => v ?? dash };
+
+  const baseCols: ColumnsType<PanelAccount> = columns.map((c) =>
+    (c as { dataIndex?: string }).dataIndex === 'groupLabel' ? groupColumn : c,
+  );
   const cols: ColumnsType<PanelAccount> = actionsColumn
-    ? [...columns, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
-    : columns;
+    ? [...baseCols, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
+    : baseCols;
   return (
     <Table
       size="small"
