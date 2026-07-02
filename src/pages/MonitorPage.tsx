@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Badge, Button, Card, Empty, Input, List, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Badge, Button, Card, Empty, Input, List, Popconfirm, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { usePanelWs, type WsStatus } from '../ws/panelWs';
-import { useAlerts, useInteractions, useDashboardSummary } from '../api/queries';
+import { useAlerts, useInteractions, useDashboardSummary, useResolveAlert } from '../api/queries';
 import { AccountTotalsTable, AlertSeverityBadge, ProfileLink } from '../components';
 import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, type RiskAction } from '../types/aidcp-enums';
 import { makeAccountNamer } from '../types/accountDisplay';
@@ -75,6 +75,7 @@ export function MonitorPage() {
 
   const interactions = useInteractions();
   const alerts = useAlerts();
+  const resolveAlert = useResolveAlert();
   const summary = useDashboardSummary();
   // 账号名走统一诚实回落（真名→运营名→ID）：互动行/告警只带 accountId，真名从汇总的账号列表 join。
   const nameOf = makeAccountNamer(summary.data?.accounts ?? []);
@@ -151,7 +152,26 @@ export function MonitorPage() {
             size="small"
             dataSource={alerts.data.alerts}
             renderItem={(a) => (
-              <List.Item>
+              <List.Item
+                actions={[
+                  <Popconfirm
+                    key="resolve"
+                    title="标记该告警为已解决？"
+                    description="仅从未解决列表移除，不影响账号风控状态或边缘暂停。"
+                    okText="解决"
+                    cancelText="取消"
+                    onConfirm={() => resolveAlert.mutate(a.id)}
+                  >
+                    <Button
+                      type="link"
+                      size="small"
+                      loading={resolveAlert.isPending && resolveAlert.variables === a.id}
+                    >
+                      解决
+                    </Button>
+                  </Popconfirm>,
+                ]}
+              >
                 <AlertSeverityBadge severity={a.severity} />
                 <Tag>{a.type}</Tag>
                 <Typography.Text style={{ marginRight: 8 }}>{a.title}</Typography.Text>

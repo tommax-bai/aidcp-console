@@ -1,7 +1,8 @@
-/** TanStack Query hooks（所有 /api 读）。写 mutation 见各页面 useMutation。 */
+/** TanStack Query hooks（所有 /api 读）。写 mutation 见各页面 useMutation；唯一例外见 useResolveAlert（跨两页共享）。 */
 
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from './client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { message } from 'antd';
+import { apiGet, apiPost } from './client';
 import type {
   VersionPayload,
   DashboardSummary,
@@ -135,6 +136,26 @@ export function useAlerts() {
     queryKey: ['alerts'],
     queryFn: () => apiGet<{ alerts: Alert[] }>('/api/alerts'),
     refetchInterval: 5_000,
+  });
+}
+
+/**
+ * 告警手动解决（change alert-resolution-by-id）：按 alert_id 勾销单条未解决告警。
+ * 告警列表同现于监控页与首页，故抽为共享写 hook（唯一集中的写 mutation，避免两页重复诚实文案逻辑）。
+ * 诚实：resolved===1 → 「已解决」；0 → 「已解决或不存在」，绝不笼统报成功。
+ * 成功后同时失效 ['alerts'] 与 ['dashboard','summary'] 两个数据源（两页告警来源不同 key）。
+ */
+export function useResolveAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiPost<{ resolved: number }>(`/api/alerts/${id}/resolve`),
+    onSuccess: (res) => {
+      if (res.resolved === 1) message.success('已解决');
+      else message.info('该告警已解决或不存在');
+      void qc.invalidateQueries({ queryKey: ['alerts'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
+    },
+    onError: () => message.error('解决失败'),
   });
 }
 
