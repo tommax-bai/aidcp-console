@@ -4,6 +4,7 @@ import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useQuotaConfig, useSessionLimits, useResumeConfig } from '../api/queries';
+import { QueryError } from '../components/QueryGate';
 import type {
   QuotaConfigRow,
   QuotaConfigCatalog,
@@ -50,7 +51,7 @@ const GLOBAL_ROW_KEY = 'global';
  * - 不碰风控状态机（normal→warned→restricted→frozen 与档位）——本页只改限额 / 配置数字。
  */
 export function QuotasPage() {
-  const { data, isLoading } = useQuotaConfig();
+  const { data, isLoading, isError, refetch } = useQuotaConfig();
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -318,6 +319,20 @@ export function QuotasPage() {
 
   // 「可活跃时间」卡已整体移出本页（change content-schedule-auto-publish，2026-07-03 用户拍板）：
   // 活跃时段与可自动发内容位统一在「排期」页的三态周历编辑 / 查看，本页专注限额与看门狗数字。
+
+  // 任一读查询首次加载失败 → 诚实报错 + 重试全部（否则各卡永久骨架屏）。
+  if (isError || sl.isError || rc.isError) {
+    return (
+      <QueryError
+        title="加载安全配置失败"
+        onRetry={() => {
+          void refetch();
+          void sl.refetch();
+          void rc.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="page-stack">

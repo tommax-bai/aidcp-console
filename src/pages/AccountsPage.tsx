@@ -2,13 +2,14 @@ import { App, Button, Card, Popconfirm, Space } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
 import { useAccounts } from '../api/queries';
+import { QueryError } from '../components/QueryGate';
 import { AccountsTable, RiskControls } from '../components';
 import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
 export function AccountsPage() {
-  const { data, isLoading } = useAccounts();
+  const { data, isLoading, isError, refetch } = useAccounts();
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -76,6 +77,8 @@ export function AccountsPage() {
       <RiskControls account={a} />
     </Space>
   );
+
+  if (isError) return <QueryError title="加载账号列表失败" onRetry={() => refetch()} />;
 
   return (
     <div className="page-stack">

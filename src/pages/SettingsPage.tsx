@@ -3,6 +3,7 @@ import { Alert, App, Button, Card, Descriptions, Divider, Form, Input, Select, S
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useModelConfig } from '../api/queries';
+import { QueryError } from '../components/QueryGate';
 import type { ModelConfig } from '../types/api';
 
 const SOURCE_LABEL: Record<ModelConfig['credentials'][number]['source'], string> = {
@@ -18,7 +19,7 @@ const SOURCE_LABEL: Record<ModelConfig['credentials'][number]['source'], string>
  * 写非乐观——round-trip 后 invalidate 重取真态；文案诚实。
  */
 export function SettingsPage() {
-  const { data, isLoading } = useModelConfig();
+  const { data, isLoading, isError, refetch } = useModelConfig();
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -75,6 +76,8 @@ export function SettingsPage() {
       message.error(msg === 'cred_key_missing' ? '服务端未配置主加密密钥，无法保存密钥' : '密钥保存失败');
     },
   });
+
+  if (isError) return <QueryError title="加载模型配置失败" onRetry={() => refetch()} />;
 
   if (isLoading || !data) {
     return (

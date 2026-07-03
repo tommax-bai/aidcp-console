@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
 import { usePersonaConfig, useAccounts } from '../api/queries';
+import { QueryError } from '../components/QueryGate';
 import { ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { PersonaConfigRow, PersonaConfigCatalog, PersonaDetailView, PersonaSource } from '../types/api';
@@ -24,7 +25,7 @@ const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
  * - 写非乐观——round-trip 后 invalidate 重取真态；非法人设由服务端 soul 校验拦截，诚实拒绝绝不落库。
  */
 export function PersonaPage() {
-  const { data, isLoading } = usePersonaConfig();
+  const { data, isLoading, isError, refetch } = usePersonaConfig();
   const { data: accountsData } = useAccounts();
   // 账号列展示名走统一诚实回落（真名→运营名→ID）：人设目录只带 label，真名从账号列表 join 取。
   const nameOf = makeAccountNamer(accountsData?.accounts ?? []);
@@ -144,6 +145,8 @@ export function PersonaPage() {
       ),
     },
   ];
+
+  if (isError) return <QueryError title="加载账号人设失败" onRetry={() => refetch()} />;
 
   if (isLoading || !data) {
     return (

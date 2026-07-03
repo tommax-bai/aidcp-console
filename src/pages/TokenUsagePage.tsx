@@ -6,6 +6,7 @@ import type { EChartsOption } from 'echarts';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useLlmUsage, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
+import { QueryError } from '../components/QueryGate';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { LlmUsageRow } from '../types/api';
 import { roleLabel } from '../types/usageLabels';
@@ -196,6 +197,8 @@ export function TokenUsagePage() {
       <Card size="small" title="token 消耗曲线（每 10 分钟 · 总量）">
         {buckets.length > 0 ? (
           <ReactECharts option={chartOption} style={{ height: 320 }} notMerge />
+        ) : displayQuery.isError ? (
+          <QueryError title="加载 token 用量失败" onRetry={() => displayQuery.refetch()} />
         ) : (
           <Empty description={displayQuery.isLoading ? '加载中…' : '该时间段暂无数据'} />
         )}
@@ -212,6 +215,8 @@ export function TokenUsagePage() {
             dataSource={rows}
             loading={displayQuery.isLoading}
           />
+        ) : displayQuery.isError ? (
+          <QueryError title="加载 token 用量失败" onRetry={() => displayQuery.refetch()} />
         ) : (
           <Empty description={displayQuery.isLoading ? '加载中…' : '该时间段暂无数据'} />
         )}

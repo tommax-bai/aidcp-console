@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { usePanelWs, type WsStatus } from '../ws/panelWs';
 import { useAlerts, useInteractions, useDashboardSummary, useResolveAlert } from '../api/queries';
 import { AccountTotalsTable, AlertSeverityBadge, ProfileLink } from '../components';
+import { QueryError } from '../components/QueryGate';
 import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, type RiskAction } from '../types/aidcp-enums';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { PanelInteraction } from '../types/api';
@@ -141,7 +142,13 @@ export function MonitorPage() {
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={interactionColumns}
           dataSource={interactions.data?.interactions ?? []}
-          locale={{ emptyText: '暂无互动记录' }}
+          locale={{
+            emptyText: interactions.isError ? (
+              <QueryError title="加载互动记录失败" onRetry={() => interactions.refetch()} />
+            ) : (
+              '暂无互动记录'
+            ),
+          }}
         />
       </Card>
 
@@ -186,6 +193,8 @@ export function MonitorPage() {
               </List.Item>
             )}
           />
+        ) : alerts.isError ? (
+          <QueryError title="加载告警失败" onRetry={() => alerts.refetch()} />
         ) : (
           <Empty description={alerts.isLoading ? '加载中…' : '暂无未解决告警'} />
         )}

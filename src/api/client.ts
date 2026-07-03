@@ -47,6 +47,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** 服务端细分原因（body.reason）；比粗错误名（message=body.error）更具体，供 UI 映射中文（#31）。 */
+    public readonly reason?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -85,13 +87,15 @@ async function request<T>(
   }
   if (!res.ok) {
     let message = res.statusText;
+    let reason: string | undefined;
     try {
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as { error?: string; reason?: string };
       if (body.error) message = body.error;
+      if (body.reason) reason = body.reason; // #31：保留细分原因，别只上屏粗错误码
     } catch {
       // 非 JSON 错误体，沿用 statusText
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, reason);
   }
   return (await res.json()) as T;
 }

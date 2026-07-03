@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useAccounts, useNotificationContacts } from '../api/queries';
 import { ProfileLink } from '../components';
+import { QueryError } from '../components/QueryGate';
 import type { PanelNotificationContact } from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
@@ -340,7 +341,13 @@ export function NotificationContactsPage() {
           dataSource={contacts.data?.contacts ?? []}
           loading={contacts.isLoading}
           pagination={{ pageSize: 20, showSizeChanger: true }}
-          locale={{ emptyText: <Empty description="暂无通知联系人" /> }}
+          locale={{
+            emptyText: contacts.isError ? (
+              <QueryError title="加载通知联系人失败" onRetry={() => contacts.refetch()} />
+            ) : (
+              <Empty description="暂无通知联系人" />
+            ),
+          }}
         />
       </Card>
     </div>

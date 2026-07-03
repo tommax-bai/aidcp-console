@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
 import { useRoleConfig, useCategoryConfig, useModelConfig, useAccounts } from '../api/queries';
+import { QueryError } from '../components/QueryGate';
 import { ProfileLink } from '../components';
 import { makeAccountNamer, accountName } from '../types/accountDisplay';
 import type {
@@ -67,7 +68,7 @@ function thinkingOnSupported(provider: string, model: string): boolean {
  * - 写非乐观——round-trip 后 invalidate 重取真态；模型名保存前由服务端探活，无效则诚实拒绝。
  */
 export function RolesPage() {
-  const { data, isLoading } = useRoleConfig();
+  const { data, isLoading, isError, refetch } = useRoleConfig();
   const { data: catData, isLoading: catLoading } = useCategoryConfig();
   const { data: modelCfg } = useModelConfig();
   const { data: accountsData } = useAccounts();
@@ -345,6 +346,8 @@ export function RolesPage() {
       ),
     },
   ];
+
+  if (isError) return <QueryError title="加载角色配置失败" onRetry={() => refetch()} />;
 
   if (isLoading || !data) {
     return (

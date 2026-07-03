@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Alert, App, Button, Card, Descriptions, Drawer, Empty, Input, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost, apiPut, ApiError } from '../api/client';
+import { apiPost, apiPut } from '../api/client';
+import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
+import { QueryError } from '../components/QueryGate';
 import type { PanelPublish } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
@@ -16,29 +18,13 @@ const PUBLISH_STATUS_LABEL: Record<string, string> = {
   draft: '草稿',
 };
 
-/** 编辑/审批的可区分拒因 → 说人话文案（change edit-note-draft-before-publish）。 */
+/**
+ * 编辑/审批的可区分拒因 → 说人话文案（change edit-note-draft-before-publish）。
+ * 收口于集中映射 errorText（change console-cloud-panel-hardening #31）：保留本函数签名与调用点，
+ * 内部委托到统一的错误码→中文映射，不再各页写死 switch。
+ */
 function reasonMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) {
-    switch (err.message) {
-      case 'version_conflict':
-        return '内容已被他处修改，请刷新后重试';
-      case 'version_stale':
-        return '内容已更新，请刷新后重新审批';
-      case 'already_decided':
-        return '该草稿正在审批处理中，请刷新';
-      case 'not_pending':
-        return '该草稿已不可编辑（非待审态）';
-      case 'not_found':
-        return '草稿不存在';
-      case 'missing_visibility':
-        return '可见范围不能为空';
-      case 'invalid_title':
-        return '标题不能为空';
-      default:
-        return fallback;
-    }
-  }
-  return fallback;
+  return errorText(err, fallback);
 }
 
 /** 生命周期标签：待审 / 已编辑待审(琥珀，飞书卡片已失效) / 已发布 / 失败 / 已否决。 */
@@ -249,6 +235,8 @@ export function ContentPage() {
             dataSource={published.data.items}
             loading={published.isLoading}
           />
+        ) : published.isError ? (
+          <QueryError title="加载发布内容失败" onRetry={() => published.refetch()} />
         ) : (
           <Empty description={published.isLoading ? '加载中…' : '暂无内容'} />
         )}

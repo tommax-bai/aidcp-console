@@ -16,7 +16,9 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
+import { errorText } from '../api/errorText';
 import { useContentSchedule, useContentScheduleGlobal, useSessionLimits } from '../api/queries';
+import { QueryError } from '../components/QueryGate';
 import type { ContentScheduleRow, ContentSchedulePatch, ContentScheduleCatalog } from '../types/api';
 import {
   WeekActiveGrid,
@@ -75,7 +77,7 @@ export function ContentSchedulePage() {
       void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] });
     },
     onError: (e) => {
-      message.error(`保存失败：${(e as Error).message}（已重取服务器真实状态）`);
+      message.error(`保存失败：${errorText(e)}（已重取服务器真实状态）`);
       void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
       void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] });
     },
@@ -144,7 +146,7 @@ export function ContentSchedulePage() {
       const msg = (e as Error).message;
       if (msg.includes('no_group_code')) message.error('该账号未配群码，请先到「账号」页录入关联群聊引流码');
       else if (msg.includes('shared_group_code')) message.error('该群码已配到其它账号——一码一号是防关联封号的硬要求，请改用独立群码');
-      else message.error(`保存失败：${msg}`);
+      else message.error(`保存失败：${errorText(e)}`); // #31：兜底走中文映射，不上屏英文机器码
     },
     // 成/败都回后台对一次账（exact:true 只重取本目录、不误伤前缀子键 …/'global'）。开关已乐观翻好，此 GET 不在关键路径、用户无感。
     onSettled: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true }),
@@ -334,6 +336,21 @@ export function ContentSchedulePage() {
   );
 
   const rows = catalog.data?.rows ?? [];
+
+  // 读失败：不回落到编造的默认周历掩码（fail-open 全活跃会被当真实配置展示）——诚实报错 + 重试全部。
+  // 与「真的读到空配置」（掩码为 null）区分：那种仍走 fail-open/fail-closed 默认，只有读失败才不许伪造。
+  if (sl.isError || global.isError || catalog.isError) {
+    return (
+      <QueryError
+        title="加载内容排期失败"
+        onRetry={() => {
+          void sl.refetch();
+          void global.refetch();
+          void catalog.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
