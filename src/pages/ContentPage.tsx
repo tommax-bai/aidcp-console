@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, App, Button, Card, Descriptions, Drawer, Empty, Input, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Collapse, Descriptions, Drawer, Empty, Input, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
@@ -93,6 +93,7 @@ export function ContentPage() {
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [accountFilter, setAccountFilter] = useState<string | undefined>(undefined);
+  const [pendingOnly, setPendingOnly] = useState(false); // #18：只看待审筛选
   // 抽屉当前打开的记录（含快照 contentVersion）；编辑态本地字段。
   const [viewing, setViewing] = useState<PanelPublish | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -210,19 +211,53 @@ export function ContentPage() {
         <Typography.Text>
           状态：<Tag>{queue.data?.status ?? '—'}</Tag>
         </Typography.Text>
+        {/* #18：展开生成管道快照（选题/正文/配图等中间产物），排查卡在哪一阶段，不必翻服务器日志。 */}
+        {queue.data?.snapshot != null && typeof queue.data.snapshot === 'object' ? (
+          <Collapse
+            size="small"
+            ghost
+            style={{ marginTop: 'var(--aidcp-space-2)' }}
+            items={[
+              {
+                key: 'snapshot',
+                label: '生成管道快照',
+                children: (
+                  <Descriptions size="small" column={1} bordered>
+                    {Object.entries(queue.data.snapshot as Record<string, unknown>).map(([k, v]) => (
+                      <Descriptions.Item key={k} label={k}>
+                        <Typography.Text style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                          {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                        </Typography.Text>
+                      </Descriptions.Item>
+                    ))}
+                  </Descriptions>
+                ),
+              },
+            ]}
+          />
+        ) : null}
       </Card>
 
       <Card
         size="small"
         title="发布内容（待审可编辑 / 已发布历史）"
         extra={
-          <Select
-            size="small"
-            style={{ width: 180 }}
-            value={accountFilter ?? ''}
-            onChange={(v) => setAccountFilter(v || undefined)}
-            options={accountOptions}
-          />
+          <Space>
+            <Switch
+              size="small"
+              checkedChildren="只看待审"
+              unCheckedChildren="全部"
+              checked={pendingOnly}
+              onChange={setPendingOnly}
+            />
+            <Select
+              size="small"
+              style={{ width: 180 }}
+              value={accountFilter ?? ''}
+              onChange={(v) => setAccountFilter(v || undefined)}
+              options={accountOptions}
+            />
+          </Space>
         }
       >
         {published.data && published.data.items.length > 0 ? (
@@ -232,7 +267,11 @@ export function ContentPage() {
             rowKey="id"
             pagination={false}
             columns={buildColumns(openDrawer)}
-            dataSource={published.data.items}
+            dataSource={
+              pendingOnly
+                ? published.data.items.filter((it) => it.status === 'pending_approval')
+                : published.data.items
+            }
             loading={published.isLoading}
           />
         ) : published.isError ? (
