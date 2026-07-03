@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert, App, Button, Card, Collapse, Descriptions, Drawer, Empty, Input, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -92,7 +93,15 @@ function buildColumns(onOpen: (row: PanelPublish) => void): ColumnsType<PanelPub
 export function ContentPage() {
   const { message } = App.useApp();
   const qc = useQueryClient();
-  const [accountFilter, setAccountFilter] = useState<string | undefined>(undefined);
+  // #17：账号筛选进 URL query（?account=<id>），可分享/刷新保持；空/全部时删除该参数（其它 query 保留）。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accountFilter = searchParams.get('account') ?? undefined;
+  const setAccountFilter = (id: string | undefined) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('account', id);
+    else next.delete('account');
+    setSearchParams(next);
+  };
   const [pendingOnly, setPendingOnly] = useState(false); // #18：只看待审筛选
   // 抽屉当前打开的记录（含快照 contentVersion）；编辑态本地字段。
   const [viewing, setViewing] = useState<PanelPublish | null>(null);

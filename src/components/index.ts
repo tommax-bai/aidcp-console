@@ -7,4 +7,3 @@ export { AccountTotalsTable } from './AccountTotalsTable';
 export { RiskControls } from './RiskControls';
 export { DispatchControl } from './DispatchControl';
 export { ProfileLink } from './ProfileLink';
-export { writeResultText, type WriteOutcome } from './honest-write-result';

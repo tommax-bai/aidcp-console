@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert, Card, DatePicker, Empty, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import ReactECharts from 'echarts-for-react';
@@ -34,7 +35,15 @@ function distinct(values: string[]): string[] {
 export function TokenUsagePage() {
   // 默认窗：近 24 小时（曲线 144 桶）。
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => [dayjs().subtract(24, 'hour'), dayjs()]);
-  const [accountId, setAccountId] = useState<string | undefined>();
+  // #17：账号筛选进 URL query（?account=<id>），可分享/刷新保持；清空/全部时删除该参数（其它 query 保留）。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accountId = searchParams.get('account') ?? undefined;
+  const setAccountId = (id: string | undefined) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('account', id);
+    else next.delete('account');
+    setSearchParams(next);
+  };
   const [role, setRole] = useState<string | undefined>();
   const [model, setModel] = useState<string | undefined>();
 

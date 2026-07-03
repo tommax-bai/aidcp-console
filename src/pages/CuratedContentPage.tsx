@@ -1,4 +1,5 @@
 import { useState, useMemo, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -88,7 +89,15 @@ export function CuratedContentPage() {
   const accounts = useAccounts();
 
   // 默认「全部账号」：全账号合并视图，每行带归属账号、删除按行账号路由。可在右上切到单个账号。
-  const [accountId, setAccountId] = useState<string>(ALL_ACCOUNTS);
+  // #17：账号筛选进 URL query（?account=<id>），可分享/刷新保持；全部账号时删除该参数（其它 query 保留）。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accountId = searchParams.get('account') ?? ALL_ACCOUNTS;
+  const setAccountId = (id: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (id && id !== ALL_ACCOUNTS) next.set('account', id);
+    else next.delete('account');
+    setSearchParams(next);
+  };
   const [contentType, setContentType] = useState<'note' | 'comment' | undefined>(undefined);
   const [admitReason, setAdmitReason] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);

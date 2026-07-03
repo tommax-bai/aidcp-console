@@ -27,6 +27,23 @@ const columns: ColumnsType<PanelAccount> = [
     ),
   },
   {
+    // #17：站内深链——一键跳到该账号在其它页的视图，带 ?account=<id> 深链（各页读 URL 预置账号筛选）。
+    // 与上方「账号名」的站外小红书主页 ProfileLink 互不影响：那是外链，这是站内导航。
+    title: '站内视图',
+    key: 'views',
+    width: 168,
+    render: (_, r) => {
+      const acc = encodeURIComponent(r.accountId);
+      return (
+        <Space size={4}>
+          <Link to={`/content?account=${acc}`}>内容</Link>
+          <Link to={`/usage?account=${acc}`}>用量</Link>
+          <Link to={`/notification-contacts?account=${acc}`}>联系人</Link>
+        </Space>
+      );
+    },
+  },
+  {
     title: '人设',
     key: 'persona',
     // 未绑人设（非 default）→「需设置人设」红标 + 跳转人设页；已绑 → 绿标；default 豁免 → 中性「默认人设」。

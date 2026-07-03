@@ -5,7 +5,8 @@
  * 天 0..6 = 周一..周日（与 cloud mondayBasedDayIndex 一致），按服务器本地时间。
  *
  * 语义中立：本组件只画「活跃/休眠」两态，具体含义（浏览会话 / 自动发帖）由使用页决定。
- * 抽自 QuotasPage 内嵌版，供安全页与内容排期页共用（当前内容排期页先用；QuotasPage 待后续去重复用）。
+ * 抽自 QuotasPage 早期内嵌版；后「可活跃时间」整块从安全页移到内容排期页（change content-schedule-auto-publish，
+ * commit 7d2c66f 一并删掉安全页的内嵌网格 + 掩码 helper），故当前唯一使用方为内容排期页，安全页已无内嵌网格需去重。
  */
 import { theme } from 'antd';
 

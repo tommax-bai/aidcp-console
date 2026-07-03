@@ -1,40 +1,17 @@
 import { Dropdown } from 'antd';
 import {
-  ClockCircleOutlined,
-  DashboardOutlined,
   DeploymentUnitOutlined,
   DownloadOutlined,
-  FileTextOutlined,
-  BulbOutlined,
-  IdcardOutlined,
-  FundOutlined,
-  ContactsOutlined,
-  MonitorOutlined,
-  RobotOutlined,
-  SafetyOutlined,
   SettingOutlined,
-  TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import type { ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { EDGE_DOWNLOAD, edgeDownloadUrl } from '../config/downloads';
+import { NAV_ROUTES } from '../routes';
 
-/** 主业务入口（顶部居中胶囊导航）。 */
-const BUSINESS: { key: string; label: string; icon: ReactNode }[] = [
-  { key: '/', label: '数据', icon: <DashboardOutlined /> },
-  { key: '/accounts', label: '账号', icon: <TeamOutlined /> },
-  { key: '/content', label: '内容', icon: <FileTextOutlined /> },
-  { key: '/content-schedule', label: '排期', icon: <ClockCircleOutlined /> },
-  { key: '/curated', label: '精选', icon: <BulbOutlined /> },
-  { key: '/notification-contacts', label: '互动联系人', icon: <ContactsOutlined /> },
-  { key: '/persona', label: '人设', icon: <IdcardOutlined /> },
-  { key: '/roles', label: '角色', icon: <RobotOutlined /> },
-  { key: '/quotas', label: '安全', icon: <SafetyOutlined /> },
-  { key: '/monitor', label: '监控', icon: <MonitorOutlined /> },
-  { key: '/usage', label: '用量', icon: <FundOutlined /> },
-];
+/** 主业务入口（顶部居中胶囊导航）：从单一来源 NAV_ROUTES 派生（#37），文案 / 图标 / 顺序与路由表同源。 */
+const BUSINESS = NAV_ROUTES;
 
 /** 当前路径是否命中某入口（'/' 精确匹配，其余按前缀，子路由保持高亮）。 */
 function isActive(pathname: string, key: string): boolean {
@@ -70,12 +47,12 @@ export function AppShell() {
           <nav className="pill pill--business" aria-label="主业务">
             {BUSINESS.map((item) => (
               <Link
-                key={item.key}
-                to={item.key}
-                className={`pill__btn${isActive(pathname, item.key) ? ' pill__btn--active' : ''}`}
+                key={item.path}
+                to={item.path}
+                className={`pill__btn${isActive(pathname, item.path) ? ' pill__btn--active' : ''}`}
               >
-                {item.icon}
-                <span>{item.label}</span>
+                {item.navIcon}
+                <span>{item.navLabel}</span>
               </Link>
             ))}
           </nav>

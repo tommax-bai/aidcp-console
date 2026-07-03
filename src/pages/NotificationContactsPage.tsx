@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { App, Alert, Card, Empty, Input, Select, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -45,7 +46,15 @@ export function NotificationContactsPage() {
   const qc = useQueryClient();
   const accounts = useAccounts();
   // 默认「全部账号」：全账号合并视图，每行带归属账号。可在右上切到单个账号。
-  const [accountId, setAccountId] = useState<string>(ALL_ACCOUNTS);
+  // #17：账号筛选进 URL query（?account=<id>），可分享/刷新保持；全部账号时删除该参数（其它 query 保留）。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accountId = searchParams.get('account') ?? ALL_ACCOUNTS;
+  const setAccountId = (id: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (id && id !== ALL_ACCOUNTS) next.set('account', id);
+    else next.delete('account');
+    setSearchParams(next);
+  };
   const effectiveAccountId = accountId === ALL_ACCOUNTS ? undefined : accountId;
   const allAccountsView = effectiveAccountId === undefined;
 

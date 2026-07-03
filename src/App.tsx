@@ -2,18 +2,7 @@ import { Navigate, Outlet, RouterProvider, createBrowserRouter, useLocation } fr
 import { useAuth } from './auth/AuthContext';
 import { AppShell } from './pages/AppShell';
 import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { AccountsPage } from './pages/AccountsPage';
-import { ContentPage } from './pages/ContentPage';
-import { ContentSchedulePage } from './pages/ContentSchedulePage';
-import { CuratedContentPage } from './pages/CuratedContentPage';
-import { MonitorPage } from './pages/MonitorPage';
-import { RolesPage } from './pages/RolesPage';
-import { QuotasPage } from './pages/QuotasPage';
-import { PersonaPage } from './pages/PersonaPage';
-import { TokenUsagePage } from './pages/TokenUsagePage';
-import { NotificationContactsPage } from './pages/NotificationContactsPage';
-import { SettingsPage } from './pages/SettingsPage';
+import { APP_ROUTES } from './routes';
 
 /** 路由守卫：未鉴权跳登录。 */
 function RequireAuth() {
@@ -34,20 +23,8 @@ const router = createBrowserRouter([
     children: [
       {
         element: <AppShell />,
-        children: [
-          { path: '/', element: <DashboardPage /> },
-          { path: '/accounts', element: <AccountsPage /> },
-          { path: '/content', element: <ContentPage /> },
-          { path: '/content-schedule', element: <ContentSchedulePage /> },
-          { path: '/curated', element: <CuratedContentPage /> },
-          { path: '/monitor', element: <MonitorPage /> },
-          { path: '/roles', element: <RolesPage /> },
-          { path: '/quotas', element: <QuotasPage /> },
-          { path: '/persona', element: <PersonaPage /> },
-          { path: '/usage', element: <TokenUsagePage /> },
-          { path: '/notification-contacts', element: <NotificationContactsPage /> },
-          { path: '/settings', element: <SettingsPage /> },
-        ],
+        // 路由清单从单一来源 APP_ROUTES 派生（#37），与 AppShell 的业务胶囊导航同源，避免两处手工维护漂移。
+        children: APP_ROUTES.map((r) => ({ path: r.path, element: r.element })),
       },
     ],
   },

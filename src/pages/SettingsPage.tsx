@@ -3,6 +3,7 @@ import { Alert, App, Button, Card, Descriptions, Divider, Form, Input, Select, S
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useModelConfig } from '../api/queries';
+import { useConfigMutation } from '../hooks/useConfigMutation';
 import { QueryError } from '../components/QueryGate';
 import type { ModelConfig } from '../types/api';
 
@@ -63,18 +64,16 @@ export function SettingsPage() {
     },
   });
 
-  const saveKey = useMutation({
+  // 密钥写：成功提示 + 清该厂商输入框 + invalidate 收口到 useConfigMutation（#34）。
+  // 失败文案与原逐字等价——唯一特判分支 cred_key_missing 已收录于 errorText 集中映射（同文案）、
+  // 其余回落 '密钥保存失败'，与原 onError 一致。
+  const saveKey = useConfigMutation({
     mutationFn: (v: { provider: string; field: string; value: string }) =>
       apiPut<{ provider: string; field: string; configured: boolean; maskedHint: string }>('/api/config/credential', v),
-    onSuccess: (_d, v) => {
-      message.success('密钥已加密保存，重启 cloud 后生效');
-      setKeyInputs((s) => ({ ...s, [v.provider]: '' }));
-      invalidate();
-    },
-    onError: (e) => {
-      const msg = (e as Error).message;
-      message.error(msg === 'cred_key_missing' ? '服务端未配置主加密密钥，无法保存密钥' : '密钥保存失败');
-    },
+    successMessage: '密钥已加密保存，重启 cloud 后生效',
+    invalidateKeys: [['config', 'model']],
+    errorFallback: '密钥保存失败',
+    onSuccess: (_d, v) => setKeyInputs((s) => ({ ...s, [v.provider]: '' })),
   });
 
   if (isError) return <QueryError title="加载模型配置失败" onRetry={() => refetch()} />;
