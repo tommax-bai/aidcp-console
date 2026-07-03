@@ -16,12 +16,13 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useContentSchedule, useContentScheduleGlobal } from '../api/queries';
+import { useContentSchedule, useContentScheduleGlobal, useSessionLimits } from '../api/queries';
 import type { ContentScheduleRow, ContentSchedulePatch } from '../types/api';
 import {
   WeekActiveGrid,
   EMPTY_MASK,
   FULL_ACTIVE_MASK,
+  cellIdx,
   countActive,
   isValidMask,
   setCell,
@@ -30,44 +31,96 @@ import {
 
 const CAP_MAX = 50;
 
-/** 内容网格 fail-closed：null / 非法（未配）一律视作全 0（不自动），与浏览掩码 null=全天活跃刻意相反。 */
-const maskForEdit = (m: string | null) => (m && isValidMask(m) ? m : EMPTY_MASK);
+/** 浏览活跃掩码 fail-open：null / 非法（未配）= 全天活跃（与 cloud 回落同口径）。 */
+const browseMaskForEdit = (m: string | null | undefined) => (m && isValidMask(m) ? m : FULL_ACTIVE_MASK);
+/** 内容掩码 fail-closed：null / 非法（未配）= 全 0（不自动），与浏览掩码刻意相反。 */
+const contentMaskForEdit = (m: string | null | undefined) => (m && isValidMask(m) ? m : EMPTY_MASK);
+/** 结构约束：内容位 ⊆ 活跃位（休眠格的自动标记一律裁掉）。 */
+const clampContent = (browse: string, content: string) =>
+  Array.from(content, (c, i) => (c === '1' && browse[i] === '1' ? '1' : '0')).join('');
 
 /** 展示名回落：nickname → label → accountId。 */
 const displayName = (r: ContentScheduleRow) => r.nickname || r.label || r.accountId;
 
 /**
  * 内容排期页（change content-schedule-auto-publish，Phase 1 只做发帖）。
- * - Card1：全局「内容可自动时段」网格——治「何时允许自动发帖」，与安全页那张「治浏览会话」的网格独立。
- * - Card2：每账号策略表——总开关 / 发帖开关 + 日上限 / 时段来源（跟随全局）。账号变多只加行。
- * 铁律：到点只自动生成草稿→飞书人审→通过才发（绝不自动发送）；手动 /publish 不受时段限制；
- *       格子=「何时允许自动尝试」非「保证发出」（无素材可诚实空槽、日上限/人审仍拦）。
- * 写非乐观——round-trip 后 invalidate 重取真态；非法值由服务端整块拒，绝不部分落库。
+ * 三态合一网格（用户拍板形态）：一张周历、点格循环 休眠 → 活跃 → 活跃+可自动 → 休眠；
+ * 底层仍是两个独立字段（浏览掩码 fail-open / 内容掩码 fail-closed），一次保存串行写两端点、诚实非乐观。
+ * 活跃层与「安全」页的「可活跃时间」是同一份数据——在这里改活跃格 = 改浏览会话时段（安全页已只读化）。
+ * 铁律：自动 ⊆ 活跃（休眠格绝不自动，云端另有强制闸）；到点只产草稿→飞书人审→通过才发；手动不受时段限制。
  */
 export function ContentSchedulePage() {
   const { message } = App.useApp();
   const qc = useQueryClient();
+  const sl = useSessionLimits();
   const global = useContentScheduleGlobal();
   const catalog = useContentSchedule();
 
-  // ── 全局内容格编辑弹窗 ──
+  // ── 三态网格编辑弹窗：browse（活跃层）+ content（自动位，⊆ browse） ──
   const [gridOpen, setGridOpen] = useState(false);
-  const [gridMask, setGridMask] = useState(EMPTY_MASK);
+  const [browseMask, setBrowseMask] = useState(FULL_ACTIVE_MASK);
+  const [contentMask, setContentMask] = useState(EMPTY_MASK);
 
-  const saveGlobal = useMutation({
-    mutationFn: (contentActiveMask: string) =>
-      apiPut<unknown>('/api/content-schedule/global', { contentActiveMask }),
-    onSuccess: () => {
-      message.success('已保存，下场排期即生效（热加载、无需重启）');
-      setGridOpen(false);
-      qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] });
+  const saveGrid = useMutation({
+    // 串行双写（两字段各有拥有端点，非原子）：任一失败诚实报错并整体重取真态；
+    // 中间态无安全风险——云端「自动 ⊆ 活跃」闸兜底，UI 不一致只影响显示、重试即收敛。
+    mutationFn: async ({ browse, content }: { browse: string; content: string }) => {
+      await apiPut<unknown>('/api/session-limits', { activeWeekMask: browse });
+      await apiPut<unknown>('/api/content-schedule/global', { contentActiveMask: content });
     },
-    onError: (e) => message.error(`保存失败：${(e as Error).message}`),
+    onSuccess: () => {
+      message.success('已保存：活跃时段 + 可自动时段。下场会话 / 下个排期槽即生效（热加载）');
+      setGridOpen(false);
+      void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] });
+    },
+    onError: (e) => {
+      message.error(`保存失败：${(e as Error).message}（已重取服务器真实状态）`);
+      void qc.invalidateQueries({ queryKey: ['config', 'session-limits'] });
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] });
+    },
   });
 
   const openGridEditor = () => {
-    setGridMask(maskForEdit(global.data?.contentActiveMask ?? null));
+    const b = browseMaskForEdit(sl.data?.activeWeekMask);
+    setBrowseMask(b);
+    setContentMask(clampContent(b, contentMaskForEdit(global.data?.contentActiveMask)));
     setGridOpen(true);
+  };
+
+  /** 点格三态循环：休眠 → 活跃 → 活跃+自动 → 休眠。 */
+  const cycleCell = (day: number, hour: number) => {
+    const i = cellIdx(day, hour);
+    const b = browseMask[i] === '1';
+    const c = contentMask[i] === '1';
+    if (!b) {
+      setBrowseMask((m) => setCell(m, day, hour, true)); // 休眠 → 活跃
+    } else if (!c) {
+      setContentMask((m) => setCell(m, day, hour, true)); // 活跃 → 活跃+自动
+    } else {
+      setBrowseMask((m) => setCell(m, day, hour, false)); // 活跃+自动 → 休眠（自动位随之裁掉）
+      setContentMask((m) => setCell(m, day, hour, false));
+    }
+  };
+
+  /** 行 / 列整体推进（同一三态循环）：有休眠 → 全活跃；无休眠但有未标自动 → 全活跃+自动；全自动 → 全休眠。 */
+  const cycleGroup = (cells: Array<[number, number]>) => {
+    const anyDormant = cells.some(([d, h]) => browseMask[cellIdx(d, h)] !== '1');
+    const anyUnmarked = cells.some(([d, h]) => contentMask[cellIdx(d, h)] !== '1');
+    let b = browseMask;
+    let c = contentMask;
+    for (const [d, h] of cells) {
+      if (anyDormant) {
+        b = setCell(b, d, h, true);
+      } else if (anyUnmarked) {
+        c = setCell(c, d, h, true);
+      } else {
+        b = setCell(b, d, h, false);
+        c = setCell(c, d, h, false);
+      }
+    }
+    setBrowseMask(b);
+    setContentMask(clampContent(b, c));
   };
 
   // ── 每账号策略写入（非乐观：成功后 invalidate 重取） ──
@@ -97,7 +150,9 @@ export function ContentSchedulePage() {
     });
   };
 
-  const previewMask = maskForEdit(global.data?.contentActiveMask ?? null);
+  const previewBrowse = browseMaskForEdit(sl.data?.activeWeekMask);
+  const previewContent = clampContent(previewBrowse, contentMaskForEdit(global.data?.contentActiveMask));
+  const loadingGrid = sl.isLoading || global.isLoading;
 
   const columns: ColumnsType<ContentScheduleRow> = useMemo(
     () => [
@@ -191,44 +246,40 @@ export function ContentSchedulePage() {
       <Alert
         type="info"
         showIcon
-        message="定时自动发帖（仍走人审）"
-        description="到点由云端自动生成帖子草稿 → 发飞书人审 → 通过才真发，绝不自动发送。手动 /publish 不受此页时段限制、随时可发。格子=「何时允许自动尝试」，非保证发出（无新素材会诚实空槽、日上限与人审仍会拦）。需在云端开启自动排期（AIDCP_CONTENT_SCHEDULE_AUTO）后本页配置才驱动触发。"
+        message="活跃时段与定时自动发帖（仍走人审）"
+        description="一张周历管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容——到点由云端生成草稿→飞书人审→通过才真发，绝不自动发送。休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（无新素材会诚实空槽、日上限与人审仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
       />
 
       <Card
         size="small"
-        title="内容可自动时段（全局）"
+        title="活跃与内容排期（全局周历）"
         extra={
-          <Button size="small" onClick={openGridEditor} disabled={global.isLoading}>
+          <Button size="small" onClick={openGridEditor} disabled={loadingGrid}>
             编辑
           </Button>
         }
       >
-        {global.isLoading ? (
+        {loadingGrid ? (
           <Skeleton active paragraph={{ rows: 3 }} />
         ) : (
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             <Space>
-              {global.data?.overridden ? (
-                <Tag color="green">已配置</Tag>
-              ) : (
-                <Tag>未配置（全休眠 = 不自动）</Tag>
-              )}
-              <Typography.Text type="secondary">
-                可自动 {countActive(previewMask)} / 168 小时
-              </Typography.Text>
+              <Tag color="green">活跃 {countActive(previewBrowse)} / 168 小时</Tag>
+              <Tag color={countActive(previewContent) > 0 ? 'blue' : 'default'}>
+                其中可自动发 {countActive(previewContent)} 小时
+              </Tag>
             </Space>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
-              绿=该小时允许账号自动发帖（仍逐条人审）、灰=不自动。此网格治「自动发帖」，与「安全」页那张治「浏览会话」的网格相互独立。缺省 / 未配 = 全休眠 = 完全不自动。
+              绿=活跃（允许浏览；即「安全」页的可活跃时间，此处为唯一编辑入口）、绿+白点=活跃且允许自动发内容、灰=休眠（不浏览、绝不自动）。
             </Typography.Paragraph>
-            <WeekActiveGrid mask={previewMask} readOnly />
+            <WeekActiveGrid mask={previewBrowse} overlayMask={previewContent} overlayTitle="可自动发内容" readOnly />
           </Space>
         )}
       </Card>
 
       <Card size="small" title="账号内容自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          每账号：总开关（默认关）→ 自动发帖开关 + 日上限。账号触发时刻在活跃小时内按账号错峰打散。默认时段跟随全局内容格。
+          每账号：总开关（默认关）→ 自动发帖开关 + 日上限。触发时刻在「可自动」小时内按账号错峰打散、逐日变化。
         </Typography.Paragraph>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />
@@ -244,56 +295,50 @@ export function ContentSchedulePage() {
       </Card>
 
       <Modal
-        title="编辑内容可自动时段（全局）"
+        title="编辑活跃与内容排期（全局）"
         open={gridOpen}
         onCancel={() => setGridOpen(false)}
         onOk={() => {
-          if (!isValidMask(gridMask)) {
+          if (!isValidMask(browseMask) || !isValidMask(contentMask)) {
             message.error('掩码非法（须 168 位 0/1）');
             return;
           }
-          saveGlobal.mutate(gridMask);
+          saveGrid.mutate({ browse: browseMask, content: clampContent(browseMask, contentMask) });
         }}
-        confirmLoading={saveGlobal.isPending}
+        confirmLoading={saveGrid.isPending}
         width={760}
         okText="保存"
         cancelText="取消"
       >
         <Space direction="vertical" size={10} style={{ width: '100%' }}>
           <Typography.Text type="secondary">
-            点格切该小时、点「天」名切整天、点小时号切整列。绿=允许自动发帖、灰=不自动。全休眠 = 完全不自动。
+            点格循环三态：休眠 → 活跃 → 活跃+可自动（白点）→ 休眠。点「天」名 / 小时号对整行 / 整列做同样推进。
+            改绿格即改浏览会话时段（与「安全」页同一份数据）。自动位只能落在活跃格上，格子转休眠时自动位随之清除。
           </Typography.Text>
-          <Space>
-            <Button size="small" onClick={() => setGridMask(workdayMask())}>
+          <Space wrap>
+            <Button size="small" onClick={() => { setBrowseMask(FULL_ACTIVE_MASK); setContentMask((c) => clampContent(FULL_ACTIVE_MASK, c)); }}>
+              全部活跃
+            </Button>
+            <Button size="small" onClick={() => { const b = workdayMask(); setBrowseMask(b); setContentMask((c) => clampContent(b, c)); }}>
               工作时间
             </Button>
-            <Button size="small" onClick={() => setGridMask(FULL_ACTIVE_MASK)}>
-              全开
+            <Button size="small" onClick={() => { setBrowseMask(EMPTY_MASK); setContentMask(EMPTY_MASK); }}>
+              全部休眠
             </Button>
-            <Button size="small" onClick={() => setGridMask(EMPTY_MASK)}>
-              全关
+            <Button size="small" onClick={() => setContentMask(EMPTY_MASK)}>
+              清空自动位
             </Button>
-            <Typography.Text type="secondary">可自动 {countActive(gridMask)} / 168 小时</Typography.Text>
+            <Typography.Text type="secondary">
+              活跃 {countActive(browseMask)} / 168，其中可自动 {countActive(clampContent(browseMask, contentMask))}
+            </Typography.Text>
           </Space>
           <WeekActiveGrid
-            mask={gridMask}
-            onToggleCell={(d, h) => setGridMask((m) => setCell(m, d, h, m[d * 24 + h] !== '1'))}
-            onToggleRow={(d) => {
-              const allOn = Array.from({ length: 24 }, (_, h) => gridMask[d * 24 + h] === '1').every(Boolean);
-              setGridMask((m) => {
-                let s = m;
-                for (let h = 0; h < 24; h++) s = setCell(s, d, h, !allOn);
-                return s;
-              });
-            }}
-            onToggleCol={(h) => {
-              const allOn = Array.from({ length: 7 }, (_, d) => gridMask[d * 24 + h] === '1').every(Boolean);
-              setGridMask((m) => {
-                let s = m;
-                for (let d = 0; d < 7; d++) s = setCell(s, d, h, !allOn);
-                return s;
-              });
-            }}
+            mask={browseMask}
+            overlayMask={clampContent(browseMask, contentMask)}
+            overlayTitle="可自动发内容"
+            onToggleCell={cycleCell}
+            onToggleRow={(d) => cycleGroup(Array.from({ length: 24 }, (_, h) => [d, h] as [number, number]))}
+            onToggleCol={(h) => cycleGroup(Array.from({ length: 7 }, (_, d) => [d, h] as [number, number]))}
           />
         </Space>
       </Modal>

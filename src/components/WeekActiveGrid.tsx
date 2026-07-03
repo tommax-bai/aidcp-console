@@ -36,12 +36,21 @@ export const workdayMask = () => {
  */
 export function WeekActiveGrid({
   mask,
+  overlayMask,
+  overlayTitle,
   readOnly,
   onToggleCell,
   onToggleRow,
   onToggleCol,
 }: {
   mask: string;
+  /**
+   * 叠加层掩码（168 位 '0'/'1'，可选）：'1' 且底层活跃 → 格内画标记点（三态渲染：休眠/活跃/活跃+标记）。
+   * change content-schedule-auto-publish：内容排期「可自动发」位直接标在活跃格里（用户拍板的格内标记形态）。
+   */
+  overlayMask?: string;
+  /** 标记位的悬浮文案（如「可自动发内容」）。 */
+  overlayTitle?: string;
   readOnly?: boolean;
   onToggleCell?: (day: number, hour: number) => void;
   onToggleRow?: (day: number) => void;
@@ -98,11 +107,13 @@ export function WeekActiveGrid({
             </div>
             {hours.map((h) => {
               const on = isCellActive(mask, day, h);
+              const marked = on && overlayMask ? isCellActive(overlayMask, day, h) : false;
+              const stateLabel = !on ? '休眠' : marked ? `活跃 + ${overlayTitle ?? '标记'}` : '活跃';
               return (
                 <div
                   key={h}
                   onClick={readOnly ? undefined : () => onToggleCell?.(day, h)}
-                  title={`${label} ${String(h).padStart(2, '0')}:00 — ${on ? '活跃' : '休眠'}`}
+                  title={`${label} ${String(h).padStart(2, '0')}:00 — ${stateLabel}`}
                   style={{
                     ...cellFlex,
                     height: cellH,
@@ -112,8 +123,23 @@ export function WeekActiveGrid({
                     background: on ? token.colorSuccess : token.colorFillSecondary,
                     cursor: readOnly ? 'default' : 'pointer',
                     transition: 'background 0.12s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
+                >
+                  {marked ? (
+                    <span
+                      style={{
+                        width: Math.max(4, Math.floor(cellH / 4)),
+                        height: Math.max(4, Math.floor(cellH / 4)),
+                        borderRadius: '50%',
+                        background: '#fff',
+                        boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
+                      }}
+                    />
+                  ) : null}
+                </div>
               );
             })}
           </div>
