@@ -513,6 +513,10 @@ export interface ContentScheduleRow {
   postEnabled: boolean;
   /** 发帖日上限；0=该动作不自动（与开关双保险）。 */
   postDailyCap: number;
+  /** 自动评论开关（change content-schedule-comments）。 */
+  commentEnabled: boolean;
+  /** 评论日上限；0=不自动。该时段「尝试」评论：自行搜索目标、可能 0 产出、每条需飞书人审。 */
+  commentDailyCap: number;
   maskSource: 'override' | 'global';
   hasOverrideMask: boolean;
   /** 侧表有行（false=纯默认=未配）。 */
@@ -531,6 +535,8 @@ export interface ContentSchedulePatch {
   autoEnabled?: boolean;
   postEnabled?: boolean;
   postDailyCap?: number;
+  commentEnabled?: boolean;
+  commentDailyCap?: number;
   /** 每账号时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。v1 前端不写此字段（留缝）。 */
   contentActiveMask?: string | null;
 }

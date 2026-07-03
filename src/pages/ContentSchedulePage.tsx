@@ -131,21 +131,26 @@ export function ContentSchedulePage() {
     onError: (e) => message.error(`保存失败：${(e as Error).message}`),
   });
 
-  // 日上限本地草稿（编辑中未提交值）；onBlur 提交。
+  // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${'post'|'comment'}`（两动作各自独立）。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
-  const commitCap = (r: ContentScheduleRow) => {
-    const draft = capDraft[r.accountId];
-    if (draft == null || draft === r.postDailyCap) {
+  const commitCap = (r: ContentScheduleRow, kind: 'post' | 'comment') => {
+    const key = `${r.accountId}:${kind}`;
+    const current = kind === 'post' ? r.postDailyCap : r.commentDailyCap;
+    const draft = capDraft[key];
+    if (draft == null || draft === current) {
       setCapDraft((d) => {
-        const { [r.accountId]: _drop, ...rest } = d;
+        const { [key]: _drop, ...rest } = d;
         return rest;
       });
       return;
     }
-    patchAccount.mutate({ accountId: r.accountId, patch: { postDailyCap: draft } });
+    patchAccount.mutate({
+      accountId: r.accountId,
+      patch: kind === 'post' ? { postDailyCap: draft } : { commentDailyCap: draft },
+    });
     setCapDraft((d) => {
-      const { [r.accountId]: _drop, ...rest } = d;
+      const { [key]: _drop, ...rest } = d;
       return rest;
     });
   };
@@ -201,10 +206,40 @@ export function ContentSchedulePage() {
             max={CAP_MAX}
             precision={0}
             disabled={!r.autoEnabled || !r.postEnabled}
-            value={capDraft[r.accountId] ?? r.postDailyCap}
-            onChange={(v) => setCapDraft((d) => ({ ...d, [r.accountId]: v }))}
-            onBlur={() => commitCap(r)}
-            onPressEnter={() => commitCap(r)}
+            value={capDraft[`${r.accountId}:post`] ?? r.postDailyCap}
+            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:post`]: v }))}
+            onBlur={() => commitCap(r, 'post')}
+            onPressEnter={() => commitCap(r, 'post')}
+            style={{ width: 88 }}
+          />
+        ),
+      },
+      {
+        title: '自动评论',
+        key: 'comment',
+        width: 130,
+        render: (_: unknown, r) => (
+          <Switch
+            checked={r.commentEnabled}
+            disabled={!r.autoEnabled}
+            onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { commentEnabled: v } })}
+          />
+        ),
+      },
+      {
+        title: '评论日上限',
+        key: 'commentCap',
+        width: 130,
+        render: (_: unknown, r) => (
+          <InputNumber
+            min={0}
+            max={CAP_MAX}
+            precision={0}
+            disabled={!r.autoEnabled || !r.commentEnabled}
+            value={capDraft[`${r.accountId}:comment`] ?? r.commentDailyCap}
+            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:comment`]: v }))}
+            onBlur={() => commitCap(r, 'comment')}
+            onPressEnter={() => commitCap(r, 'comment')}
             style={{ width: 88 }}
           />
         ),
@@ -279,7 +314,7 @@ export function ContentSchedulePage() {
 
       <Card size="small" title="账号内容自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          每账号：总开关（默认关）→ 自动发帖开关 + 日上限。触发时刻在「可自动」小时内按账号错峰打散、逐日变化。
+          每账号：总开关（默认关）→ 自动发帖 / 自动评论各自开关 + 日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论是「尝试」——自行搜索目标、可能 0 产出（如实回卡）、每条需飞书人审；自动路径过风控配额（手动 /comment 不受限）。
         </Typography.Paragraph>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />
