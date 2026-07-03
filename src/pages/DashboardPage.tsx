@@ -51,12 +51,33 @@ export function DashboardPage() {
       <Card size="small">
         <Row align="middle" gutter={16}>
           <Col flex="auto">{data && <Typography.Text>{healthLine(data)}</Typography.Text>}</Col>
+          {/* change dashboard-refresh-clarity：服务端 asOf 新鲜度标识——每轮轮询后推进，证明界面在实时更新、未冻结。 */}
+          {data && (
+            <Col>
+              <Space size={8}>
+                <Typography.Text type="secondary">
+                  数据截至 {new Date(data.asOf).toLocaleTimeString('zh-CN', { hour12: false })}
+                </Typography.Text>
+                <Tag color="processing">自动刷新中</Tag>
+              </Space>
+            </Col>
+          )}
           {/* V1 task 10.2：全局调度引擎启停（接 9.4 /dispatch；非乐观、回报真实在线 edge 数）。 */}
           <Col>
             <DispatchControl active={data?.dispatchActive ?? null} />
           </Col>
         </Row>
       </Card>
+
+      {/* change dashboard-refresh-clarity：无边缘在线时如实归因「无新数据」——诚实呈现，绝不伪造活跃感。 */}
+      {data && data.edgesOnline === 0 && (
+        <Alert
+          type="info"
+          showIcon
+          message="系统当前未在浏览：没有边缘端在线，故无新数据"
+          description="看板仍在自动刷新（上方「数据截至」时间持续推进）；边缘端上线并开始浏览后，各项计数才会有新变化。"
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col>

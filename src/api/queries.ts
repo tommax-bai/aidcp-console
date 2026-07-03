@@ -111,7 +111,10 @@ export function useDashboardSummary() {
   return useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: () => apiGet<DashboardSummary>('/api/dashboard/summary'),
-    refetchInterval: 15_000,
+    // change dashboard-refresh-clarity：10s 轮询 + 回窗即刷（块级覆盖 main.tsx 全局 false），
+    // 配合响应 asOf 渲染「数据截至 …」——每轮刷新 asOf 推进即证明界面未冻结。
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
   });
 }
 
