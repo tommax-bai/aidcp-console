@@ -33,7 +33,9 @@ const state = vi.hoisted(() => ({
   putCalls: [] as Array<{ path: string; body: unknown }>,
 }));
 
-vi.mock('../api/client', () => ({
+vi.mock('../api/client', async () => ({
+  // 保留真实 ApiError（errorText 的 `err instanceof ApiError` 依赖它——否则被 mock 成 undefined 会抛）。
+  ...(await vi.importActual<typeof import('../api/client')>('../api/client')),
   apiGet: vi.fn((path: string) => {
     if (path === '/api/content-schedule') return Promise.resolve({ rows: state.rows });
     if (path === '/api/session-limits') return Promise.resolve({ activeWeekMask: null });
