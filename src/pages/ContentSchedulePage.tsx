@@ -191,10 +191,15 @@ export function ContentSchedulePage() {
       {
         title: '账号',
         key: 'account',
+        width: 200,
         render: (_: unknown, r) => (
           <Space direction="vertical" size={0}>
             <span>{displayName(r)}</span>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }} className="tabular-nums">
+            <Typography.Text
+              type="secondary"
+              style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+              className="tabular-nums"
+            >
               {r.accountId}
             </Typography.Text>
           </Space>
@@ -214,7 +219,7 @@ export function ContentSchedulePage() {
       {
         title: '自动发帖',
         key: 'post',
-        width: 130,
+        width: 90,
         render: (_: unknown, r) => (
           <Switch
             checked={r.autoEnabled && r.postEnabled}
@@ -226,7 +231,7 @@ export function ContentSchedulePage() {
       {
         title: '发帖日上限',
         key: 'cap',
-        width: 130,
+        width: 96,
         render: (_: unknown, r) => (
           <InputNumber
             min={0}
@@ -237,14 +242,14 @@ export function ContentSchedulePage() {
             onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:post`]: v }))}
             onBlur={() => commitCap(r, 'post')}
             onPressEnter={() => commitCap(r, 'post')}
-            style={{ width: 88 }}
+            style={{ width: 60 }}
           />
         ),
       },
       {
         title: '自动评论',
         key: 'comment',
-        width: 130,
+        width: 90,
         render: (_: unknown, r) => (
           <Switch
             checked={r.autoEnabled && r.commentEnabled}
@@ -256,7 +261,7 @@ export function ContentSchedulePage() {
       {
         title: '评论日上限',
         key: 'commentCap',
-        width: 130,
+        width: 96,
         render: (_: unknown, r) => (
           <InputNumber
             min={0}
@@ -267,14 +272,14 @@ export function ContentSchedulePage() {
             onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:comment`]: v }))}
             onBlur={() => commitCap(r, 'comment')}
             onPressEnter={() => commitCap(r, 'comment')}
-            style={{ width: 88 }}
+            style={{ width: 60 }}
           />
         ),
       },
       {
         title: '自动群评',
         key: 'group',
-        width: 150,
+        width: 112,
         render: (_: unknown, r) => (
           <Space size={6}>
             <Switch
@@ -289,7 +294,7 @@ export function ContentSchedulePage() {
       {
         title: '群评日上限',
         key: 'groupCap',
-        width: 130,
+        width: 96,
         render: (_: unknown, r) => (
           <InputNumber
             min={0}
@@ -300,30 +305,24 @@ export function ContentSchedulePage() {
             onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:group`]: v }))}
             onBlur={() => commitCap(r, 'group')}
             onPressEnter={() => commitCap(r, 'group')}
-            style={{ width: 88 }}
+            style={{ width: 60 }}
           />
         ),
       },
       {
-        title: '时段',
-        key: 'window',
-        width: 120,
-        render: (_: unknown, r) =>
-          r.maskSource === 'override' ? (
-            <Tag color="blue">自定义</Tag>
-          ) : (
-            <Tag>跟随全局</Tag>
-          ),
-      },
-      {
         title: '最近修改',
         key: 'audit',
-        width: 160,
+        width: 170,
         render: (_: unknown, r) =>
           r.configured && r.updatedAt ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {r.updatedBy ?? '—'} · {new Date(r.updatedAt).toLocaleString()}
-            </Typography.Text>
+            <Space direction="vertical" size={0}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {r.updatedBy ?? '—'}
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                {new Date(r.updatedAt).toLocaleString()}
+              </Typography.Text>
+            </Space>
           ) : (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               未配（不自动）
