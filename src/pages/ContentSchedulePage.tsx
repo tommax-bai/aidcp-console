@@ -17,7 +17,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
 import { useContentSchedule, useContentScheduleGlobal, useSessionLimits } from '../api/queries';
-import type { ContentScheduleRow, ContentSchedulePatch } from '../types/api';
+import type { ContentScheduleRow, ContentSchedulePatch, ContentScheduleCatalog } from '../types/api';
 import {
   WeekActiveGrid,
   EMPTY_MASK,
@@ -123,17 +123,31 @@ export function ContentSchedulePage() {
     setContentMask(clampContent(b, c));
   };
 
-  // ── 每账号策略写入（非乐观：成功后 invalidate 重取） ──
+  // ── 每账号策略写入（乐观：点下去即翻，后台对账，失败回滚） ──
   const patchAccount = useMutation({
     mutationFn: ({ accountId, patch }: { accountId: string; patch: ContentSchedulePatch }) =>
       apiPut<unknown>(`/api/content-schedule/${encodeURIComponent(accountId)}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] }),
-    onError: (e) => {
+    // 乐观：先取消在途重取、快照旧目录、就地把这一行的「改动字段」合并进缓存 → 开关同帧翻，与网络快慢/事件循环脱钩。
+    // 铁律：只并 patch 字段（{...r, ...patch}）、绝不整行替换——JOIN 派生列（昵称/群码徽标/时段来源/configured）不在 patch 里，须原样保留，否则会把这几列刷空。
+    onMutate: async ({ accountId, patch }) => {
+      await qc.cancelQueries({ queryKey: ['config', 'content-schedule'] });
+      const prev = qc.getQueryData<ContentScheduleCatalog>(['config', 'content-schedule']);
+      qc.setQueryData<ContentScheduleCatalog>(['config', 'content-schedule'], (old) =>
+        old
+          ? { ...old, rows: old.rows.map((r) => (r.accountId === accountId ? { ...r, ...patch } : r)) }
+          : old,
+      );
+      return { prev };
+    },
+    onError: (e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['config', 'content-schedule'], ctx.prev); // 失败弹回服务器真态
       const msg = (e as Error).message;
       if (msg.includes('no_group_code')) message.error('该账号未配群码，请先到「账号」页录入关联群聊引流码');
       else if (msg.includes('shared_group_code')) message.error('该群码已配到其它账号——一码一号是防关联封号的硬要求，请改用独立群码');
       else message.error(`保存失败：${msg}`);
     },
+    // 成/败都回后台对一次账（exact:true 只重取本目录、不误伤前缀子键 …/'global'）。开关已乐观翻好，此 GET 不在关键路径、用户无感。
+    onSettled: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true }),
   });
 
   // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${'post'|'comment'}`（两动作各自独立）。
@@ -169,6 +183,9 @@ export function ContentSchedulePage() {
   const previewContent = clampContent(previewBrowse, contentMaskForEdit(global.data?.contentActiveMask));
   const loadingGrid = sl.isLoading || global.isLoading;
 
+  // 子开关（发帖/评论/群评）显示「有效态」= 总开关 && 本开关：总开关关时统一显示为关，与云端
+  // 「总开关关=整账号不自动」（content-scheduler 账号级闸）一致；且不写库、保留各子开关记忆值，
+  // 重开总开关即恢复。——消除「总开关关后子开关仍显示开却灰掉、关不掉」的假象（红线：不骗用户）。
   const columns: ColumnsType<ContentScheduleRow> = useMemo(
     () => [
       {
@@ -200,7 +217,7 @@ export function ContentSchedulePage() {
         width: 130,
         render: (_: unknown, r) => (
           <Switch
-            checked={r.postEnabled}
+            checked={r.autoEnabled && r.postEnabled}
             disabled={!r.autoEnabled}
             onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { postEnabled: v } })}
           />
@@ -230,7 +247,7 @@ export function ContentSchedulePage() {
         width: 130,
         render: (_: unknown, r) => (
           <Switch
-            checked={r.commentEnabled}
+            checked={r.autoEnabled && r.commentEnabled}
             disabled={!r.autoEnabled}
             onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { commentEnabled: v } })}
           />
@@ -261,7 +278,7 @@ export function ContentSchedulePage() {
         render: (_: unknown, r) => (
           <Space size={6}>
             <Switch
-              checked={r.groupCommentEnabled}
+              checked={r.autoEnabled && r.groupCommentEnabled}
               disabled={!r.autoEnabled || !r.hasGroupCode}
               onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { groupCommentEnabled: v } })}
             />
