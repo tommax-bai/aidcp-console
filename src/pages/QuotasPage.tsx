@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert, theme } from 'antd';
+import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
@@ -47,112 +46,6 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
 /** 单行全局表的稳定 key（全局配置只有一行）。 */
 const GLOBAL_ROW_KEY = 'global';
 
-// ── 「可活跃时间」周历掩码（change weekly-active-window）：7 天 × 24 小时 = 168 格 ──
-// 掩码为 168 长的 '0'/'1' 串：'1'=该小时活跃（允许开/续浏览会话）、'0'=休眠。
-// 索引 = 天 × 24 + 小时；天 0..6 = 周一..周日（与 cloud mondayBasedDayIndex 一致）。按服务器本地时间。
-// 编辑逻辑已并入「排期」页（change content-schedule-auto-publish），此处只留只读预览所需 helper。
-const WEEK_MASK_LEN = 168;
-const WEEK_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-const FULL_ACTIVE_MASK = '1'.repeat(WEEK_MASK_LEN); // 全周全天活跃（= 不限）
-const cellIdx = (day: number, hour: number) => day * 24 + hour;
-const isCellActive = (mask: string, day: number, hour: number) => mask[cellIdx(day, hour)] === '1';
-const countActive = (mask: string) => mask.split('').filter((c) => c === '1').length;
-const isValidMask = (m: string) => m.length === WEEK_MASK_LEN && /^[01]+$/.test(m);
-/** 视图掩码 → 预览串：null / 非法（未配置）一律视作全天活跃（与 cloud 回落同口径）。 */
-const maskForEdit = (m: string | null) => (m && isValidMask(m) ? m : FULL_ACTIVE_MASK);
-
-/**
- * 周历活跃时段网格（7 天 × 24 小时）。绿=活跃、灰=休眠。
- * 只读（卡片预览）或可编辑（弹窗）：点格切该小时、点「天」名切整天、点小时号切整列。
- */
-function WeekActiveGrid({
-  mask,
-  readOnly,
-  onToggleCell,
-  onToggleRow,
-  onToggleCol,
-}: {
-  mask: string;
-  readOnly?: boolean;
-  onToggleCell?: (day: number, hour: number) => void;
-  onToggleRow?: (day: number) => void;
-  onToggleCol?: (hour: number) => void;
-}) {
-  const { token } = theme.useToken();
-  // 格子横向**铺满卡片宽度**（flex 等分），不再用固定小尺寸挤在左侧；窄屏低于最小宽度时容器横向滚动。
-  const cellH = readOnly ? 18 : 26; // px：高度固定
-  const cellMinW = readOnly ? 14 : 18; // px：单格最小宽（决定何时出现横向滚动）
-  const labelW = 52; // px：星期标签列固定宽
-  const minWidth = labelW + 24 * cellMinW + 8;
-  const hours = Array.from({ length: 24 }, (_, h) => h);
-  const cellFlex = { flex: '1 1 0', minWidth: cellMinW } as const;
-  return (
-    <div style={{ width: '100%', overflowX: 'auto' }}>
-      <div style={{ width: '100%', minWidth, userSelect: 'none' }}>
-        {/* 小时表头（偶数小时标号；可编辑时点号切整列）。gap 与下方天行一致，保证小时号与格子列对齐。 */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, marginBottom: 3 }}>
-          <div style={{ flex: `0 0 ${labelW}px` }} />
-          {hours.map((h) => (
-            <div
-              key={h}
-              onClick={readOnly ? undefined : () => onToggleCol?.(h)}
-              title={readOnly ? undefined : `切换所有天的 ${String(h).padStart(2, '0')}:00`}
-              style={{
-                ...cellFlex,
-                textAlign: 'center',
-                fontSize: 11,
-                lineHeight: '14px',
-                color: token.colorTextSecondary,
-                cursor: readOnly ? 'default' : 'pointer',
-              }}
-            >
-              {h % 2 === 0 ? h : ''}
-            </div>
-          ))}
-        </div>
-        {/* 7 天 × 24 小时格 */}
-        {WEEK_DAYS.map((label, day) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
-            <div
-              onClick={readOnly ? undefined : () => onToggleRow?.(day)}
-              title={readOnly ? undefined : `切换整天：${label}`}
-              style={{
-                flex: `0 0 ${labelW}px`,
-                fontSize: 12,
-                paddingRight: 6,
-                textAlign: 'right',
-                color: token.colorText,
-                cursor: readOnly ? 'default' : 'pointer',
-              }}
-            >
-              {label}
-            </div>
-            {hours.map((h) => {
-              const on = isCellActive(mask, day, h);
-              return (
-                <div
-                  key={h}
-                  onClick={readOnly ? undefined : () => onToggleCell?.(day, h)}
-                  title={`${label} ${String(h).padStart(2, '0')}:00 — ${on ? '活跃' : '休眠'}`}
-                  style={{
-                    ...cellFlex,
-                    height: cellH,
-                    boxSizing: 'border-box',
-                    borderRadius: 2,
-                    border: `1px solid ${on ? token.colorSuccess : token.colorBorderSecondary}`,
-                    background: on ? token.colorSuccess : token.colorFillSecondary,
-                    cursor: readOnly ? 'default' : 'pointer',
-                    transition: 'background 0.12s',
-                  }}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /**
  * 安全配置页（安全 tab）。三块全局配置，自上而下：
@@ -429,36 +322,11 @@ export function QuotasPage() {
     { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigView) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
   ];
 
-  // ── 可活跃时间（全局周历，change weekly-active-window）：本卡已只读化（change content-schedule-auto-publish）。
-  // 编辑入口并入「排期」页的三态网格（活跃层与自动发内容位一处编辑），此处仅保留预览，防两处可写互相改乱。
+  // 「可活跃时间」卡已整体移出本页（change content-schedule-auto-publish，2026-07-03 用户拍板）：
+  // 活跃时段与可自动发内容位统一在「排期」页的三态周历编辑 / 查看，本页专注限额与看门狗数字。
 
   return (
     <div className="page-stack">
-      <Card size="small" title="可活跃时间（全局）">
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="按周 × 天 × 小时的「允许活跃」时段，对所有账号生效（按服务器本地时间）。绿=活跃（允许开 / 续浏览会话）、灰=休眠（不开；会话运行中跨入休眠时段则结束当前会话）。未配置 = 全周全天活跃（不限）。本卡为只读预览——编辑已并入「排期」页（一张网格同时管活跃时段与可自动发内容的白点标记）。"
-        />
-        {sl.isLoading || !sl.data ? (
-          <Skeleton active />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {sl.data.activeWeekMask ? <Tag color="green">已配置</Tag> : <Tag>全天活跃（未配置）</Tag>}
-              <Typography.Text type="secondary">
-                活跃 {countActive(maskForEdit(sl.data.activeWeekMask))} / 168 小时
-              </Typography.Text>
-              <Link to="/content-schedule">
-                <Button size="small">去「排期」页编辑</Button>
-              </Link>
-            </div>
-            <WeekActiveGrid mask={maskForEdit(sl.data.activeWeekMask)} readOnly />
-          </div>
-        )}
-      </Card>
-
       <Card size="small" title="单场会话上限（全局）">
         <Alert
           type="info"
