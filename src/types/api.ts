@@ -10,6 +10,13 @@ export interface VersionPayload {
     riskAction: RiskAction[];
     /** V1 task 9.5 落地后补（漂移哨兵）。 */
     alertSeverity: AlertSeverity[];
+    /** 文本/图片生成厂商全集（手工镜像 cloud；哨兵对拍，change console-cloud-panel-hardening #5/#6）。 */
+    textProvider: string[];
+    imageProvider: string[];
+  };
+  /** 关键 DTO 字段指纹（手工镜像 cloud；哨兵对拍防漂移，#6）。 */
+  dtoFields: {
+    panelAccount: string[];
   };
 }
 
@@ -204,16 +211,24 @@ export interface TextProviderOption {
   baseUrl: string;
 }
 
+/** 可选图片厂商项（手工镜像 cloud ImageProviderView，change console-cloud-panel-hardening #5）。 */
+export interface ImageProviderOption {
+  id: string;
+  displayName: string;
+}
+
 /** GET /api/config/model 形状（change model-config-volcengine-provider：多厂商）。 */
 export interface ModelConfig {
   /** 选中的全局文本厂商。 */
   textProvider: string;
-  /** 图片厂商钉死 dashscope（图片不动）。 */
-  imageProvider: 'dashscope';
+  /** 选中的全局图片厂商（change console-cloud-panel-hardening #5：不再钉死 dashscope，读 cloud 真实配置）。 */
+  imageProvider: string;
   textModel: string;
   imageModel: string;
   /** 可选文本厂商列表。 */
   providers: TextProviderOption[];
+  /** 可选图片厂商列表（#5：设置页图片厂商下拉数据源；手工镜像 cloud）。 */
+  imageProviders: ImageProviderOption[];
   /** 各厂商凭据状态。 */
   credentials: ModelConfigCredential[];
   /** 主加密密钥是否就位——凭据能否在后台编辑。 */

@@ -25,6 +25,7 @@ export function SettingsPage() {
   const [textProvider, setTextProvider] = useState('');
   const [textModel, setTextModel] = useState('');
   const [imageModel, setImageModel] = useState('');
+  const [imageProvider, setImageProvider] = useState('');
   // 各厂商 key 输入（密钥永不回灌——永不回显明文）。
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
 
@@ -34,13 +35,14 @@ export function SettingsPage() {
       setTextProvider(data.textProvider);
       setTextModel(data.textModel);
       setImageModel(data.imageModel);
+      setImageProvider(data.imageProvider);
     }
   }, [data]);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['config', 'model'] });
 
   const saveModel = useMutation({
-    mutationFn: (v: { textProvider: string; textModel: string; imageModel: string }) =>
+    mutationFn: (v: { textProvider: string; textModel: string; imageModel: string; imageProvider: string }) =>
       apiPut<ModelConfig>('/api/config/model', v),
     onSuccess: () => {
       message.success('模型已保存，已即时生效');
@@ -94,7 +96,7 @@ export function SettingsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="文本厂商与模型名改完即时生效；各厂商 API 密钥加密落库、掩码显示、永不回显，改密钥后需重启 cloud 才生效。图片仍走通义万相（DashScope）。"
+          message="文本 / 图片厂商与模型名改完即时生效；各厂商 API 密钥加密落库、掩码显示、永不回显，改密钥后需重启 cloud 才生效。"
         />
 
         <Form layout="vertical" requiredMark={false} style={{ maxWidth: 480 }}>
@@ -120,15 +122,28 @@ export function SettingsPage() {
               placeholder="如 qwen-turbo / qwen-plus 或火山 doubao-… / ep-…"
             />
           </Form.Item>
-          <Form.Item label="图片模型（通义万相 · DashScope）">
-            <Input value={imageModel} onChange={(e) => setImageModel(e.target.value)} placeholder="如 wan2.7-image-pro" />
+          <Form.Item label="全局图片厂商" extra="图片生成走此厂商（通义万相 / 火山即梦 Seedream），独立于文本厂商。火山需先在下方配置其 API 密钥。">
+            <Select
+              value={imageProvider}
+              onChange={setImageProvider}
+              options={data.imageProviders.map((p) => ({ value: p.id, label: p.displayName }))}
+              style={{ maxWidth: 320 }}
+            />
+          </Form.Item>
+          <Form.Item label="默认模型（图片）" extra="全局图片模型名。切换厂商后按需改成该厂商的模型名。">
+            <Input value={imageModel} onChange={(e) => setImageModel(e.target.value)} placeholder="如 wan2.7-image-pro / doubao-seedream-…" />
           </Form.Item>
           <Button
             type="primary"
             loading={saveModel.isPending}
-            disabled={!textProvider || !textModel.trim() || !imageModel.trim()}
+            disabled={!textProvider || !imageProvider || !textModel.trim() || !imageModel.trim()}
             onClick={() =>
-              saveModel.mutate({ textProvider, textModel: textModel.trim(), imageModel: imageModel.trim() })
+              saveModel.mutate({
+                textProvider,
+                textModel: textModel.trim(),
+                imageModel: imageModel.trim(),
+                imageProvider,
+              })
             }
           >
             保存模型

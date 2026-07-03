@@ -41,7 +41,7 @@ function makeSummary(overrides: Partial<DashboardSummary> = {}): DashboardSummar
   return {
     asOf: AS_OF,
     edgesOnline: 0,
-    totals: { view: 0, like: 0, collect: 0, comment: 0, follow: 0, publish: 0 },
+    totals: { view: 0, like: 0, collect: 0, comment: 0, follow: 0, publish: 0, comment_like: 0 },
     totalsByAccount: [],
     likeRate: { likes: 0, views: 0, rate: null, healthy: null },
     accounts: [],

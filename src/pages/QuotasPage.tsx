@@ -13,22 +13,16 @@ import type {
   SessionInteractionBudget,
   ResumeConfigView,
 } from '../types/api';
+import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, RISK_ACTION_LABEL } from '../types/aidcp-enums';
 
 const QUOTA_MAX = 100_000;
 
-const TIER_LABEL: Record<QuotaTier, { text: string; color: string; order: number }> = {
-  conservative: { text: '保守', color: 'green', order: 1 },
-  normal: { text: '正常', color: 'blue', order: 2 },
-  aggressive: { text: '激进', color: 'orange', order: 3 },
-};
-const ACTION_LABEL: Record<QuotaAction, { text: string; order: number }> = {
-  view: { text: '浏览', order: 1 },
-  like: { text: '点赞', order: 2 },
-  collect: { text: '收藏', order: 3 },
-  comment: { text: '评论', order: 4 },
-  comment_like: { text: '评论赞', order: 5 },
-  follow: { text: '关注', order: 6 },
-  publish: { text: '发布', order: 7 },
+// 档位/动作的中文标签与配色复用全站公用枚举（change console-cloud-panel-hardening #36：
+// 档位用冷色系 RISK_QUOTA_COLOR，与风控状态暖色徽标构造级分离；本页不再私自用绿/橙暖色，
+// 那会与「全站绿=正常状态」语义冲突）。公用枚举无展示排序，故本页仅保留 order 附加。
+const TIER_ORDER: Record<QuotaTier, number> = { conservative: 1, normal: 2, aggressive: 3 };
+const ACTION_ORDER: Record<QuotaAction, number> = {
+  view: 1, like: 2, collect: 3, comment: 4, comment_like: 5, follow: 6, publish: 7,
 };
 
 const rowKey = (r: { tier: string; action: string }) => `${r.tier}:${r.action}`;
@@ -102,8 +96,8 @@ export function QuotasPage() {
         .slice()
         .sort(
           (a, b) =>
-            TIER_LABEL[a.tier].order - TIER_LABEL[b.tier].order ||
-            ACTION_LABEL[a.action].order - ACTION_LABEL[b.action].order,
+            TIER_ORDER[a.tier] - TIER_ORDER[b.tier] ||
+            ACTION_ORDER[a.action] - ACTION_ORDER[b.action],
         ),
     [data],
   );
@@ -112,8 +106,8 @@ export function QuotasPage() {
   const canSave = validNum(daily) && validNum(perMinute) && validNum(perHour);
 
   const columns: ColumnsType<QuotaConfigRow> = [
-    { title: '档位', dataIndex: 'tier', width: 90, render: (t: QuotaTier) => <Tag color={TIER_LABEL[t].color}>{TIER_LABEL[t].text}</Tag> },
-    { title: '动作', dataIndex: 'action', width: 110, render: (a: QuotaAction) => ACTION_LABEL[a].text },
+    { title: '档位', dataIndex: 'tier', width: 90, render: (t: QuotaTier) => <Tag color={RISK_QUOTA_COLOR[t]}>{RISK_QUOTA_LABEL[t]}</Tag> },
+    { title: '动作', dataIndex: 'action', width: 110, render: (a: QuotaAction) => RISK_ACTION_LABEL[a] },
     { title: '每日', dataIndex: 'daily', width: 90, render: (n: number) => <span className="tabular-nums">{n}</span> },
     { title: '每分钟', dataIndex: 'perMinute', width: 90, render: (n: number) => <span className="tabular-nums">{n}</span> },
     { title: '每小时', dataIndex: 'perHour', width: 90, render: (n: number) => <span className="tabular-nums">{n}</span> },
@@ -408,7 +402,7 @@ export function QuotasPage() {
       </Card>
 
       <Modal
-        title={editing ? `编辑限额：${TIER_LABEL[editing.tier].text} · ${ACTION_LABEL[editing.action].text}` : ''}
+        title={editing ? `编辑限额：${RISK_QUOTA_LABEL[editing.tier]} · ${RISK_ACTION_LABEL[editing.action]}` : ''}
         open={!!editing}
         onCancel={() => setEditing(null)}
         confirmLoading={save.isPending}
