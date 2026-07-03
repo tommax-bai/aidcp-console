@@ -31,4 +31,6 @@ npm run build             # tsc --noEmit + vite build → dist/
 
 ## 部署
 
-`vite build` → `dist/` rsync 到 ECS `/opt/aidcp/console`，由 Nginx 反代静态 + `/api` + `/ws` 到 `127.0.0.1:AIDCP_PANEL_PORT`（与 isales 服务隔离，且绝不暴露 8787 边↔云 WebSocket——8787 是 edge↔cloud 的 ws，不是 isales 端口，见中控仓 change task 7）。
+**部署前测试闸（change console-cloud-panel-hardening #32）**：直接部署路径 MUST 先 `npm test`（vitest 须全绿）+ `npm run typecheck`，再 `vite build`——坏改动不得静默过构建进 `dist/`（typecheck 抓不到行为回归，尤其审批 CAS 链）。经 `land-change` 集成时已跑测试，此闸补「不走 land-change 的直接部署路径」。
+
+`npm test` → `npm run typecheck` → `vite build` → `dist/` rsync 到 ECS `/opt/aidcp/console`，由 Nginx 反代静态 + `/api` + `/ws` 到 `127.0.0.1:AIDCP_PANEL_PORT`（与 isales 服务隔离，且绝不暴露 8787 边↔云 WebSocket——8787 是 edge↔cloud 的 ws，不是 isales 端口，见中控仓 change task 7）。
