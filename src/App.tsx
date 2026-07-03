@@ -1,4 +1,4 @@
-import { Navigate, Outlet, RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { Navigate, Outlet, RouterProvider, createBrowserRouter, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { AppShell } from './pages/AppShell';
 import { LoginPage } from './pages/LoginPage';
@@ -18,7 +18,13 @@ import { SettingsPage } from './pages/SettingsPage';
 /** 路由守卫：未鉴权跳登录。 */
 function RequireAuth() {
   const { authed } = useAuth();
-  return authed ? <Outlet /> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  // #24：带来源路径，登录后回原页（而非硬编码首页，保住工作现场：筛选/正在看的账号等）。
+  return authed ? (
+    <Outlet />
+  ) : (
+    <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+  );
 }
 
 const router = createBrowserRouter([

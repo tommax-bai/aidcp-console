@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, Card, Form, Input, Typography } from 'antd';
 import { DeploymentUnitOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, UnauthorizedError } from '../api/client';
 
@@ -9,6 +9,8 @@ import { ApiError, UnauthorizedError } from '../api/client';
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from ?? '/';
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function LoginPage() {
     setError(null);
     try {
       await login(values.username, values.password);
-      navigate('/', { replace: true });
+      navigate(from, { replace: true }); // #24：登录后回来源页
     } catch (e) {
       if (e instanceof UnauthorizedError || (e instanceof ApiError && e.status === 401)) {
         setError('用户名或密码错误');

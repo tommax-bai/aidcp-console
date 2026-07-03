@@ -128,3 +128,47 @@ export function apiPut<T>(path: string, body?: unknown): Promise<T> {
 export function apiDelete<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' });
 }
+
+/** 触发已注册的会话过期处理（WS 收到 4401 时用，与 HTTP 401 同流程；change console-cloud-panel-hardening #25）。 */
+export function notifySessionExpired(): void {
+  sessionExpiredHandler?.();
+}
+
+/** 当前 token 距过期的毫秒数（解析 JWT exp）；无 token / 解析失败 → null（#24 活跃续签用）。 */
+export function tokenExpiresInMs(nowMs: number = Date.now()): number | null {
+  if (!token) return null;
+  try {
+    const json = atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json) as { exp?: unknown };
+    if (typeof payload.exp !== 'number') return null;
+    return payload.exp * 1000 - nowMs;
+  } catch {
+    return null;
+  }
+}
+
+/** 滑动续签（#24）：持当前未过期 token 换发新 token；成功即 setToken 并返回 true，活跃使用不被定长 TTL 踢。 */
+export async function refreshToken(): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const r = await request<{ token: string; expiresIn: number }>(
+      '/api/auth/refresh',
+      { method: 'POST' },
+      { notifySessionExpired: false },
+    );
+    setToken(r.token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 登出（#26）：通知服务端拉黑当前 jti，使 token 立即失效。失败静默（前端仍会本地清 token）。 */
+export async function logoutServer(): Promise<void> {
+  if (!token) return;
+  try {
+    await request('/api/auth/logout', { method: 'POST' }, { notifySessionExpired: false });
+  } catch {
+    /* 服务端登出失败不阻塞前端登出 */
+  }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getToken } from '../api/client';
+import { getToken, notifySessionExpired } from '../api/client';
 
 /** 面板 WS 帧（与 cloud src/panel/panel-ws.ts 的 PanelFrame 对齐）。 */
 export interface PanelFrame {
@@ -30,9 +30,13 @@ export function usePanelWs(max = 500) {
         setStatus('offline');
         return;
       }
-      const wsUrl = `${location.origin.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(token)}`;
+      // #25：token 不再拼进 URL（明文落 Nginx 日志），改连上后首帧发送。
+      const wsUrl = `${location.origin.replace(/^http/, 'ws')}/ws`;
       ws = new WebSocket(wsUrl);
-      ws.onopen = () => setStatus('live');
+      ws.onopen = () => {
+        ws?.send(JSON.stringify({ token })); // 首帧鉴权（#25/#26）
+        setStatus('live');
+      };
       ws.onmessage = (e) => {
         if (pausedRef.current) return;
         try {
@@ -42,8 +46,14 @@ export function usePanelWs(max = 500) {
           /* 忽略坏帧 */
         }
       };
-      ws.onclose = () => {
+      ws.onclose = (e) => {
         if (closed) return;
+        // #25/#26：4401 = 鉴权失效（令牌过期/被撤销/无效）。不再无限重连——交给全局会话过期流程（跳登录）。
+        if (e.code === 4401) {
+          setStatus('offline');
+          notifySessionExpired();
+          return;
+        }
         setStatus('reconnecting');
         retry = window.setTimeout(connect, 2000);
       };
