@@ -75,13 +75,14 @@ export function RolesPage() {
   const qc = useQueryClient();
 
   // 预览人设选择（change prompt-preview-persona-selector）：选一个账号，按其人设带入查看角色 prompt；
-  // 空=系统默认人设。未配人设的账号灰标，预览时由服务端诚实回落默认并标 personaFallback。
+  // 空=示例人设。未绑人设的账号标注（persona-driven-content-pipeline：default 已删、无豁免；
+  // 未绑账号运行会被拒，预览由服务端按示例人设渲染并标 personaFallback，绝不冒充）。
   const accounts = accountsData?.accounts ?? [];
   const [previewAccountId, setPreviewAccountId] = useState<string | undefined>(undefined);
   const accountOptions = accounts.map((a) => {
-    const noPersona = !a.personaBound && a.accountId !== 'default';
+    const noPersona = !a.personaBound;
     const name = accountName(a);
-    return { value: a.accountId, label: noPersona ? `${name}（未配人设）` : name };
+    return { value: a.accountId, label: noPersona ? `${name}（未绑定人设）` : name };
   });
   // 统一走诚实回落（真名→运营名→ID），不再内联手写（防漂移）。
   const accountLabel = makeAccountNamer(accounts);
@@ -635,7 +636,7 @@ export function RolesPage() {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 'var(--aidcp-space-3)' }}
-                message="该账号未配置人设，下面展示的是系统默认人设（非该账号人设）。"
+                message="该账号未绑定人设（运行会被拒绝）。下面展示的是示例人设渲染的 prompt，仅供查看，非该账号人设。"
               />
             )}
             <Alert

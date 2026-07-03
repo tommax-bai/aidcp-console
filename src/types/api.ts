@@ -312,24 +312,30 @@ export interface RolePromptView {
   segments?: RolePromptSegment[];
   /** 本次预览所用账号（change prompt-preview-persona-selector，可选）：选了账号才回显；不选则不附。 */
   accountId?: string;
-  /** 选定账号未配人设、回落默认人设的诚实标志（change prompt-preview-persona-selector，可选）：true=下示为默认人设。 */
+  /**
+   * 选定账号未绑定人设的诚实标志（prompt-preview-persona-selector / persona-driven-content-pipeline，可选）：
+   * true=该账号运行会被拒，下示 prompt 为示例人设渲染、仅供查看（绝不冒充该账号人设）。
+   */
   personaFallback?: boolean;
 }
 
 // 账号人设配置（change account-persona-config，stream F）。与 cloud PersonaConfigRowView 手动对齐。
 
-/** 人设来源：override=该账号自定义人设 / fallback=回落打包默认人设。 */
-export type PersonaSource = 'override' | 'fallback';
+/**
+ * 人设来源（change persona-driven-content-pipeline：系统不存在默认/兜底人设）：
+ * override=该账号已绑定人设 / none=未绑定（该账号浏览/发布/评论会被诚实拒绝）。
+ */
+export type PersonaSource = 'override' | 'none';
 
-/** 单账号人设目录行（GET /api/persona 形状）。列出所有账号（含回落者）。 */
+/** 单账号人设目录行（GET /api/persona 形状）。列出所有账号（含未绑定者）。 */
 export interface PersonaConfigRow {
   accountId: string;
   label: string | null;
   source: PersonaSource;
-  /** 当前生效人设的身份摘要（解析结果），列表一眼识别「这是谁」。 */
+  /** 当前生效人设的身份摘要（解析结果），列表一眼识别「这是谁」；未绑定（none）为空串。 */
   identityName: string;
   identityRole: string;
-  /** 仅 override 行带审计；fallback 行为 null。 */
+  /** 仅 override 行带审计；none 行为 null。 */
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -344,7 +350,7 @@ export interface PersonaDetailView {
   accountId: string;
   label: string | null;
   source: PersonaSource;
-  /** 编辑器内容：override→该账号人设文本；fallback→打包默认人设原文（编辑起点）。 */
+  /** 编辑器内容：override→该账号人设文本；none→打包模板原文仅作「起点模板」（非运行时兜底）。 */
   persona: string;
   updatedAt: string | null;
   updatedBy: string | null;

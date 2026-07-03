@@ -8,19 +8,20 @@ import { ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { PersonaConfigRow, PersonaConfigCatalog, PersonaDetailView, PersonaSource } from '../types/api';
 
-// 人设来源标注（自定义 / 系统默认回落）。
+// 人设绑定状态标注（persona-driven-content-pipeline：系统不存在默认/兜底人设）。
 const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
-  override: { text: '自定义', color: 'green' },
-  fallback: { text: '系统默认', color: 'default' },
+  override: { text: '已绑定', color: 'green' },
+  none: { text: '未绑定', color: 'red' },
 };
 
 /**
  * 账号人设配置页（change account-persona-config，stream F）。
  * - 按账号配置「人设」（identity / interests / behavior_guidelines 等，YAML 文本）。
  *   注：单场会话上限（时长 + 互动预算）已从人设迁出到「安全限额 · 单场会话上限」页（change session-limits-to-quota-layer）。
- * - 缺自定义人设的账号回落系统默认人设（打包 soul.yaml），列表如实标注来源。
+ * - 人设必填（change persona-driven-content-pipeline）：系统不存在默认/兜底人设——未绑定人设的账号
+ *   浏览/发布/评论一律被诚实拒绝运行；列表如实标注绑定状态（未绑定=红）。
+ * - 保存必填校验：留空不允许保存（前端拦截 + 服务端 persona_required 双闸，绕过前端也不落库）。
  * - 写非乐观——round-trip 后 invalidate 重取真态；非法人设由服务端 soul 校验拦截，诚实拒绝绝不落库。
- * - 留空保存=清除该账号覆盖，回落系统默认。
  */
 export function PersonaPage() {
   const { data, isLoading } = usePersonaConfig();
@@ -74,9 +75,11 @@ export function PersonaPage() {
       message.error(
         msg === 'persona_invalid'
           ? '人设格式无效（YAML / 必填字段校验未通过），未保存'
-          : msg === 'unknown_account'
-            ? '账号不存在，未保存'
-            : '保存失败',
+          : msg === 'persona_required'
+            ? '人设必填：不允许保存空人设（系统无默认人设，未绑定账号会被拒绝运行）'
+            : msg === 'unknown_account'
+              ? '账号不存在，未保存'
+              : '保存失败',
       );
     },
   });
@@ -159,7 +162,7 @@ export function PersonaPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="按账号配置人设：喂给该账号所有浏览 / 发布角色的身份、兴趣与行为偏好。保存后即时生效、无需重启。未配置的账号回落系统默认人设。"
+          message="按账号配置人设：喂给该账号所有浏览 / 发布角色的身份、兴趣与行为偏好。保存后即时生效、无需重启。人设必填：系统无默认人设，未绑定人设的账号会被诚实拒绝运行（不浏览、不发布、不评论）。"
         />
         <Table<PersonaConfigRow>
           size="small"
@@ -175,7 +178,15 @@ export function PersonaPage() {
         open={!!editing}
         onCancel={() => setEditing(null)}
         confirmLoading={save.isPending}
-        onOk={() => editing && save.mutate({ accountId: editing.accountId, persona: personaText })}
+        onOk={() => {
+          if (!editing) return;
+          // 人设必填（persona-driven-content-pipeline）：留空不允许保存；服务端 persona_required 双闸兜底。
+          if (!personaText.trim()) {
+            message.error('人设必填：请填写人设后再保存（系统无默认人设，留空不再是「回落默认」）');
+            return;
+          }
+          save.mutate({ accountId: editing.accountId, persona: personaText });
+        }}
         okText="保存"
         cancelText="取消"
         width={760}
@@ -186,14 +197,15 @@ export function PersonaPage() {
           <Form layout="vertical" requiredMark={false}>
             <Form.Item
               label="人设（YAML）"
-              extra="包含 identity / interests 等字段；留空=清除该账号覆盖、回落系统默认人设。保存前服务端会做 soul 格式校验，无效则拒绝不落库。"
+              required
+              extra="包含 identity / interests 等字段；人设必填，留空不允许保存（系统无默认人设，未绑定账号会被拒绝运行）。未绑定账号编辑器预填的是起点模板，请改成该账号的真实人设后保存。保存前服务端会做 soul 格式校验，无效则拒绝不落库。"
             >
               <Input.TextArea
                 value={personaText}
                 onChange={(e) => setPersonaText(e.target.value)}
                 autoSize={{ minRows: 16, maxRows: 28 }}
                 style={{ fontFamily: 'var(--aidcp-font-mono, monospace)', fontSize: 12, lineHeight: 1.6 }}
-                placeholder="identity / interests 等 YAML 字段；留空=回落系统默认人设"
+                placeholder="identity / interests 等 YAML 字段；人设必填，留空不允许保存"
               />
             </Form.Item>
           </Form>
