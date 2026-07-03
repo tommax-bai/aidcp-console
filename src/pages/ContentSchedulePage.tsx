@@ -128,15 +128,20 @@ export function ContentSchedulePage() {
     mutationFn: ({ accountId, patch }: { accountId: string; patch: ContentSchedulePatch }) =>
       apiPut<unknown>(`/api/content-schedule/${encodeURIComponent(accountId)}`, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'] }),
-    onError: (e) => message.error(`保存失败：${(e as Error).message}`),
+    onError: (e) => {
+      const msg = (e as Error).message;
+      if (msg.includes('no_group_code')) message.error('该账号未配群码，请先到「账号」页录入关联群聊引流码');
+      else if (msg.includes('shared_group_code')) message.error('该群码已配到其它账号——一码一号是防关联封号的硬要求，请改用独立群码');
+      else message.error(`保存失败：${msg}`);
+    },
   });
 
   // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${'post'|'comment'}`（两动作各自独立）。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
-  const commitCap = (r: ContentScheduleRow, kind: 'post' | 'comment') => {
+  const commitCap = (r: ContentScheduleRow, kind: 'post' | 'comment' | 'group') => {
     const key = `${r.accountId}:${kind}`;
-    const current = kind === 'post' ? r.postDailyCap : r.commentDailyCap;
+    const current = kind === 'post' ? r.postDailyCap : kind === 'comment' ? r.commentDailyCap : r.groupCommentDailyCap;
     const draft = capDraft[key];
     if (draft == null || draft === current) {
       setCapDraft((d) => {
@@ -147,7 +152,12 @@ export function ContentSchedulePage() {
     }
     patchAccount.mutate({
       accountId: r.accountId,
-      patch: kind === 'post' ? { postDailyCap: draft } : { commentDailyCap: draft },
+      patch:
+        kind === 'post'
+          ? { postDailyCap: draft }
+          : kind === 'comment'
+            ? { commentDailyCap: draft }
+            : { groupCommentDailyCap: draft },
     });
     setCapDraft((d) => {
       const { [key]: _drop, ...rest } = d;
@@ -245,6 +255,39 @@ export function ContentSchedulePage() {
         ),
       },
       {
+        title: '自动群评',
+        key: 'group',
+        width: 150,
+        render: (_: unknown, r) => (
+          <Space size={6}>
+            <Switch
+              checked={r.groupCommentEnabled}
+              disabled={!r.autoEnabled || !r.hasGroupCode}
+              onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { groupCommentEnabled: v } })}
+            />
+            {!r.hasGroupCode ? <Tag color="red">未配群码</Tag> : null}
+          </Space>
+        ),
+      },
+      {
+        title: '群评日上限',
+        key: 'groupCap',
+        width: 130,
+        render: (_: unknown, r) => (
+          <InputNumber
+            min={0}
+            max={10}
+            precision={0}
+            disabled={!r.autoEnabled || !r.groupCommentEnabled}
+            value={capDraft[`${r.accountId}:group`] ?? r.groupCommentDailyCap}
+            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:group`]: v }))}
+            onBlur={() => commitCap(r, 'group')}
+            onPressEnter={() => commitCap(r, 'group')}
+            style={{ width: 88 }}
+          />
+        ),
+      },
+      {
         title: '时段',
         key: 'window',
         width: 120,
@@ -314,7 +357,7 @@ export function ContentSchedulePage() {
 
       <Card size="small" title="账号内容自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          每账号：总开关（默认关）→ 自动发帖 / 自动评论各自开关 + 日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论是「尝试」——自行搜索目标、可能 0 产出（如实回卡）、每条需飞书人审；自动路径过风控配额（手动 /comment 不受限）。
+          每账号：总开关（默认关）→ 自动发帖 / 自动评论各自开关 + 日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动群评都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）、每条需飞书人审；自动路径过风控配额（手动不受限）。群评额外规矩：开启须先配群码且**一码一号**（同码配多账号会被硬拒）；日上限=每日自动尝试数（被拒/无目标也占额度），硬上限 10、建议 ≤3；改码后请自查一码一号。
         </Typography.Paragraph>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />

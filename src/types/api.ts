@@ -517,6 +517,12 @@ export interface ContentScheduleRow {
   commentEnabled: boolean;
   /** 评论日上限；0=不自动。该时段「尝试」评论：自行搜索目标、可能 0 产出、每条需飞书人审。 */
   commentDailyCap: number;
+  /** 自动群评开关（change content-schedule-group-comments；开启须过一码一号硬校验）。 */
+  groupCommentEnabled: boolean;
+  /** 群评每日自动尝试上限（硬 ≤10、建议 ≤3；被拒/无目标也占额度）。 */
+  groupCommentDailyCap: number;
+  /** 该账号是否已配群码（群评开关前置徽标）。 */
+  hasGroupCode: boolean;
   maskSource: 'override' | 'global';
   hasOverrideMask: boolean;
   /** 侧表有行（false=纯默认=未配）。 */
@@ -537,6 +543,8 @@ export interface ContentSchedulePatch {
   postDailyCap?: number;
   commentEnabled?: boolean;
   commentDailyCap?: number;
+  groupCommentEnabled?: boolean;
+  groupCommentDailyCap?: number;
   /** 每账号时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。v1 前端不写此字段（留缝）。 */
   contentActiveMask?: string | null;
 }
