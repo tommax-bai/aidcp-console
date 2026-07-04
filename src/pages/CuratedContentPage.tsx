@@ -18,7 +18,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { HeartOutlined, StarOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, HeartOutlined, LinkOutlined, MessageOutlined, StarOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
@@ -86,11 +86,11 @@ function isSourcePost(row: PanelCuratedContent): boolean {
 function actionReasonLabel(reason: string | undefined): string {
   switch (reason) {
     case 'empty_body':
-      return '该行正文为空（历史/异常壳行），无法作为洗稿参照';
+      return '该行正文为空（历史/异常壳行），无法作为写笔记参照';
     case 'empty_title':
       return '该行无标题，无法搜索定位目标笔记';
     case 'image_text_only':
-      return '只有图文行支持洗稿；视频和评论暂不支持';
+      return '只有图文行支持写笔记；视频和评论暂不支持';
     case 'source_post_only':
       return '只有图文或视频源帖支持评论';
     case 'note_only':
@@ -215,15 +215,15 @@ export function CuratedContentPage() {
     onError: () => message.error('清理失败'),
   });
 
-  // 洗稿（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
+  // 写笔记（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
   const createPost = useMutation({
     mutationFn: (row: PanelCuratedContent) =>
       apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, { accountId: row.accountId }),
     onSuccess: (res) => {
-      if (res.triggered) message.success('已触发洗稿：生成草稿后将发飞书人审卡，请到飞书完成审核');
+      if (res.triggered) message.success('已触发写笔记：生成草稿后将发飞书人审卡，请到飞书完成审核');
       else message.info(actionReasonLabel(res.reason));
     },
-    onError: () => message.error('洗稿触发失败'),
+    onError: () => message.error('写笔记触发失败'),
   });
 
   // 评论（内容/带群）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
@@ -266,6 +266,25 @@ export function CuratedContentPage() {
         .reduce((sum, r) => sum + r.count, 0),
     [facets.data],
   );
+
+  const createPostState = (row: PanelCuratedContent) => {
+    const canCreatePost = row.contentType === 'image_text';
+    const hasBody = !!(row.body ?? '').trim();
+    const disabled = !canCreatePost || !hasBody;
+    const tip = !canCreatePost
+      ? row.contentType === 'video'
+        ? '视频行暂不支持写笔记'
+        : '评论行不支持写笔记'
+      : !hasBody
+        ? '正文为空（壳行），无法作参照'
+        : '';
+    return { disabled, tip };
+  };
+
+  const openCommentModal = (row: PanelCuratedContent) => {
+    setCommentKind('content');
+    setCommentTarget(row);
+  };
 
   // 全账号视图下前置「账号」列，标明每行精选归属（单账号视图不显示）。
   const accountColumn: ColumnsType<PanelCuratedContent>[number] = {
@@ -318,42 +337,31 @@ export function CuratedContentPage() {
       width: 190,
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
-        const canCreatePost = row.contentType === 'image_text';
         const canComment = isSourcePost(row);
-        const hasBody = !!(row.body ?? '').trim();
-        const createPostDisabled = !canCreatePost || !hasBody;
-        const createPostTip = !canCreatePost
-          ? row.contentType === 'video'
-            ? '视频行暂不支持洗稿'
-            : '评论行不支持洗稿'
-          : !hasBody
-          ? '正文为空（历史/异常壳行），无法作参照'
-            : '';
+        const writeState = createPostState(row);
         return (
           <div onClick={(e) => e.stopPropagation()}>
             <Space size={8}>
-              {/* 洗稿：仅图文行且有正文；视频和评论暂不支持。 */}
-              <Tooltip title={createPostTip}>
+              {/* 写笔记：仅图文行且有正文；视频和评论暂不支持。 */}
+              <Tooltip title={writeState.tip}>
                 <Popconfirm
-                  title="以这篇图文为参照洗稿？"
-                  description={`由「${namer(row.accountId)}」参照本图文洗稿一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                  okText="触发洗稿"
+                  title="以这篇图文写一篇新笔记？"
+                  description={`由「${namer(row.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
+                  okText="触发写笔记"
                   onConfirm={() => createPost.mutate(row)}
-                  disabled={createPostDisabled}
+                  disabled={writeState.disabled}
                 >
-                  <Button size="small" loading={createPost.isPending} disabled={createPostDisabled}>
-                    洗稿
+                  <Button size="small" icon={<EditOutlined />} loading={createPost.isPending} disabled={writeState.disabled}>
+                    写笔记
                   </Button>
                 </Popconfirm>
               </Tooltip>
               <Tooltip title={!canComment ? '评论行不支持（未存源帖目标）' : ''}>
                 <Button
                   size="small"
+                  icon={<MessageOutlined />}
                   disabled={!canComment}
-                  onClick={() => {
-                    setCommentKind('content');
-                    setCommentTarget(row);
-                  }}
+                  onClick={() => openCommentModal(row)}
                 >
                   评论
                 </Button>
@@ -365,7 +373,7 @@ export function CuratedContentPage() {
                 okButtonProps={{ danger: true }}
                 onConfirm={() => del.mutate(row)}
               >
-                <Button size="small" danger loading={del.isPending}>
+                <Button size="small" danger icon={<DeleteOutlined />} loading={del.isPending}>
                   删除
                 </Button>
               </Popconfirm>
@@ -605,15 +613,55 @@ export function CuratedContentPage() {
               <Typography.Text type="secondary">更新时刻：{timeText(viewing.updatedAt)}</Typography.Text>
             </Space>
 
-            {/* 来源 */}
+            {/* 上下文动作：从阅读详情进入写作或评论，评论会关闭详情浮层。 */}
             <div style={{ marginTop: 16, textAlign: 'right' }}>
-              {viewing.sourceUrl ? (
-                <Button type="primary" href={viewing.sourceUrl} target="_blank" rel="noopener noreferrer">
-                  打开来源
-                </Button>
-              ) : (
-                <Button disabled>无来源链接</Button>
-              )}
+              <Space wrap>
+                <Tooltip title={createPostState(viewing).tip}>
+                  <Popconfirm
+                    title="以这篇图文写一篇新笔记？"
+                    description={`由「${namer(viewing.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
+                    okText="触发写笔记"
+                    onConfirm={() =>
+                      createPost.mutate(viewing, {
+                        onSuccess: (res) => {
+                          if (res.triggered) setViewing(null);
+                        },
+                      })
+                    }
+                    disabled={createPostState(viewing).disabled}
+                  >
+                    <Button
+                      type="primary"
+                      icon={<EditOutlined />}
+                      loading={createPost.isPending}
+                      disabled={createPostState(viewing).disabled}
+                    >
+                      写笔记
+                    </Button>
+                  </Popconfirm>
+                </Tooltip>
+                <Tooltip title={!isSourcePost(viewing) ? '评论行不支持（未存源帖目标）' : ''}>
+                  <Button
+                    icon={<MessageOutlined />}
+                    disabled={!isSourcePost(viewing)}
+                    onClick={() => {
+                      openCommentModal(viewing);
+                      setViewing(null);
+                    }}
+                  >
+                    评论
+                  </Button>
+                </Tooltip>
+                {viewing.sourceUrl ? (
+                  <Button icon={<LinkOutlined />} href={viewing.sourceUrl} target="_blank" rel="noopener noreferrer">
+                    来源
+                  </Button>
+                ) : (
+                  <Button icon={<LinkOutlined />} disabled>
+                    来源
+                  </Button>
+                )}
+              </Space>
             </div>
           </div>
         )}
