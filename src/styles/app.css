@@ -291,6 +291,108 @@ body {
   font-size: var(--aidcp-font-size-xs); /* 12px */
 }
 
+/* ======================================================================
+ * 精选内容池局部：计数/评论浮层
+ * ====================================================================== */
+.curated-count-text {
+  font-size: inherit;
+  line-height: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.ant-typography.curated-count-text {
+  font-size: inherit;
+}
+.curated-stat {
+  font-size: var(--aidcp-font-size-sm);
+  line-height: 1.4;
+}
+.curated-stat .anticon {
+  font-size: 14px;
+}
+.curated-stat__label.ant-typography {
+  font-size: inherit;
+}
+.curated-comment-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-3);
+}
+.curated-comment-target {
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: #fafafa;
+}
+.curated-comment-target__label.ant-typography,
+.curated-comment-target__meta.ant-typography {
+  display: block;
+  font-size: var(--aidcp-font-size-xs);
+}
+.curated-comment-target__title.ant-typography {
+  display: block;
+  margin-top: 2px;
+  color: var(--aidcp-foreground);
+  font-size: var(--aidcp-font-size-body);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.curated-comment-target__meta.ant-typography {
+  margin-top: var(--aidcp-space-1);
+}
+.curated-comment-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-2);
+  width: 100%;
+}
+.curated-comment-option.ant-radio-wrapper {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 62px;
+  margin-inline-end: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-background);
+  transition: background 0.15s, border-color 0.15s;
+}
+.curated-comment-option.ant-radio-wrapper:hover,
+.curated-comment-option--active.ant-radio-wrapper {
+  border-color: var(--aidcp-primary);
+  background: #f7f7f7;
+}
+.curated-comment-option .ant-radio {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.curated-comment-option__body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: var(--aidcp-space-2);
+}
+.curated-comment-option__title {
+  color: var(--aidcp-foreground);
+  font-size: var(--aidcp-font-size-sm);
+  font-weight: var(--aidcp-font-weight-semibold);
+  line-height: 1.35;
+}
+.curated-comment-option__desc {
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  line-height: 1.5;
+  white-space: normal;
+}
+.curated-comment-flow.ant-alert {
+  padding: 8px 10px;
+}
+.curated-comment-flow .ant-alert-message {
+  font-size: var(--aidcp-font-size-xs);
+  line-height: 1.5;
+}
+
 /* 窄屏：主业务胶囊仅留图标。
    10 个带中文标签的 tab 约需 ~1120px 视口才容得下；再窄先隐藏文字、只留图标，
    而不是压缩按钮把中文标签挤成竖排字（配合上方 .pill__btn 的 nowrap / flex-shrink:0）。*/

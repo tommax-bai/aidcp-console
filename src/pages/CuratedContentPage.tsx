@@ -31,18 +31,30 @@ const PAGE_SIZE = 20;
 /** 账号筛选哨兵：选「全部账号」时不带 accountId（全账号合并视图）。 */
 const ALL_ACCOUNTS = '__all__';
 
+function CountText({ value }: { value: number | null }) {
+  return value == null ? (
+    <Typography.Text type="secondary" className="curated-count-text">
+      未抓到
+    </Typography.Text>
+  ) : (
+    <span className="curated-count-text tabular-nums">{value}</span>
+  );
+}
+
 /** 计数单元：诚实区分 null（边端未抓到）与 0（真实为零）。 */
 function countCell(v: number | null) {
-  return v == null ? <Typography.Text type="secondary">未抓到</Typography.Text> : <span>{v}</span>;
+  return <CountText value={v} />;
 }
 
 /** 详情浮层里的互动数据单元：图标 + 数值（诚实区分 未抓到/0）+ 文案。 */
 function Stat({ icon, value, label }: { icon: ReactNode; value: number | null; label: string }) {
   return (
-    <Space size={4} style={{ fontSize: 15 }}>
+    <Space size={4} className="curated-stat">
       {icon}
-      {value == null ? <Typography.Text type="secondary">未抓到</Typography.Text> : <span>{value}</span>}
-      <Typography.Text type="secondary">{label}</Typography.Text>
+      <CountText value={value} />
+      <Typography.Text type="secondary" className="curated-stat__label">
+        {label}
+      </Typography.Text>
     </Space>
   );
 }
@@ -96,14 +108,14 @@ function admitReasonLabel(raw: string | null): string {
   const missing = raw.includes('content_missing');
   if (raw.startsWith('confirmed_like')) {
     const suffix = raw.slice('confirmed_like'.length).replace(/^:/, '').trim();
-    return suffix ? `AI 点赞评论（${suffix}）` : 'AI 点赞评论';
+    return suffix ? `点赞评论（${suffix}）` : '点赞评论';
   }
   if (raw.startsWith('bot_collect')) {
-    return missing ? 'AI 已收藏（未抓到正文）' : 'AI 已收藏';
+    return missing ? '收藏（未抓到正文）' : '收藏';
   }
   switch (raw) {
     case 'llm_eval':
-      return 'AI 评估选入';
+      return '评估入选';
     case 'collect_floor':
       return '高收藏';
     case 'collect_ratio':
@@ -139,7 +151,7 @@ export function CuratedContentPage() {
   const [admitReason, setAdmitReason] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [viewing, setViewing] = useState<PanelCuratedContent | null>(null);
-  // 定向评论弹窗：目标行 + 评论类型（内容评论 / 带群评论）。
+  // 评论弹窗：目标行 + 评论类型（内容评论 / 带群评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
   const [commentKind, setCommentKind] = useState<'content' | 'group'>('content');
 
@@ -183,30 +195,30 @@ export function CuratedContentPage() {
     onError: () => message.error('清理失败'),
   });
 
-  // 参照洗稿创作（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
+  // 洗稿（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
   const createPost = useMutation({
     mutationFn: (row: PanelCuratedContent) =>
       apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, { accountId: row.accountId }),
     onSuccess: (res) => {
-      if (res.triggered) message.success('已触发参照创作：生成草稿后将发飞书人审卡，请到飞书完成审核');
+      if (res.triggered) message.success('已触发洗稿：生成草稿后将发飞书人审卡，请到飞书完成审核');
       else message.info(actionReasonLabel(res.reason));
     },
-    onError: () => message.error('参照创作触发失败'),
+    onError: () => message.error('洗稿触发失败'),
   });
 
-  // 定向评论（内容/带群）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
+  // 评论（内容/带群）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
   const targetedComment = useMutation({
     mutationFn: ({ row, withGroup }: { row: PanelCuratedContent; withGroup: boolean }) =>
       apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withGroup }),
     onSuccess: (res) => {
       if (res.triggered) {
-        message.success('已触发定向评论：搜索定位目标笔记后撰写，评论文案将发飞书人审、通过才发出；结果以飞书卡片回报');
+        message.success('已触发评论：搜索定位目标笔记后撰写，评论文案将发飞书人审、通过才发出；结果以飞书卡片回报');
         setCommentTarget(null);
       } else {
         message.info(actionReasonLabel(res.reason));
       }
     },
-    onError: () => message.error('定向评论触发失败'),
+    onError: () => message.error('评论触发失败'),
   });
 
   const accountOptions = [
@@ -265,8 +277,8 @@ export function CuratedContentPage() {
       width: 130,
       render: (_, row) => (
         <Space size={4}>
-          {row.botCollected ? <Tag color="gold">已收藏</Tag> : null}
-          {row.botLiked ? <Tag color="magenta">已点赞</Tag> : null}
+          {row.botCollected ? <Tag color="gold">收藏</Tag> : null}
+          {row.botLiked ? <Tag color="magenta">点赞</Tag> : null}
           {!row.botCollected && !row.botLiked ? <Typography.Text type="secondary">—</Typography.Text> : null}
         </Space>
       ),
@@ -283,39 +295,38 @@ export function CuratedContentPage() {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 190,
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
         const isNote = row.contentType === 'note';
         const hasBody = !!(row.body ?? '').trim();
         return (
           <div onClick={(e) => e.stopPropagation()}>
-            <Space size={0}>
-              {/* 参照洗稿创作：仅笔记行且有正文（壳行无从参照）；评论行未存源笔记 noteId，两动作都不可用。 */}
+            <Space size={8}>
+              {/* 洗稿：仅笔记行且有正文（壳行无从参照）；评论行未存源笔记 noteId，两动作都不可用。 */}
               <Tooltip title={!isNote ? '评论行不支持（未存源笔记）' : !hasBody ? '正文为空（壳行），无法作参照' : ''}>
                 <Popconfirm
-                  title="以这篇笔记为参照创作？"
-                  description={`由「${namer(row.accountId)}」参照本笔记洗稿创作一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                  okText="触发创作"
+                  title="以这篇笔记为参照洗稿？"
+                  description={`由「${namer(row.accountId)}」参照本笔记洗稿一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
+                  okText="触发洗稿"
                   onConfirm={() => createPost.mutate(row)}
                   disabled={!isNote || !hasBody}
                 >
-                  <Button size="small" type="link" loading={createPost.isPending} disabled={!isNote || !hasBody}>
-                    参照创作
+                  <Button size="small" loading={createPost.isPending} disabled={!isNote || !hasBody}>
+                    洗稿
                   </Button>
                 </Popconfirm>
               </Tooltip>
               <Tooltip title={!isNote ? '评论行不支持（未存源笔记）' : ''}>
                 <Button
                   size="small"
-                  type="link"
                   disabled={!isNote}
                   onClick={() => {
                     setCommentKind('content');
                     setCommentTarget(row);
                   }}
                 >
-                  定向评论
+                  评论
                 </Button>
               </Tooltip>
               <Popconfirm
@@ -325,7 +336,7 @@ export function CuratedContentPage() {
                 okButtonProps={{ danger: true }}
                 onConfirm={() => del.mutate(row)}
               >
-                <Button size="small" type="link" danger loading={del.isPending}>
+                <Button size="small" danger loading={del.isPending}>
                   删除
                 </Button>
               </Popconfirm>
@@ -432,15 +443,15 @@ export function CuratedContentPage() {
           <Typography.Text type="secondary">
             {allAccountsView
               ? '清理按单账号执行，请先在上方切到具体账号再清理。'
-              : '壳行＝AI 收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。'}
+              : '壳行＝收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。'}
           </Typography.Text>
         </Space>
       </Card>
 
-      {/* 定向评论弹窗：选类型（内容评论 / 带群评论）后触发；执行账号固定为该行归属账号。 */}
+      {/* 评论弹窗：选类型（内容评论 / 带群评论）后触发；执行账号固定为该行归属账号。 */}
       <Modal
         open={!!commentTarget}
-        title="定向评论"
+        title="评论"
         okText="触发评论"
         cancelText="取消"
         confirmLoading={targetedComment.isPending}
@@ -451,30 +462,49 @@ export function CuratedContentPage() {
         width={460}
       >
         {commentTarget && (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Typography.Text>
-              目标笔记：「{commentTarget.title ?? '—'}」（执行账号：{namer(commentTarget.accountId)}）
-            </Typography.Text>
-            <Radio.Group value={commentKind} onChange={(e) => setCommentKind(e.target.value as 'content' | 'group')}>
-              <Space direction="vertical" size={4}>
-                <Radio value="content">
-                  内容评论
-                  <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-                    基于笔记内容自动生成一条真诚评论
-                  </Typography.Text>
-                </Radio>
-                <Radio value="group">
-                  带群评论
-                  <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-                    同样自动生成，末尾追加该账号配置的群聊信息（未配置则拒绝触发）
-                  </Typography.Text>
-                </Radio>
-              </Space>
+          <div className="curated-comment-modal">
+            <div className="curated-comment-target">
+              <Typography.Text type="secondary" className="curated-comment-target__label">
+                目标笔记
+              </Typography.Text>
+              <Typography.Text strong className="curated-comment-target__title">
+                {commentTarget.title ?? '—'}
+              </Typography.Text>
+              <Typography.Text type="secondary" className="curated-comment-target__meta">
+                执行账号：{namer(commentTarget.accountId)}
+              </Typography.Text>
+            </div>
+            <Radio.Group
+              className="curated-comment-options"
+              value={commentKind}
+              onChange={(e) => setCommentKind(e.target.value as 'content' | 'group')}
+            >
+              <Radio
+                value="content"
+                className={`curated-comment-option${commentKind === 'content' ? ' curated-comment-option--active' : ''}`}
+              >
+                <span className="curated-comment-option__body">
+                  <span className="curated-comment-option__title">内容评论</span>
+                  <span className="curated-comment-option__desc">基于笔记内容生成一条自然评论。</span>
+                </span>
+              </Radio>
+              <Radio
+                value="group"
+                className={`curated-comment-option${commentKind === 'group' ? ' curated-comment-option--active' : ''}`}
+              >
+                <span className="curated-comment-option__body">
+                  <span className="curated-comment-option__title">带群评论</span>
+                  <span className="curated-comment-option__desc">在自然评论后追加该账号的群聊信息；未配置会拒绝触发。</span>
+                </span>
+              </Radio>
             </Radio.Group>
-            <Typography.Text type="secondary">
-              触发后将占用该账号边端：搜索定位这篇笔记（搜不到会如实报告，绝不评「相似」笔记）→ 撰写 → 飞书人审通过才发出；结果以飞书卡片回报。
-            </Typography.Text>
-          </Space>
+            <Alert
+              type="info"
+              showIcon
+              className="curated-comment-flow"
+              message="搜索定位目标笔记 → 撰写评论 → 飞书人审通过后发出；搜不到会如实报告，不评论相似笔记。"
+            />
+          </div>
         )}
       </Modal>
 
@@ -534,8 +564,8 @@ export function CuratedContentPage() {
             <Space direction="vertical" size={4} style={{ width: '100%' }}>
               <Typography.Text type="secondary">
                 AI 动作：
-                {viewing.botCollected ? <Tag color="gold">已收藏</Tag> : null}
-                {viewing.botLiked ? <Tag color="magenta">已点赞</Tag> : null}
+                {viewing.botCollected ? <Tag color="gold">收藏</Tag> : null}
+                {viewing.botLiked ? <Tag color="magenta">点赞</Tag> : null}
                 {!viewing.botCollected && !viewing.botLiked ? '无' : null}
               </Typography.Text>
               <Typography.Text type="secondary">
