@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import {
   BulbOutlined,
   ClockCircleOutlined,
@@ -7,7 +8,6 @@ import {
   FileTextOutlined,
   FundOutlined,
   IdcardOutlined,
-  MonitorOutlined,
   RobotOutlined,
   SafetyOutlined,
   TeamOutlined,
@@ -17,7 +17,6 @@ import { ContentPage } from './pages/ContentPage';
 import { ContentSchedulePage } from './pages/ContentSchedulePage';
 import { CuratedContentPage } from './pages/CuratedContentPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { MonitorPage } from './pages/MonitorPage';
 import { NotificationContactsPage } from './pages/NotificationContactsPage';
 import { PersonaPage } from './pages/PersonaPage';
 import { QuotasPage } from './pages/QuotasPage';
@@ -59,7 +58,8 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/persona', element: <PersonaPage />, navLabel: '人设', navIcon: <IdcardOutlined />, showInNav: true },
   { path: '/roles', element: <RolesPage />, navLabel: '角色', navIcon: <RobotOutlined />, showInNav: true },
   { path: '/quotas', element: <QuotasPage />, navLabel: '安全', navIcon: <SafetyOutlined />, showInNav: true },
-  { path: '/monitor', element: <MonitorPage />, navLabel: '监控', navIcon: <MonitorOutlined />, showInNav: true },
+  // 监控页已并入首页（merge-monitor-into-dashboard）：旧路径重定向护住书签与「登录后回原页」的来源路径。
+  { path: '/monitor', element: <Navigate to="/" replace />, showInNav: false },
   { path: '/usage', element: <TokenUsagePage />, navLabel: '用量', navIcon: <FundOutlined />, showInNav: true },
   // 设置：右上独立圆按钮呈现（AppShell），不入业务胶囊，故 showInNav=false；仍需在此登记以派生路由表。
   { path: '/settings', element: <SettingsPage />, showInNav: false },

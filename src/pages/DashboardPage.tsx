@@ -1,6 +1,15 @@
+import { useState } from 'react';
 import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Statistic, Tag, Typography } from 'antd';
-import { useDashboardSummary, useResolveAlert } from '../api/queries';
-import { AccountsTable, AccountTotalsTable, AlertSeverityBadge, DispatchControl, ProfileLink } from '../components';
+import { useDashboardSummary, useInteractions, useResolveAlert } from '../api/queries';
+import {
+  AccountsTable,
+  AccountTotalsTable,
+  AlertSeverityBadge,
+  DispatchControl,
+  InteractionsTable,
+  LiveEventStream,
+  ProfileLink,
+} from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { DashboardSummary } from '../types/api';
 
@@ -26,11 +35,18 @@ function healthLine(s: DashboardSummary): string {
   return `${s.edgesOnline} 个边缘端在线 · ${total} 个账号 · ${warned} 个预警 · ${bad} 个受限/冻结 · 点赞率 ${pct(s.likeRate.rate)} ${band}`;
 }
 
-/** 数据看板首页（design PAGE 3）：今日数据 + 账号状态一览（按级别排序）+ 调度引擎 + 告警 + 真按账号切片。 */
+/**
+ * 数据看板首页（design PAGE 3；merge-monitor-into-dashboard 后并入原「监控」页 PAGE 6）：
+ * 今日数据 + 账号状态一览（按级别排序）+ 调度引擎 + 真按账号切片 + 按笔记互动 + 告警 + 实时事件流（默认折叠）。
+ * 原两页重复的「告警」「按账号今日」各留一份；告警数据源收敛为汇总接口（原监控页独立 5s 告警流随之退役）。
+ */
 export function DashboardPage() {
   const { data, isLoading, isError, refetch } = useDashboardSummary();
+  const interactions = useInteractions();
   const resolveAlert = useResolveAlert();
-  // 告警条目账号名走统一诚实回落（真名→运营名→ID）：告警只带 accountId，真名从同份汇总的账号列表 join。
+  // 实时事件流默认折叠：展开才挂载、才建立实时连接（排障工具，不抢「5 秒看健康」的版面）。
+  const [streamOpen, setStreamOpen] = useState(false);
+  // 告警/互动条目账号名走统一诚实回落（真名→运营名→ID）：行内只带 accountId，真名从同份汇总的账号列表 join。
   const nameOf = makeAccountNamer(data?.accounts ?? []);
 
   return (
@@ -117,6 +133,17 @@ export function DashboardPage() {
         <AccountTotalsTable rows={data?.totalsByAccount ?? []} accounts={data?.accounts ?? []} loading={isLoading} />
       </Card>
 
+      {/* merge-monitor-into-dashboard：按笔记互动明细（原监控页 V1 task 9.2/10.3），接在计数之后成「总数→明细」层次。 */}
+      <Card size="small" title={`按笔记互动（${interactions.data?.interactions.length ?? 0}）`}>
+        <InteractionsTable
+          rows={interactions.data?.interactions ?? []}
+          loading={interactions.isLoading}
+          error={interactions.isError}
+          onRetry={() => void interactions.refetch()}
+          nameOf={nameOf}
+        />
+      </Card>
+
       {/* V1 task 9.5：真未解决告警。 */}
       <Card size="small" title={`告警（未解决 · ${data?.alerts.length ?? 0}）`}>
         {data && data.alerts.length > 0 ? (
@@ -146,6 +173,8 @@ export function DashboardPage() {
                 {/* 单一内容块 + actions：List.Item 用 space-between 布局，内容须包一层才不被 action 拉散、保持左对齐居中。 */}
                 <Space size={8} align="center" wrap>
                   <AlertSeverityBadge severity={a.severity} />
+                  {/* merge-monitor-into-dashboard：类型标签原只在监控页有，合并后补齐信息差。 */}
+                  <Tag style={{ marginInlineEnd: 0 }}>{a.type}</Tag>
                   <Typography.Text>{a.title}</Typography.Text>
                   {a.accountId && (
                     <Typography.Text type="secondary">
@@ -159,6 +188,25 @@ export function DashboardPage() {
           />
         ) : (
           <Empty description={isLoading ? '加载中…' : '暂无未解决告警'} />
+        )}
+      </Card>
+
+      {/* merge-monitor-into-dashboard：实时事件流（原监控页 PAGE 6 主体）默认折叠；展开才挂载组件、才建立实时连接，收起即断开。 */}
+      <Card
+        size="small"
+        title="实时事件流"
+        extra={
+          <Button size="small" onClick={() => setStreamOpen((v) => !v)}>
+            {streamOpen ? '收起并断开连接' : '展开（建立实时连接）'}
+          </Button>
+        }
+      >
+        {streamOpen ? (
+          <LiveEventStream />
+        ) : (
+          <Typography.Text type="secondary">
+            已折叠。展开后建立实时连接，逐条显示系统当下的原始事件（排障用）；收起即断开、不缓冲。
+          </Typography.Text>
         )}
       </Card>
     </div>

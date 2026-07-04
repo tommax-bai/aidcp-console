@@ -1,4 +1,4 @@
-/** TanStack Query hooks（所有 /api 读）。写 mutation 见各页面 useMutation；唯一例外见 useResolveAlert（跨两页共享）。 */
+/** TanStack Query hooks（所有 /api 读）。写 mutation 见各页面 useMutation；唯一例外见 useResolveAlert（集中承载告警解决的诚实文案）。 */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
@@ -10,7 +10,6 @@ import type {
   PanelPublish,
   ContentQueue,
   LikeRate,
-  Alert,
   PanelInteraction,
   ModelConfig,
   RoleConfigCatalog,
@@ -160,20 +159,11 @@ export function useLikeRate() {
   });
 }
 
-/** 告警只读流（V1 task 9.5）：默认仅未解决，5s 轮询。 */
-export function useAlerts() {
-  return useQuery({
-    queryKey: ['alerts'],
-    queryFn: () => apiGet<{ alerts: Alert[] }>('/api/alerts'),
-    refetchInterval: 5_000,
-  });
-}
-
 /**
  * 告警手动解决（change alert-resolution-by-id）：按 alert_id 勾销单条未解决告警。
- * 告警列表同现于监控页与首页，故抽为共享写 hook（唯一集中的写 mutation，避免两页重复诚实文案逻辑）。
  * 诚实：resolved===1 → 「已解决」；0 → 「已解决或不存在」，绝不笼统报成功。
- * 成功后同时失效 ['alerts'] 与 ['dashboard','summary'] 两个数据源（两页告警来源不同 key）。
+ * 成功后失效 ['dashboard','summary']——监控页并入首页（merge-monitor-into-dashboard）后，
+ * 告警列表仅剩首页一处、数据统一来自汇总接口（原监控页独立 5s 告警流 useAlerts 已退役；/api/alerts 端点仍在）。
  */
 export function useResolveAlert() {
   const qc = useQueryClient();
@@ -182,7 +172,6 @@ export function useResolveAlert() {
     onSuccess: (res) => {
       if (res.resolved === 1) message.success('已解决');
       else message.info('该告警已解决或不存在');
-      void qc.invalidateQueries({ queryKey: ['alerts'] });
       void qc.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
     },
     onError: () => message.error('解决失败'),

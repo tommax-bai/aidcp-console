@@ -4,7 +4,7 @@
  * 页面 + react-query 走真实渲染路径；诚实呈现：有边缘在线时绝不显示无活动提示。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DashboardPage } from './DashboardPage';
@@ -30,9 +30,14 @@ const state = vi.hoisted(() => ({ summary: undefined as unknown }));
 vi.mock('../api/client', () => ({
   apiGet: vi.fn((path: string) => {
     if (path === '/api/dashboard/summary') return Promise.resolve(state.summary);
+    // merge-monitor-into-dashboard：按笔记互动并入本页，页面挂载即拉取。
+    if (path === '/api/monitor/interactions') return Promise.resolve({ interactions: [] });
     return Promise.reject(new Error(`unexpected apiGet ${path}`));
   }),
   apiPost: vi.fn(() => Promise.reject(new Error('no writes expected in this test'))),
+  // merge-monitor-into-dashboard：实时事件流（面板 WS hook）依赖这两个导出；无令牌 → 不建连接、状态离线。
+  getToken: vi.fn(() => null),
+  notifySessionExpired: vi.fn(),
 }));
 
 const AS_OF = new Date('2026-07-03T10:20:30').getTime();
@@ -86,5 +91,31 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
     // 等页面数据渲染完（新鲜度标识出现）再断言提示缺席。
     await screen.findByText('自动刷新中');
     expect(screen.queryByText(/系统当前未在浏览/)).toBeNull();
+  });
+});
+
+describe('DashboardPage 并入监控内容（merge-monitor-into-dashboard）', () => {
+  beforeEach(() => {
+    state.summary = makeSummary();
+  });
+
+  it('呈现「按笔记互动」「告警」「实时事件流」卡片；事件流默认折叠、不挂连接', async () => {
+    renderPage();
+    await screen.findByText('自动刷新中');
+    expect(screen.getByText(/按笔记互动/)).toBeTruthy();
+    expect(screen.getByText(/告警（未解决/)).toBeTruthy();
+    expect(screen.getByText('实时事件流')).toBeTruthy();
+    // 折叠态不渲染连接状态徽标 = 未挂载 WS hook（展开才建立连接）。
+    expect(screen.queryByText(/^连接：/)).toBeNull();
+  });
+
+  it('展开实时事件流后才挂载连接组件（无令牌时如实显示离线）', async () => {
+    renderPage();
+    await screen.findByText('自动刷新中');
+    fireEvent.click(screen.getByRole('button', { name: '展开（建立实时连接）' }));
+    expect(await screen.findByText('连接：离线')).toBeTruthy();
+    // 收起即卸载、断开。
+    fireEvent.click(screen.getByRole('button', { name: '收起并断开连接' }));
+    expect(screen.queryByText(/^连接：/)).toBeNull();
   });
 });

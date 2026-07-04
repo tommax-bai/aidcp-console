@@ -7,3 +7,5 @@ export { AccountTotalsTable } from './AccountTotalsTable';
 export { RiskControls } from './RiskControls';
 export { DispatchControl } from './DispatchControl';
 export { ProfileLink } from './ProfileLink';
+export { InteractionsTable } from './InteractionsTable';
+export { LiveEventStream } from './LiveEventStream';
