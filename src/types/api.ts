@@ -149,6 +149,15 @@ export interface PanelPublish {
    * 审批时快照此值随授权带回（「审=发」凭证）；待审草稿据此渲染生命周期标签。
    */
   contentVersion: number;
+  /**
+   * 全部配图 URL（保序，[0]=封面；空数组=无图）。OSS 转存后为公读永久链接可直接 <img>；
+   * 更早历史行是生图厂商约 24h 过期的临时签名 URL，前端须容忍死链（fallback 占位）。
+   */
+  images: string[];
+  /** 封面图 URL（= images[0]，向后兼容）；无图为 null。 */
+  imageUrl: string | null;
+  /** 边端实际附着上传成功的图片张数（诚实信号：区分「生成了几张」与「真上传了几张」）。 */
+  imagesAttachedCount: number;
 }
 
 /** in-flight 发布队列（orchestrator getStatus）。 */

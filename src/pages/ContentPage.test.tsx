@@ -71,6 +71,9 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
     content: '正文内容',
     postUrl: null,
     contentVersion: 0,
+    images: [],
+    imageUrl: null,
+    imagesAttachedCount: 0,
     ...overrides,
   };
 }
@@ -90,10 +93,10 @@ function renderPage(): void {
   );
 }
 
-/** 渲染 → 等待待审行 → 点「编辑 / 审批」打开抽屉（保存草稿按钮出现即抽屉就绪）。 */
+/** 渲染 → 等待待审行 → 点整行打开详情浮层（对齐精选页交互；保存草稿按钮出现即编辑态就绪）。 */
 async function openEditDrawer(): Promise<void> {
   renderPage();
-  fireEvent.click(await screen.findByText('编辑 / 审批'));
+  fireEvent.click(await screen.findByText('测试草稿标题'));
   await screen.findByText('保存草稿');
 }
 
@@ -148,6 +151,36 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     fireEvent.click(screen.getByText('保存草稿'));
     expect(await screen.findByText('该草稿正在审批处理中，请刷新')).toBeTruthy();
     expect(screen.queryByText('already_decided')).toBeNull();
+  });
+
+  it('已发布行点整行 → 笔记详情浮层：正文保留换行、配图渲染、详情页链接', async () => {
+    state.published = {
+      items: [
+        makePending({
+          status: 'published',
+          title: '已发布标题',
+          content: '第一段\n第二段',
+          platformPostId: 'post-9',
+          postUrl: 'https://www.xiaohongshu.com/explore/post-9?xsec_token=tok',
+          images: ['https://aidcp.oss-cn-beijing.aliyuncs.com/publish/acc-1/run/1.jpeg'],
+          imagesAttachedCount: 1,
+        }),
+      ],
+    };
+    renderPage();
+    fireEvent.click(await screen.findByText('已发布标题'));
+    // 浮层就绪：出现详情页跳转按钮（非编辑态无 保存草稿）。
+    const openBtn = await screen.findByRole('link', { name: '打开小红书详情页' });
+    expect(openBtn.getAttribute('href')).toContain('xsec_token');
+    expect(screen.queryByText('保存草稿')).toBeNull();
+    // 正文整段（含换行）在同一文本节点里（pre-wrap 渲染）；testing-library 默认归一化会折叠 \n，
+    // 故用自定义 matcher 直查元素原始 textContent。
+    const body = await screen.findByText((_c, el) => el?.textContent === '第一段\n第二段');
+    expect(body.textContent).toContain('\n');
+    // 配图以 <img> 渲染（OSS 公读链接直挂）。
+    const img = document.querySelector('img[src*="aidcp.oss-cn-beijing"]');
+    expect(img).toBeTruthy();
+    expect(screen.getByText(/配图 1 张（发布时实际附着 1 张）/)).toBeTruthy();
   });
 
   it('保存并批准 → 先编辑(CAS) 再按快照版本授权发布', async () => {
