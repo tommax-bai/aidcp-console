@@ -203,6 +203,16 @@ export interface CuratedFacets {
   commentCount: number;
 }
 
+/**
+ * 精选笔记行级动作触发态回执（change curated-note-actions）。
+ * ⚠ 与 cloud `src/panel/types.ts` 的 CuratedActionReceipt 手工镜像。
+ * 触发态≠成功态：triggered=false 时 reason 为机器原因码（页内映射中文），绝不当成功渲染。
+ */
+export interface CuratedActionReceipt {
+  triggered: boolean;
+  reason?: string;
+}
+
 /** 单厂商凭据视图（change console-model-provider-config + model-config-volcengine-provider）。永不含明文密钥。 */
 export interface ModelConfigCredential {
   provider: string;

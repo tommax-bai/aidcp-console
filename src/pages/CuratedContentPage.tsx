@@ -10,6 +10,7 @@ import {
   Empty,
   Modal,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Table,
@@ -22,7 +23,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
 import { useAccounts, useCuratedContents, useCuratedFacets } from '../api/queries';
-import type { PanelCuratedContent } from '../types/api';
+import type { CuratedActionReceipt, PanelCuratedContent } from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
 const PAGE_SIZE = 20;
@@ -48,6 +49,42 @@ function Stat({ icon, value, label }: { icon: ReactNode; value: number | null; l
 
 function timeText(ms: number | null): string {
   return ms == null ? '—' : new Date(ms).toLocaleString();
+}
+
+/**
+ * 行级动作「未触发」机器原因码 → 中文提示（change curated-note-actions）。
+ * 与 cloud panel 接线层的原因码对齐；未知码原样兜底（诚实：不假装认识陌生码）。
+ */
+function actionReasonLabel(reason: string | undefined): string {
+  switch (reason) {
+    case 'empty_body':
+      return '该行正文为空（壳行），无法作为洗稿参照';
+    case 'empty_title':
+      return '该行无标题，无法搜索定位目标笔记';
+    case 'note_only':
+      return '仅笔记行支持该动作';
+    case 'needs_persona':
+      return '该账号未绑定人设——请先到「人设」页设置';
+    case 'publish_busy':
+      return '发布链路正在生成其它草稿（全局串行），请稍后再试';
+    case 'publish_unready':
+      return '发布触发器未就绪（云端依赖不可用）';
+    case 'comment_unready':
+      return '评论触发器未就绪（云端依赖不可用）';
+    case 'group_code_missing':
+      return '该账号未配置「关联群聊信息」——请先到账号页设置（不会降级为内容评论）';
+    case 'running':
+      return '该账号已有评论任务在跑，请等其结束';
+    case 'already_commented':
+      return '该账号已评论过这篇笔记，不重复评论';
+    case 'edge_offline':
+      return '该账号暂无在线边端';
+    case 'account_required':
+    case 'bad_target':
+      return '目标信息不完整，无法触发';
+    default:
+      return reason ? `未触发（${reason}）` : '未触发';
+  }
 }
 
 /**
@@ -102,6 +139,9 @@ export function CuratedContentPage() {
   const [admitReason, setAdmitReason] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [viewing, setViewing] = useState<PanelCuratedContent | null>(null);
+  // 定向评论弹窗：目标行 + 评论类型（内容评论 / 带群评论）。
+  const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
+  const [commentKind, setCommentKind] = useState<'content' | 'group'>('content');
 
   const effectiveAccountId = accountId === ALL_ACCOUNTS ? undefined : accountId;
   const allAccountsView = effectiveAccountId === undefined;
@@ -141,6 +181,32 @@ export function CuratedContentPage() {
       invalidateCurated();
     },
     onError: () => message.error('清理失败'),
+  });
+
+  // 参照洗稿创作（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
+  const createPost = useMutation({
+    mutationFn: (row: PanelCuratedContent) =>
+      apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, { accountId: row.accountId }),
+    onSuccess: (res) => {
+      if (res.triggered) message.success('已触发参照创作：生成草稿后将发飞书人审卡，请到飞书完成审核');
+      else message.info(actionReasonLabel(res.reason));
+    },
+    onError: () => message.error('参照创作触发失败'),
+  });
+
+  // 定向评论（内容/带群）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
+  const targetedComment = useMutation({
+    mutationFn: ({ row, withGroup }: { row: PanelCuratedContent; withGroup: boolean }) =>
+      apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withGroup }),
+    onSuccess: (res) => {
+      if (res.triggered) {
+        message.success('已触发定向评论：搜索定位目标笔记后撰写，评论文案将发飞书人审、通过才发出；结果以飞书卡片回报');
+        setCommentTarget(null);
+      } else {
+        message.info(actionReasonLabel(res.reason));
+      }
+    },
+    onError: () => message.error('定向评论触发失败'),
   });
 
   const accountOptions = [
@@ -217,23 +283,56 @@ export function CuratedContentPage() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
-      // 操作列内部一律 stopPropagation：删除点击不触发整行的「打开详情」。
-      render: (_, row) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Popconfirm
-            title="删除这条精选灵感？"
-            description="仅清当前快照：之后再浏览到且仍达标会重新纳入，历史点赞/收藏标记不恢复；删后不再进入下次发帖创作素材。"
-            okText="删除"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => del.mutate(row)}
-          >
-            <Button size="small" type="link" danger loading={del.isPending}>
-              删除
-            </Button>
-          </Popconfirm>
-        </div>
-      ),
+      width: 220,
+      // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
+      render: (_, row) => {
+        const isNote = row.contentType === 'note';
+        const hasBody = !!(row.body ?? '').trim();
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Space size={0}>
+              {/* 参照洗稿创作：仅笔记行且有正文（壳行无从参照）；评论行未存源笔记 noteId，两动作都不可用。 */}
+              <Tooltip title={!isNote ? '评论行不支持（未存源笔记）' : !hasBody ? '正文为空（壳行），无法作参照' : ''}>
+                <Popconfirm
+                  title="以这篇笔记为参照创作？"
+                  description={`由「${namer(row.accountId)}」参照本笔记洗稿创作一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
+                  okText="触发创作"
+                  onConfirm={() => createPost.mutate(row)}
+                  disabled={!isNote || !hasBody}
+                >
+                  <Button size="small" type="link" loading={createPost.isPending} disabled={!isNote || !hasBody}>
+                    参照创作
+                  </Button>
+                </Popconfirm>
+              </Tooltip>
+              <Tooltip title={!isNote ? '评论行不支持（未存源笔记）' : ''}>
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={!isNote}
+                  onClick={() => {
+                    setCommentKind('content');
+                    setCommentTarget(row);
+                  }}
+                >
+                  定向评论
+                </Button>
+              </Tooltip>
+              <Popconfirm
+                title="删除这条精选灵感？"
+                description="仅清当前快照：之后再浏览到且仍达标会重新纳入，历史点赞/收藏标记不恢复；删后不再进入下次发帖创作素材。"
+                okText="删除"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => del.mutate(row)}
+              >
+                <Button size="small" type="link" danger loading={del.isPending}>
+                  删除
+                </Button>
+              </Popconfirm>
+            </Space>
+          </div>
+        );
+      },
     },
   ];
 
@@ -337,6 +436,47 @@ export function CuratedContentPage() {
           </Typography.Text>
         </Space>
       </Card>
+
+      {/* 定向评论弹窗：选类型（内容评论 / 带群评论）后触发；执行账号固定为该行归属账号。 */}
+      <Modal
+        open={!!commentTarget}
+        title="定向评论"
+        okText="触发评论"
+        cancelText="取消"
+        confirmLoading={targetedComment.isPending}
+        onOk={() => {
+          if (commentTarget) targetedComment.mutate({ row: commentTarget, withGroup: commentKind === 'group' });
+        }}
+        onCancel={() => setCommentTarget(null)}
+        width={460}
+      >
+        {commentTarget && (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Typography.Text>
+              目标笔记：「{commentTarget.title ?? '—'}」（执行账号：{namer(commentTarget.accountId)}）
+            </Typography.Text>
+            <Radio.Group value={commentKind} onChange={(e) => setCommentKind(e.target.value as 'content' | 'group')}>
+              <Space direction="vertical" size={4}>
+                <Radio value="content">
+                  内容评论
+                  <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                    基于笔记内容自动生成一条真诚评论
+                  </Typography.Text>
+                </Radio>
+                <Radio value="group">
+                  带群评论
+                  <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                    同样自动生成，末尾追加该账号配置的群聊信息（未配置则拒绝触发）
+                  </Typography.Text>
+                </Radio>
+              </Space>
+            </Radio.Group>
+            <Typography.Text type="secondary">
+              触发后将占用该账号边端：搜索定位这篇笔记（搜不到会如实报告，绝不评「相似」笔记）→ 撰写 → 飞书人审通过才发出；结果以飞书卡片回报。
+            </Typography.Text>
+          </Space>
+        )}
+      </Modal>
 
       {/* 详情浮层：简化版小红书笔记详情页（作者 / 标题 / 正文 / 赞藏评 / 元信息）。 */}
       <Modal open={!!viewing} onCancel={() => setViewing(null)} footer={null} width={520} title={null}>
