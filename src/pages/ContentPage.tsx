@@ -400,6 +400,7 @@ export function ContentPage() {
                   <Typography.Text type="secondary">标题（过长将由服务端自动截断至 18 字素）</Typography.Text>
                   <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="标题" />
                 </div>
+                <ImagesStrip row={viewing} />
                 <div>
                   <Typography.Text type="secondary">正文</Typography.Text>
                   <Input.TextArea
@@ -409,7 +410,6 @@ export function ContentPage() {
                     placeholder="正文"
                   />
                 </div>
-                <ImagesStrip row={viewing} />
                 <Typography.Text type="secondary">
                   可见范围 / 话题 / 配图本期在此不可改（保留原值）；「保存并批准」= 存改动后立即授权，标题被截断则需再确认一次。
                 </Typography.Text>
@@ -423,6 +423,9 @@ export function ContentPage() {
                   </Typography.Title>
                 ) : null}
 
+                {/* 配图（在标题下、正文上，贴合小红书图文顺序） */}
+                <ImagesStrip row={viewing} />
+
                 {/* 正文（保留换行） */}
                 {viewing.content ? (
                   <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>
@@ -431,8 +434,6 @@ export function ContentPage() {
                 ) : (
                   <Typography.Paragraph type="secondary">无正文</Typography.Paragraph>
                 )}
-
-                <ImagesStrip row={viewing} />
 
                 <Divider style={{ margin: '12px 0' }} />
 
