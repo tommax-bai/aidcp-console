@@ -86,7 +86,7 @@ function isSourcePost(row: PanelCuratedContent): boolean {
 function actionReasonLabel(reason: string | undefined): string {
   switch (reason) {
     case 'empty_body':
-      return '该行正文为空（壳行），无法作为洗稿参照';
+      return '该行正文为空（历史/异常壳行），无法作为洗稿参照';
     case 'empty_title':
       return '该行无标题，无法搜索定位目标笔记';
     case 'image_text_only':
@@ -121,7 +121,7 @@ function actionReasonLabel(reason: string | undefined): string {
 
 /**
  * 「纳入原因」机器码 → 中文友好文案（云端 evaluateAdmission / markBotAction / archiveComment 产出的码）。
- * 未知码原样兜底（诚实：不假装认识陌生码）；含 content_missing 标注「未抓到正文」（壳行）。
+ * 未知码原样兜底（诚实：不假装认识陌生码）；历史 content_missing 标注「未抓到正文」（壳行）。
  */
 function admitReasonLabel(raw: string | null): string {
   if (raw == null || raw === '') return '—';
@@ -148,7 +148,7 @@ function admitReasonLabel(raw: string | null): string {
 /**
  * 精选内容池管理页（change curated-content-admin-page）。
  * - 默认「全部账号」合并视图（每行带账号列、服务端分页）查看精选创作灵感语料，可在右上切到单个账号。
- * - 治理：删单条（按行账号路由防越权）、一键清空正文壳行（按单账号执行，全账号视图下禁用）；honest-write 回真实条数、非乐观（重取真态）。
+ * - 治理：删单条（按行账号路由防越权）、一键清空历史/异常正文壳行（按单账号执行，全账号视图下禁用）；honest-write 回真实条数、非乐观（重取真态）。
  * - 删除仅清当前快照：之后再浏览到且仍达标会重新纳入（准入不查史）——确认文案如实告知，绝不谎称永久移除。
  * - 整行可点：点击任意行打开「笔记详情」浮层（简化版小红书详情页）看正文/作者/赞藏评；操作列只留删除（删除点击不触发浮层）。
  */
@@ -209,7 +209,7 @@ export function CuratedContentPage() {
   const clearEmpty = useMutation({
     mutationFn: () => apiPost<{ deleted: number }>(`/api/curated/contents/clear-empty`, { accountId: effectiveAccountId }),
     onSuccess: (res) => {
-      message.success(`已清理 ${res.deleted} 条空正文壳行`);
+      message.success(`已清理 ${res.deleted} 条历史/异常空正文壳行`);
       invalidateCurated();
     },
     onError: () => message.error('清理失败'),
@@ -258,7 +258,7 @@ export function CuratedContentPage() {
     return [{ label: '全部原因', value: '' }, ...opts];
   }, [facets.data]);
 
-  // 空正文壳行预览数：纳入原因含 content_missing 的行（清理只删正文为空的行）。
+  // 历史空正文壳行预览数：纳入原因含 content_missing 的行（清理只删正文为空的行）。
   const emptyShellEstimate = useMemo(
     () =>
       (facets.data?.admitReasons ?? [])
@@ -327,7 +327,7 @@ export function CuratedContentPage() {
             ? '视频行暂不支持洗稿'
             : '评论行不支持洗稿'
           : !hasBody
-            ? '正文为空（壳行），无法作参照'
+          ? '正文为空（历史/异常壳行），无法作参照'
             : '';
         return (
           <div onClick={(e) => e.stopPropagation()}>
@@ -456,24 +456,24 @@ export function CuratedContentPage() {
         )}
       </Card>
 
-      <Card size="small" title="清理">
+      <Card size="small" title="历史清理">
         <Space wrap>
           <Popconfirm
-            title="清空该账号所有「正文为空的壳行」？"
-            description={`将按"正文为空"清理（约 ${emptyShellEstimate} 条），不影响有正文的优质素材；清理后显示真实条数。`}
+            title="清空该账号历史/异常「正文为空」行？"
+            description={`将按"正文为空"清理旧版本或异常写入留下的壳行（约 ${emptyShellEstimate} 条），不影响有正文的优质素材；清理后显示真实条数。`}
             okText="清理"
             okButtonProps={{ danger: true }}
             onConfirm={() => clearEmpty.mutate()}
             disabled={allAccountsView}
           >
             <Button size="small" danger loading={clearEmpty.isPending} disabled={allAccountsView}>
-              清空正文壳行（约 {emptyShellEstimate} 条）
+              清理历史空正文行（约 {emptyShellEstimate} 条）
             </Button>
           </Popconfirm>
           <Typography.Text type="secondary">
             {allAccountsView
               ? '清理按单账号执行，请先在上方切到具体账号再清理。'
-              : '壳行＝收藏过但同次访问没抓到正文的行；正文为空、对创作无贡献。按「正文为空」清理，刻意不按纳入原因（避免误删高权重好素材）。'}
+              : '当前版本抓不到正文不会再新建精选壳行；这里用于处理旧版本或异常写入留下的空正文行。按「正文为空」清理，不按纳入原因（避免误删有正文素材）。'}
           </Typography.Text>
         </Space>
       </Card>
@@ -570,7 +570,7 @@ export function CuratedContentPage() {
                 {viewing.body}
               </Typography.Paragraph>
             ) : (
-              <Typography.Paragraph type="secondary">正文为空（壳行）</Typography.Paragraph>
+              <Typography.Paragraph type="secondary">正文为空（历史/异常壳行）</Typography.Paragraph>
             )}
 
             {/* 话题 */}

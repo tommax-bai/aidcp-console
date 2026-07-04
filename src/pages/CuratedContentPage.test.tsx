@@ -1,7 +1,7 @@
 /**
  * 精选页行级定向动作前端测试（change curated-note-actions）。
  * 只 mock HTTP 客户端层，页面 + react-query 走真实渲染与调用路径。
- * 断言：按钮禁用态（视频/评论行禁洗稿、评论行动作全禁、壳行禁洗稿）、两端点调用参数（按行账号路由 + withGroup）、
+ * 断言：按钮禁用态（视频/评论行禁洗稿、评论行动作全禁、历史壳行禁洗稿）、两端点调用参数（按行账号路由 + withGroup）、
  * 触发态回执诚实分支（triggered 才绿；域内拒绝呈现说人话中文、绝不染绿）。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -102,12 +102,12 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
       makeRow(), // id7：图文 + 有正文 → 两动作可用
       makeRow({ id: 8, contentType: 'video', title: '目标视频标题', body: '视频文案' }), // 视频行 → 禁洗稿、可评论
       makeRow({ id: 9, contentType: 'comment', title: '一条精选评论', body: '评论文本' }), // 评论行 → 两动作全禁
-      makeRow({ id: 10, title: '壳行图文', body: '' }), // 壳行 → 禁洗稿、可评论
+      makeRow({ id: 10, title: '壳行图文', body: '' }), // 历史壳行 → 禁洗稿、可评论
     ];
     vi.mocked(apiPost).mockReset();
   });
 
-  it('按钮禁用态：视频/评论禁洗稿；评论行全禁；壳行禁洗稿但可评论', async () => {
+  it('按钮禁用态：视频/评论禁洗稿；评论行全禁；历史壳行禁洗稿但可评论', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     const createBtns = screen.getAllByRole('button', { name: /洗\s*稿/ });
