@@ -168,47 +168,58 @@ export function NotificationContactsPage() {
   ];
 
   // 全账号视图下前置「账号」列，标明每行联系人归属（单账号视图不显示）。
+  // 标签样式：与内容页「账号」列同口径（Tag 包 ProfileLink），可点跳该账号小红书主页。
   const accountColumn: ColumnsType<PanelNotificationContact>[number] = {
     title: '账号',
     dataIndex: 'accountId',
     width: 140,
-    render: (id: string) => <span>{namer(id)}</span>,
+    render: (id: string) => (
+      <Tag>
+        <ProfileLink userId={id}>{namer(id)}</ProfileLink>
+      </Tag>
+    ),
   };
 
+  // 列顺序：账号（全账号视图前置）→ 昵称 → 微信 → 标签 → 互动次数 → 加入原因 → 备注 → 添加时间 → 更新时间。
   const columns: ColumnsType<PanelNotificationContact> = [
     {
+      // 标签样式：与内容页「账号」列同口径（Tag 包 ProfileLink）。
+      // 联系人昵称可点：跳转其小红书主页（userId = 通知行解析出的主页 id）。无 userId 时回落纯文本，绝不渲染死链。
       title: '昵称',
       dataIndex: 'nickname',
-      // 联系人昵称可点：跳转其小红书主页（userId = 通知行解析出的主页 id）。无 userId 时回落纯文本，绝不渲染死链。
       render: (n: string | null, row) => (
-        <ProfileLink userId={row.userId}>
-          {n ? <strong>{n}</strong> : <Tag>昵称缺失</Tag>}
-          {row.userId ? <Typography.Text type="secondary"> · {row.userId}</Typography.Text> : null}
-        </ProfileLink>
+        <Tag>
+          <ProfileLink userId={row.userId}>{n ? n : '昵称缺失'}</ProfileLink>
+        </Tag>
       ),
     },
     {
-      title: '加入原因',
-      dataIndex: 'firstReason',
-      width: 170,
-      render: (r: string, row) => (
-        <span>
-          {reasonTag(r)}
-          {row.reasons
-            .filter((x) => x !== r)
-            .map((x) => (
-              <span key={x} style={{ marginLeft: 4 }}>
-                {reasonTag(x)}
-              </span>
-            ))}
-        </span>
-      ),
+      // 就地编辑：点击进入输入框，回车或失焦保存。窄列：约放得下 12 个字母。
+      title: '微信',
+      dataIndex: 'wechat',
+      width: 120,
+      render: (w: string | null, row) =>
+        isEditing(row, 'wechat') ? (
+          <Input
+            size="small"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(row)}
+            onPressEnter={() => commit(row)}
+            placeholder="微信号，可留空"
+          />
+        ) : (
+          <div className="editable-cell" onClick={() => beginEdit(row, 'wechat')} title="点击编辑">
+            {w ? w : <Typography.Text type="secondary">—</Typography.Text>}
+          </div>
+        ),
     },
     {
-      // 就地编辑：点击进入 tags 选择，失焦保存。
+      // 就地编辑：点击进入 tags 选择，失焦保存。窄列：约放得下一个 4 字标签，多标签自动换行。
       title: '标签',
       dataIndex: 'tags',
-      width: 240,
+      width: 120,
       render: (ts: string[], row) =>
         isEditing(row, 'tags') ? (
           <Select
@@ -239,26 +250,29 @@ export function NotificationContactsPage() {
         ),
     },
     {
-      // 就地编辑：点击进入输入框，回车或失焦保存。
-      title: '微信',
-      dataIndex: 'wechat',
-      width: 160,
-      render: (w: string | null, row) =>
-        isEditing(row, 'wechat') ? (
-          <Input
-            size="small"
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => commit(row)}
-            onPressEnter={() => commit(row)}
-            placeholder="微信号，可留空"
-          />
-        ) : (
-          <div className="editable-cell" onClick={() => beginEdit(row, 'wechat')} title="点击编辑">
-            {w ? w : <Typography.Text type="secondary">—</Typography.Text>}
-          </div>
-        ),
+      title: '互动次数',
+      dataIndex: 'eventCount',
+      width: 100,
+      sorter: (a, b) => a.eventCount - b.eventCount,
+      render: (n: number) => <span className="tabular-nums">{n}</span>,
+    },
+    {
+      // 窄列：约放得下一个 2 字原因标签，多原因自动换行。
+      title: '加入原因',
+      dataIndex: 'firstReason',
+      width: 96,
+      render: (r: string, row) => (
+        <span>
+          {reasonTag(r)}
+          {row.reasons
+            .filter((x) => x !== r)
+            .map((x) => (
+              <span key={x} style={{ marginLeft: 4 }}>
+                {reasonTag(x)}
+              </span>
+            ))}
+        </span>
+      ),
     },
     {
       // 就地编辑：点击进入多行输入，失焦保存（回车换行、不触发保存）。
@@ -282,13 +296,6 @@ export function NotificationContactsPage() {
         ),
     },
     {
-      title: '互动次数',
-      dataIndex: 'eventCount',
-      width: 100,
-      sorter: (a, b) => a.eventCount - b.eventCount,
-      render: (n: number) => <span className="tabular-nums">{n}</span>,
-    },
-    {
       title: '添加时间',
       dataIndex: 'firstSeen',
       width: 180,
@@ -299,7 +306,7 @@ export function NotificationContactsPage() {
       ),
     },
     {
-      title: '最近时间',
+      title: '更新时间',
       dataIndex: 'lastSeen',
       width: 180,
       defaultSortOrder: 'descend',
