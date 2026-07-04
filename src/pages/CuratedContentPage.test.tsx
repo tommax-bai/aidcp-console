@@ -1,7 +1,7 @@
 /**
  * 精选页行级定向动作前端测试（change curated-note-actions）。
  * 只 mock HTTP 客户端层，页面 + react-query 走真实渲染与调用路径。
- * 断言：按钮禁用态（视频/评论行禁写笔记、评论行动作全禁、历史壳行禁写笔记）、两端点调用参数（按行账号路由 + withGroup）、
+ * 断言：按钮禁用态（视频/评论行禁洗稿、评论行动作全禁、历史壳行禁洗稿）、两端点调用参数（按行账号路由 + withGroup）、
  * 触发态回执诚实分支（triggered 才绿；域内拒绝呈现说人话中文、绝不染绿）。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -100,17 +100,17 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
   beforeEach(() => {
     state.items = [
       makeRow(), // id7：图文 + 有正文 → 两动作可用
-      makeRow({ id: 8, contentType: 'video', title: '目标视频标题', body: '视频文案' }), // 视频行 → 禁写笔记、可评论
+      makeRow({ id: 8, contentType: 'video', title: '目标视频标题', body: '视频文案' }), // 视频行 → 禁洗稿、可评论
       makeRow({ id: 9, contentType: 'comment', title: '一条精选评论', body: '评论文本' }), // 评论行 → 两动作全禁
-      makeRow({ id: 10, title: '壳行图文', body: '' }), // 历史壳行 → 禁写笔记、可评论
+      makeRow({ id: 10, title: '壳行图文', body: '' }), // 历史壳行 → 禁洗稿、可评论
     ];
     vi.mocked(apiPost).mockReset();
   });
 
-  it('按钮禁用态：视频/评论禁写笔记；评论行全禁；历史壳行禁写笔记但可评论', async () => {
+  it('按钮禁用态：视频/评论禁洗稿；评论行全禁；历史壳行禁洗稿但可评论', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
-    const createBtns = screen.getAllByRole('button', { name: /写\s*笔\s*记/ });
+    const createBtns = screen.getAllByRole('button', { name: /洗\s*稿/ });
     const commentBtns = screen.getAllByRole('button', { name: /评\s*论/ });
     expect(createBtns.map((b) => (b as HTMLButtonElement).disabled)).toEqual([false, true, true, true]);
     expect(commentBtns.map((b) => (b as HTMLButtonElement).disabled)).toEqual([false, false, true, false]);
@@ -124,34 +124,34 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/clear-empty'))).toBe(false);
   });
 
-  it('写笔记：确认后按行账号 POST create-post；triggered=true → 引导去飞书人审', async () => {
+  it('洗稿：确认后按行账号 POST create-post；triggered=true → 引导去飞书人审', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: true });
     renderPage();
     await screen.findByText('目标笔记标题');
-    fireEvent.click(screen.getAllByRole('button', { name: /写\s*笔\s*记/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*写\s*笔\s*记/ }));
-    expect(await screen.findByText(/已触发写笔记/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
+    expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
   });
 
-  it('写笔记域内拒绝（publish_busy）→ 中文原因、绝不染绿', async () => {
+  it('洗稿域内拒绝（publish_busy）→ 中文原因、绝不染绿', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'publish_busy' });
     renderPage();
     await screen.findByText('目标笔记标题');
-    fireEvent.click(screen.getAllByRole('button', { name: /写\s*笔\s*记/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*写\s*笔\s*记/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
     expect(await screen.findByText(/发布链路正在生成其它草稿/)).toBeTruthy();
-    expect(screen.queryByText(/已触发写笔记/)).toBeNull();
+    expect(screen.queryByText(/已触发洗稿/)).toBeNull();
   });
 
-  it('阅读详情浮层里可以触发写笔记', async () => {
+  it('阅读详情浮层里可以触发洗稿', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: true });
     renderPage();
     fireEvent.click(await screen.findByText('目标笔记标题'));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /写\s*笔\s*记/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*写\s*笔\s*记/ }));
-    expect(await screen.findByText(/已触发写笔记/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: /洗\s*稿/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
+    expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
   });
 

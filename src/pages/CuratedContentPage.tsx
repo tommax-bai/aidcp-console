@@ -86,11 +86,11 @@ function isSourcePost(row: PanelCuratedContent): boolean {
 function actionReasonLabel(reason: string | undefined): string {
   switch (reason) {
     case 'empty_body':
-      return '该行正文为空（历史/异常壳行），无法作为写笔记参照';
+      return '该行正文为空（历史/异常壳行），无法作为洗稿参照';
     case 'empty_title':
       return '该行无标题，无法搜索定位目标笔记';
     case 'image_text_only':
-      return '只有图文行支持写笔记；视频和评论暂不支持';
+      return '只有图文行支持洗稿；视频和评论暂不支持';
     case 'source_post_only':
       return '只有图文或视频源帖支持评论';
     case 'note_only':
@@ -206,15 +206,15 @@ export function CuratedContentPage() {
     onError: () => message.error('删除失败'),
   });
 
-  // 写笔记（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
+  // 洗稿（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
   const createPost = useMutation({
     mutationFn: (row: PanelCuratedContent) =>
       apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, { accountId: row.accountId }),
     onSuccess: (res) => {
-      if (res.triggered) message.success('已触发写笔记：生成草稿后将发飞书人审卡，请到飞书完成审核');
+      if (res.triggered) message.success('已触发洗稿：生成草稿后将发飞书人审卡，请到飞书完成审核');
       else message.info(actionReasonLabel(res.reason));
     },
-    onError: () => message.error('写笔记触发失败'),
+    onError: () => message.error('洗稿触发失败'),
   });
 
   // 评论（内容/带群）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
@@ -255,8 +255,8 @@ export function CuratedContentPage() {
     const disabled = !canCreatePost || !hasBody;
     const tip = !canCreatePost
       ? row.contentType === 'video'
-        ? '视频行暂不支持写笔记'
-        : '评论行不支持写笔记'
+        ? '视频行暂不支持洗稿'
+        : '评论行不支持洗稿'
       : !hasBody
         ? '正文为空（壳行），无法作参照'
         : '';
@@ -307,16 +307,29 @@ export function CuratedContentPage() {
     {
       title: '纳入原因',
       dataIndex: 'admitReason',
-      width: 160,
+      width: 120,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       // 中文文案，悬浮显示原始机器码（便于排查）。
       render: (v: string | null) =>
-        v ? <Tooltip title={v}>{admitReasonLabel(v)}</Tooltip> : <Typography.Text type="secondary">—</Typography.Text>,
+        v ? (
+          <Tooltip title={v}>
+            <span style={{ whiteSpace: 'nowrap' }}>{admitReasonLabel(v)}</span>
+          </Tooltip>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
     },
-    { title: '更新时刻', dataIndex: 'updatedAt', width: 170, render: (v: number) => timeText(v) },
+    {
+      title: '更新时刻',
+      dataIndex: 'updatedAt',
+      width: 140,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      render: (v: number) => <span style={{ whiteSpace: 'nowrap' }}>{timeText(v)}</span>,
+    },
     {
       title: '操作',
       key: 'action',
-      width: 190,
+      width: 250,
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
         const canComment = isSourcePost(row);
@@ -324,17 +337,17 @@ export function CuratedContentPage() {
         return (
           <div onClick={(e) => e.stopPropagation()}>
             <Space size={8}>
-              {/* 写笔记：仅图文行且有正文；视频和评论暂不支持。 */}
+              {/* 洗稿：仅图文行且有正文；视频和评论暂不支持。 */}
               <Tooltip title={writeState.tip}>
                 <Popconfirm
-                  title="以这篇图文写一篇新笔记？"
+                  title="以这篇图文洗稿成一篇新笔记？"
                   description={`由「${namer(row.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                  okText="触发写笔记"
+                  okText="触发洗稿"
                   onConfirm={() => createPost.mutate(row)}
                   disabled={writeState.disabled}
                 >
                   <Button size="small" icon={<EditOutlined />} loading={createPost.isPending} disabled={writeState.disabled}>
-                    写笔记
+                    洗稿
                   </Button>
                 </Popconfirm>
               </Tooltip>
@@ -578,9 +591,9 @@ export function CuratedContentPage() {
               <Space wrap>
                 <Tooltip title={createPostState(viewing).tip}>
                   <Popconfirm
-                    title="以这篇图文写一篇新笔记？"
+                    title="以这篇图文洗稿成一篇新笔记？"
                     description={`由「${namer(viewing.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                    okText="触发写笔记"
+                    okText="触发洗稿"
                     onConfirm={() =>
                       createPost.mutate(viewing, {
                         onSuccess: (res) => {
@@ -596,7 +609,7 @@ export function CuratedContentPage() {
                       loading={createPost.isPending}
                       disabled={createPostState(viewing).disabled}
                     >
-                      写笔记
+                      洗稿
                     </Button>
                   </Popconfirm>
                 </Tooltip>
