@@ -148,7 +148,7 @@ function admitReasonLabel(raw: string | null): string {
 /**
  * 精选内容池管理页（change curated-content-admin-page）。
  * - 默认「全部账号」合并视图（每行带账号列、服务端分页）查看精选创作灵感语料，可在右上切到单个账号。
- * - 治理：删单条（按行账号路由防越权）、一键清空历史/异常正文壳行（按单账号执行，全账号视图下禁用）；honest-write 回真实条数、非乐观（重取真态）。
+ * - 治理：删单条（按行账号路由防越权）；honest-write 回真实条数、非乐观（重取真态）。
  * - 删除仅清当前快照：之后再浏览到且仍达标会重新纳入（准入不查史）——确认文案如实告知，绝不谎称永久移除。
  * - 整行可点：点击任意行打开「笔记详情」浮层（简化版小红书详情页）看正文/作者/赞藏评；操作列只留删除（删除点击不触发浮层）。
  */
@@ -206,15 +206,6 @@ export function CuratedContentPage() {
     onError: () => message.error('删除失败'),
   });
 
-  const clearEmpty = useMutation({
-    mutationFn: () => apiPost<{ deleted: number }>(`/api/curated/contents/clear-empty`, { accountId: effectiveAccountId }),
-    onSuccess: (res) => {
-      message.success(`已清理 ${res.deleted} 条历史/异常空正文壳行`);
-      invalidateCurated();
-    },
-    onError: () => message.error('清理失败'),
-  });
-
   // 写笔记（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
   const createPost = useMutation({
     mutationFn: (row: PanelCuratedContent) =>
@@ -257,15 +248,6 @@ export function CuratedContentPage() {
     }));
     return [{ label: '全部原因', value: '' }, ...opts];
   }, [facets.data]);
-
-  // 历史空正文壳行预览数：纳入原因含 content_missing 的行（清理只删正文为空的行）。
-  const emptyShellEstimate = useMemo(
-    () =>
-      (facets.data?.admitReasons ?? [])
-        .filter((r) => (r.admitReason ?? '').includes('content_missing'))
-        .reduce((sum, r) => sum + r.count, 0),
-    [facets.data],
-  );
 
   const createPostState = (row: PanelCuratedContent) => {
     const canCreatePost = row.contentType === 'image_text';
@@ -462,28 +444,6 @@ export function CuratedContentPage() {
             }
           />
         )}
-      </Card>
-
-      <Card size="small" title="历史清理">
-        <Space wrap>
-          <Popconfirm
-            title="清空该账号历史/异常「正文为空」行？"
-            description={`将按"正文为空"清理旧版本或异常写入留下的壳行（约 ${emptyShellEstimate} 条），不影响有正文的优质素材；清理后显示真实条数。`}
-            okText="清理"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => clearEmpty.mutate()}
-            disabled={allAccountsView}
-          >
-            <Button size="small" danger loading={clearEmpty.isPending} disabled={allAccountsView}>
-              清理历史空正文行（约 {emptyShellEstimate} 条）
-            </Button>
-          </Popconfirm>
-          <Typography.Text type="secondary">
-            {allAccountsView
-              ? '清理按单账号执行，请先在上方切到具体账号再清理。'
-              : '当前版本抓不到正文不会再新建精选壳行；这里用于处理旧版本或异常写入留下的空正文行。按「正文为空」清理，不按纳入原因（避免误删有正文素材）。'}
-          </Typography.Text>
-        </Space>
       </Card>
 
       {/* 评论弹窗：选类型（内容评论 / 带群评论）后触发；执行账号固定为该行归属账号。 */}

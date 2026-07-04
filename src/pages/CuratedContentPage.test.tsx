@@ -116,6 +116,14 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(commentBtns.map((b) => (b as HTMLButtonElement).disabled)).toEqual([false, false, true, false]);
   });
 
+  it('不展示空正文批量清理入口', async () => {
+    renderPage();
+    await screen.findByText('目标笔记标题');
+    expect(screen.queryByText('历史清理')).toBeNull();
+    expect(screen.queryByRole('button', { name: /清理/ })).toBeNull();
+    expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/clear-empty'))).toBe(false);
+  });
+
   it('写笔记：确认后按行账号 POST create-post；triggered=true → 引导去飞书人审', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: true });
     renderPage();
