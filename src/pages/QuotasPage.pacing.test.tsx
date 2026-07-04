@@ -27,8 +27,19 @@ if (typeof window.matchMedia !== 'function') {
     }) as unknown as MediaQueryList;
 }
 
+const realGetComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = ((elt: Element, pseudoElt?: string | null): CSSStyleDeclaration => {
+  if (pseudoElt) {
+    return { getPropertyValue: () => '0px' } as unknown as CSSStyleDeclaration;
+  }
+  return realGetComputedStyle(elt);
+}) as typeof window.getComputedStyle;
+
 const PACING_ROWS: PacingConfigRow[] = [
   { operation: 'action', minMs: 1500, maxMs: 4000, overridden: true, updatedAt: '2026-07-04T00:00:00Z', updatedBy: 'op' },
+  { operation: 'feed_card_read', minMs: 450, maxMs: 7000, overridden: false, updatedAt: null, updatedBy: null },
+  { operation: 'content_glance', minMs: 2500, maxMs: 90000, overridden: false, updatedAt: null, updatedBy: null },
+  { operation: 'content_read', minMs: 2500, maxMs: 90000, overridden: false, updatedAt: null, updatedBy: null },
   { operation: 'scroll', minMs: 500, maxMs: 1500, overridden: false, updatedAt: null, updatedBy: null },
   { operation: 'card_gap', minMs: 3000, maxMs: 7000, overridden: false, updatedAt: null, updatedBy: null },
   { operation: 'detail_dwell', minMs: 2500, maxMs: 5000, overridden: false, updatedAt: null, updatedBy: null },
@@ -122,6 +133,9 @@ describe('QuotasPage 节奏兜底块', () => {
     expect(within(cardGapTr).getByText('3000')).toBeTruthy();
     expect(within(cardGapTr).getByText('7000')).toBeTruthy();
     expect(within(cardGapTr).getByText('系统默认')).toBeTruthy(); // overridden=false
+
+    const contentReadTr = await pacingRow('正文阅读');
+    expect(within(contentReadTr).getByText('90000')).toBeTruthy();
   });
 
   it('本地闸：最大 < 最小×1.5 → 保存禁用；回到合法值 → 启用', async () => {

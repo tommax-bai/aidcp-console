@@ -444,18 +444,25 @@ export interface SessionLimitView {
 }
 
 // 节奏兜底配置（change pacing-floor-config-min-interval）。与 cloud PacingConfigRowView 手动对齐，两处须同步防漂移。
-// 语义=「最小间隔」兜底：每类操作两次动作之间的下限区间（毫秒）。生效值已含读出口夹逼护栏（≥ 非零防呆下限、≤ CAP），
+// 语义=「最小间隔」兜底：每类操作两次动作之间的下限区间（毫秒）。生效值已含读出口夹逼护栏（≥ 非零防呆下限、≤ 类别上限），
 // 故 minMs 恒非零——配置只能抬高延迟、抬不穿下限（绝不零延迟红线不可经配置绕过）。
 
 /** 兜底操作类别（与 cloud PacingOp / edge 逐字一致）。 */
-export type PacingOperation = 'action' | 'scroll' | 'card_gap' | 'detail_dwell';
+export type PacingOperation =
+  | 'action'
+  | 'scroll'
+  | 'card_gap'
+  | 'detail_dwell'
+  | 'feed_card_read'
+  | 'content_glance'
+  | 'content_read';
 
 /** 单 op 兜底区间生效值（已含夹逼护栏）+ 来源/审计（GET /api/pacing 行）。 */
 export interface PacingConfigRow {
   operation: PacingOperation;
   /** 生效最小间隔（毫秒，读出口 clamp 后 ≥ 非零防呆下限）。 */
   minMs: number;
-  /** 生效最大间隔（毫秒，≤ CAP）。 */
+  /** 生效最大间隔（毫秒，≤ 类别上限）。 */
   maxMs: number;
   /** 是否存在库内覆盖（false=显示的是内置写死默认，即当前真生效）。 */
   overridden: boolean;

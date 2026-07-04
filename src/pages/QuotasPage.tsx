@@ -45,20 +45,43 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
 const GLOBAL_ROW_KEY = 'global';
 
 // ── 节奏兜底（change pacing-floor-config-min-interval）──────────────────────────
-// CAP=15000ms 与 cloud 读出口 CAP_MS 同量级；表单只作上界与展宽本地闸，权威夹逼与非零防呆下限在云端读出口。
+// 前台动作 gate 保持 15s 小上限；阅读停留类按内容模型允许更长，权威夹逼仍在云端读出口。
 const PACING_CAP_MS = 15_000;
-const PACING_OP_ORDER: Record<PacingOperation, number> = { action: 1, scroll: 2, card_gap: 3, detail_dwell: 4 };
+const PACING_OP_CAP_MS: Record<PacingOperation, number> = {
+  action: PACING_CAP_MS,
+  scroll: PACING_CAP_MS,
+  card_gap: PACING_CAP_MS,
+  detail_dwell: PACING_CAP_MS,
+  feed_card_read: 30_000,
+  content_glance: 90_000,
+  content_read: 90_000,
+};
+const PACING_OP_ORDER: Record<PacingOperation, number> = {
+  action: 1,
+  feed_card_read: 2,
+  content_glance: 3,
+  content_read: 4,
+  scroll: 5,
+  card_gap: 6,
+  detail_dwell: 7,
+};
 const PACING_OP_LABEL: Record<PacingOperation, string> = {
   action: '互动动作',
+  feed_card_read: 'Feed卡片阅读',
+  content_glance: '正文扫读',
+  content_read: '正文阅读',
   scroll: '评论滚动',
   card_gap: '图片翻页',
   detail_dwell: '详情停留下限',
 };
 const PACING_OP_DESC: Record<PacingOperation, string> = {
-  action: '打开笔记/主页、点赞/收藏/关注/评论前',
-  scroll: '评论区滚动前',
-  card_gap: '详情页图片翻页前',
-  detail_dwell: '详情页离页前的兜底停留下限（内容驱动停留另由云端计算）',
+  action: '打开笔记/主页、点赞/收藏/关注/评论前的操作间隔',
+  feed_card_read: 'Feed翻页前看完本批新卡；最小值按每张新卡计，最大值是本批封顶',
+  content_glance: '详情页图片/评论等子动作前，按正文量级计算的轻量扫读停留',
+  content_read: '详情页返回/关闭前，按正文量级计算的完整阅读停留',
+  scroll: '评论区滚动前；也覆盖详情内连续滚评论的子动作',
+  card_gap: '详情页图片翻页前；也覆盖详情内连续翻图的子动作',
+  detail_dwell: '详情页离页前的兜底停留下限；内容驱动阅读由正文扫读/正文阅读控制',
 };
 
 
@@ -363,7 +386,7 @@ export function QuotasPage() {
       const msg = (e as Error).message;
       message.error(
         msg === 'invalid_value'
-          ? '数字非法（须为 0–15000 的整数，且最大 ≥ 最小×1.5），未保存'
+          ? '数字非法（须为该类别允许范围内的整数，且最大 ≥ 最小×1.5），未保存'
           : msg === 'unknown_operation'
             ? '未知操作类别，未保存'
             : msg === 'no_valid_fields'
@@ -373,9 +396,11 @@ export function QuotasPage() {
     },
   });
 
-  // 本地闸：与服务端拒绝规则同构（非负整数、≤CAP、max≥min×1.5 最小展宽）；服务端二次校验 + 读出口夹逼为权威。
+  const pacingCapMs = editingPacing ? PACING_OP_CAP_MS[editingPacing.operation] : PACING_CAP_MS;
+
+  // 本地闸：与服务端拒绝规则同构（非负整数、≤类别 CAP、max≥min×1.5 最小展宽）；服务端二次校验 + 读出口夹逼为权威。
   const pcValid = (n: number | null): n is number =>
-    n !== null && Number.isInteger(n) && n >= 0 && n <= PACING_CAP_MS;
+    n !== null && Number.isInteger(n) && n >= 0 && n <= pacingCapMs;
   const canSavePacing = pcValid(pcMin) && pcValid(pcMax) && (pcMax as number) >= (pcMin as number) * 1.5;
 
   const pacingRows = useMemo(
@@ -719,14 +744,14 @@ export function QuotasPage() {
         {editingPacing && (
           <Form layout="vertical" requiredMark={false}>
             <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-              最小 / 最大间隔均须为 0–15000 的整数（毫秒），且最大 ≥ 最小×1.5（留出足够展宽避免节奏机械化）。
-              过低的值会被系统自动抬到内置非零下限——配置只能抬高延迟、抬不穿下限。保存前服务端会再校验，各边缘下次重连后生效。
+              最小 / 最大间隔均须为 0–{pacingCapMs} 的整数（毫秒），且最大 ≥ 最小×1.5（留出足够展宽避免节奏机械化）。
+              Feed卡片阅读的最小值按每张新卡计，阅读类表示目标停留护栏；执行端仍按已停留时长只补差额。保存前服务端会再校验，各边缘下次重连后生效。
             </Typography.Paragraph>
             <Form.Item label="最小间隔（毫秒）">
-              <InputNumber value={pcMin ?? undefined} onChange={(v) => setPcMin(v ?? null)} min={0} max={PACING_CAP_MS} precision={0} style={{ width: 200 }} />
+              <InputNumber value={pcMin ?? undefined} onChange={(v) => setPcMin(v ?? null)} min={0} max={pacingCapMs} precision={0} style={{ width: 200 }} />
             </Form.Item>
             <Form.Item label="最大间隔（毫秒，须 ≥ 最小×1.5）">
-              <InputNumber value={pcMax ?? undefined} onChange={(v) => setPcMax(v ?? null)} min={0} max={PACING_CAP_MS} precision={0} style={{ width: 200 }} />
+              <InputNumber value={pcMax ?? undefined} onChange={(v) => setPcMax(v ?? null)} min={0} max={pacingCapMs} precision={0} style={{ width: 200 }} />
             </Form.Item>
           </Form>
         )}
