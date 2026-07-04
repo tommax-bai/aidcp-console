@@ -103,12 +103,14 @@ const IMG_FALLBACK =
 
 /** 配图栏（查看/编辑共用）：缩略图 + 点击大图预览；诚实标注「实际附着张数」与死链可能。 */
 function ImagesStrip({ row }: { row: PanelPublish }) {
-  if (row.images.length === 0) return null;
+  // 防御旧负载：云端未升级/缓存数据无 images 字段时按无图处理，不白屏。
+  const images = row.images ?? [];
+  if (images.length === 0) return null;
   return (
     <div style={{ marginBottom: 12 }}>
       <Image.PreviewGroup>
         <Space wrap size={8}>
-          {row.images.map((src, i) => (
+          {images.map((src, i) => (
             <Image
               key={`${row.id}-${i}`}
               src={src}
@@ -123,7 +125,7 @@ function ImagesStrip({ row }: { row: PanelPublish }) {
       </Image.PreviewGroup>
       <div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          配图 {row.images.length} 张
+          配图 {images.length} 张
           {row.imagesAttachedCount > 0 ? `（发布时实际附着 ${row.imagesAttachedCount} 张）` : ''}
           ；较早记录的图片链接可能已过期，无法加载属正常。
         </Typography.Text>
