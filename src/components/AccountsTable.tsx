@@ -17,6 +17,24 @@ function severityRank(a: PanelAccount): number {
 
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
+const viewsColumn: ColumnsType<PanelAccount>[number] = {
+  // #17：站内深链——一键跳到该账号在其它页的视图，带 ?account=<id> 深链（各页读 URL 预置账号筛选）。
+  // 与「账号名」的站外小红书主页 ProfileLink 互不影响：那是外链，这是站内导航。
+  title: '站内视图',
+  key: 'views',
+  width: 128,
+  render: (_, r) => {
+    const acc = encodeURIComponent(r.accountId);
+    return (
+      <Space size={4} style={{ whiteSpace: 'nowrap' }}>
+        <Link to={`/content?account=${acc}`}>内容</Link>
+        <Link to={`/usage?account=${acc}`}>用量</Link>
+        <Link to={`/notification-contacts?account=${acc}`}>联系人</Link>
+      </Space>
+    );
+  },
+};
+
 const columns: ColumnsType<PanelAccount> = [
   {
     title: '账号',
@@ -25,23 +43,6 @@ const columns: ColumnsType<PanelAccount> = [
     render: (_, r) => (
       <ProfileLink userId={r.accountId}>{accountDisplayName(r.nickname, r.label, r.accountId)}</ProfileLink>
     ),
-  },
-  {
-    // #17：站内深链——一键跳到该账号在其它页的视图，带 ?account=<id> 深链（各页读 URL 预置账号筛选）。
-    // 与上方「账号名」的站外小红书主页 ProfileLink 互不影响：那是外链，这是站内导航。
-    title: '站内视图',
-    key: 'views',
-    width: 168,
-    render: (_, r) => {
-      const acc = encodeURIComponent(r.accountId);
-      return (
-        <Space size={4}>
-          <Link to={`/content?account=${acc}`}>内容</Link>
-          <Link to={`/usage?account=${acc}`}>用量</Link>
-          <Link to={`/notification-contacts?account=${acc}`}>联系人</Link>
-        </Space>
-      );
-    },
   },
   {
     title: '人设',
@@ -221,8 +222,8 @@ export function AccountsTable({
 
   const withGroupChat: ColumnsType<PanelAccount> = groupChatColumn ? [...baseCols, groupChatColumn] : baseCols;
   const cols: ColumnsType<PanelAccount> = actionsColumn
-    ? [...withGroupChat, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
-    : withGroupChat;
+    ? [...withGroupChat, viewsColumn, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
+    : [...withGroupChat, viewsColumn];
   return (
     <Table
       size="small"
