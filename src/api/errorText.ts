@@ -13,6 +13,8 @@ const CODE_TEXT: Record<string, string> = {
   version_conflict: '内容已被他处修改，请刷新后重试',
   version_stale: '内容已更新，请刷新后重新审批',
   already_decided: '该草稿正在审批处理中，请刷新',
+  account_offline: '账号不在线，无法发布',
+  publish_target_unavailable: '无法确认发布账号，无法发布',
   not_pending: '该草稿已不可编辑（非待审态）',
   not_found: '目标不存在',
   missing_visibility: '可见范围不能为空',
