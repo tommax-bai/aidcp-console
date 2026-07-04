@@ -81,12 +81,6 @@ const COLUMNS: ColumnsType<PanelPublish> = [
     render: (_: string, row) => lifecycleTag(row),
   },
   {
-    title: '回执',
-    dataIndex: 'platformPostId',
-    render: (v: string | null) =>
-      v ? <Typography.Text copyable>{v}</Typography.Text> : <Typography.Text type="secondary">无回执</Typography.Text>,
-  },
-  {
     title: '发布时间',
     dataIndex: 'publishedAt',
     width: 180,
