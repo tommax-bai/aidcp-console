@@ -28,7 +28,7 @@ import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
-import type { PanelPublish } from '../types/api';
+import type { PanelPublish, PanelPublishSourceReference } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
@@ -61,32 +61,64 @@ function lifecycleTag(row: Pick<PanelPublish, 'status' | 'contentVersion'>) {
   return <Tag color={color}>{PUBLISH_STATUS_LABEL[row.status] ?? row.status}</Tag>;
 }
 
-const COLUMNS: ColumnsType<PanelPublish> = [
-  {
-    title: '账号',
-    dataIndex: 'accountLabel',
-    width: 140,
-    // 账号链接可独立点击（stopPropagation：点昵称跳主页，不触发整行的「打开详情」）。
-    render: (v: string, row) => (
-      <Tag onClick={(e) => e.stopPropagation()}>
-        <ProfileLink userId={row.accountId}>{v || row.accountId}</ProfileLink>
-      </Tag>
-    ),
-  },
-  { title: '标题', dataIndex: 'title', render: (v: string | null) => v ?? '—' },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    width: 120,
-    render: (_: string, row) => lifecycleTag(row),
-  },
-  {
-    title: '发布时间',
-    dataIndex: 'publishedAt',
-    width: 180,
-    render: (v: number) => new Date(v).toLocaleString(),
-  },
-];
+function sourceTitle(ref: PanelPublishSourceReference): string {
+  return ref.title || ref.sourceId;
+}
+
+function buildColumns(openSource: (ref: PanelPublishSourceReference) => void): ColumnsType<PanelPublish> {
+  return [
+    {
+      title: '账号',
+      dataIndex: 'accountLabel',
+      width: 140,
+      // 账号链接可独立点击（stopPropagation：点昵称跳主页，不触发整行的「打开详情」）。
+      render: (v: string, row) => (
+        <Tag onClick={(e) => e.stopPropagation()}>
+          <ProfileLink userId={row.accountId}>{v || row.accountId}</ProfileLink>
+        </Tag>
+      ),
+    },
+    { title: '标题', dataIndex: 'title', render: (v: string | null) => v ?? '—' },
+    {
+      title: '来源',
+      dataIndex: 'sourceReference',
+      width: 180,
+      render: (ref: PanelPublishSourceReference | null) =>
+        ref ? (
+          <Button
+            size="small"
+            type="link"
+            onClick={(e) => {
+              e.stopPropagation();
+              openSource(ref);
+            }}
+            style={{ padding: 0, maxWidth: 160 }}
+          >
+            <Space size={4}>
+              <Tag color="purple" style={{ marginInlineEnd: 0 }}>洗稿</Tag>
+              <Typography.Text ellipsis style={{ maxWidth: 96 }}>
+                {sourceTitle(ref)}
+              </Typography.Text>
+            </Space>
+          </Button>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 120,
+      render: (_: string, row) => lifecycleTag(row),
+    },
+    {
+      title: '发布时间',
+      dataIndex: 'publishedAt',
+      width: 180,
+      render: (v: number) => new Date(v).toLocaleString(),
+    },
+  ];
+}
 
 /** 过期配图占位（灰底斜叉）：历史行存的是生图厂商约 24h 过期的临时签名 URL，加载失败属预期、非故障。 */
 const IMG_FALLBACK =
@@ -128,6 +160,79 @@ function ImagesStrip({ row }: { row: PanelPublish }) {
   );
 }
 
+function SourceReferenceModal({
+  source,
+  onClose,
+}: {
+  source: PanelPublishSourceReference | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal open={!!source} onCancel={onClose} footer={null} width={520} title={null}>
+      {source && (
+        <div>
+          <Space align="center" style={{ marginBottom: 12 }}>
+            <Avatar style={{ backgroundColor: '#722ed1', verticalAlign: 'middle' }}>
+              {(source.author ?? source.title ?? '来').slice(0, 1)}
+            </Avatar>
+            <div>
+              <div style={{ fontWeight: 600 }}>
+                {source.author ?? <Typography.Text type="secondary">匿名作者</Typography.Text>}
+              </div>
+              <Tag color="purple" style={{ marginTop: 2 }}>洗稿来稿</Tag>
+            </div>
+          </Space>
+
+          {source.title ? (
+            <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 8 }}>
+              {source.title}
+            </Typography.Title>
+          ) : (
+            <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 8 }}>
+              {source.sourceId}
+            </Typography.Title>
+          )}
+
+          {source.body ? (
+            <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>
+              {source.body}
+            </Typography.Paragraph>
+          ) : (
+            <Typography.Paragraph type="secondary">无正文快照</Typography.Paragraph>
+          )}
+
+          {source.topics.length > 0 ? (
+            <div style={{ marginBottom: 12 }}>
+              {source.topics.map((t) => (
+                <Tag key={t}>#{t}</Tag>
+              ))}
+            </div>
+          ) : null}
+
+          <Divider style={{ margin: '12px 0' }} />
+
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            <Typography.Text type="secondary">
+              源笔记：<Typography.Text copyable>{source.sourceId}</Typography.Text>
+            </Typography.Text>
+            <Typography.Text type="secondary">快照时间：{new Date(source.capturedAt).toLocaleString()}</Typography.Text>
+          </Space>
+
+          <div style={{ marginTop: 16, textAlign: 'right' }}>
+            {source.sourceUrl ? (
+              <Button type="primary" href={source.sourceUrl} target="_blank" rel="noopener noreferrer">
+                打开来源
+              </Button>
+            ) : (
+              <Button disabled>无来源链接</Button>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 /**
  * 内容管理：in-flight 队列 + 已发布/待审历史 + 待审草稿就地编辑与审批（change edit-note-draft-before-publish）。
  * 查看/编辑交互对齐精选页（用户 2026-07-04 要求）：整行可点，打开「笔记详情」浮层（简化版小红书详情页：
@@ -149,6 +254,7 @@ export function ContentPage() {
   const [pendingOnly, setPendingOnly] = useState(false); // #18：只看待审筛选
   // 浮层当前打开的记录（含快照 contentVersion）；编辑态本地字段。
   const [viewing, setViewing] = useState<PanelPublish | null>(null);
+  const [sourceViewing, setSourceViewing] = useState<PanelPublishSourceReference | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
 
@@ -157,6 +263,7 @@ export function ContentPage() {
   const queue = useContentQueue();
 
   const isEditable = viewing?.status === 'pending_approval';
+  const columns = buildColumns(setSourceViewing);
 
   const openModal = (row: PanelPublish) => {
     setViewing(row);
@@ -339,7 +446,7 @@ export function ContentPage() {
             bordered
             rowKey="id"
             pagination={false}
-            columns={COLUMNS}
+            columns={columns}
             dataSource={
               pendingOnly
                 ? published.data.items.filter((it) => it.status === 'pending_approval')
@@ -400,6 +507,22 @@ export function ContentPage() {
                 <div style={{ marginTop: 2 }}>{lifecycleTag(viewing)}</div>
               </div>
             </Space>
+
+            {viewing.sourceReference ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message={
+                  <Space wrap>
+                    <Typography.Text>洗稿来源：{sourceTitle(viewing.sourceReference)}</Typography.Text>
+                    <Button size="small" onClick={() => setSourceViewing(viewing.sourceReference)}>
+                      查看来稿件
+                    </Button>
+                  </Space>
+                }
+              />
+            ) : null}
 
             {isEditable ? (
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -479,6 +602,7 @@ export function ContentPage() {
           </div>
         )}
       </Modal>
+      <SourceReferenceModal source={sourceViewing} onClose={() => setSourceViewing(null)} />
     </div>
   );
 }

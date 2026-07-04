@@ -74,6 +74,7 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
     images: [],
     imageUrl: null,
     imagesAttachedCount: 0,
+    sourceReference: null,
     ...overrides,
   };
 }
@@ -212,11 +213,52 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     fireEvent.click(screen.getByRole('button', { name: /驳\s*回/ }));
     fireEvent.click(await screen.findByRole('button', { name: /确\s*定/ }));
     expect(await screen.findByText('已驳回')).toBeTruthy();
-    expect(await screen.findByRole('row', { name: /测试账号 测试草稿标题 已否决/ })).toBeTruthy();
-    expect(screen.queryByRole('row', { name: /测试账号 测试草稿标题 待审/ })).toBeNull();
+    expect(await screen.findByRole('row', { name: /测试账号.*测试草稿标题.*已否决/ })).toBeTruthy();
+    expect(screen.queryByRole('row', { name: /测试账号.*测试草稿标题.*待审/ })).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/publish/publish-1/approve', {
       approved: false,
       contentVersion: 0,
     });
+  });
+
+  it('参照洗稿行展示来稿件入口；点击来源不打开发布详情', async () => {
+    state.published = {
+      items: [
+        makePending({
+          status: 'published',
+          title: '洗稿后标题',
+          content: '发布正文',
+          sourceReference: {
+            kind: 'curated_reference',
+            curatedContentId: 7,
+            accountId: 'acc-1',
+            sourceId: 'note-42',
+            title: '来稿标题',
+            body: '来稿第一段\n来稿第二段',
+            author: '原作者',
+            topics: ['收纳', '家居'],
+            sourceUrl: null,
+            capturedAt: new Date('2026-07-03T09:00:00').getTime(),
+          },
+        }),
+      ],
+    };
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /洗稿.*来稿标题/ }));
+    expect(await screen.findByText('洗稿来稿')).toBeTruthy();
+    expect(screen.getByText('原作者')).toBeTruthy();
+    const body = await screen.findByText((_c, el) => el?.textContent === '来稿第一段\n来稿第二段');
+    expect(body.textContent).toContain('\n');
+    expect(screen.getByText('#收纳')).toBeTruthy();
+    expect(screen.getByText('无来源链接')).toBeTruthy();
+    expect(screen.queryByText('回执：')).toBeNull();
+  });
+
+  it('普通发布不展示洗稿来源入口', async () => {
+    state.published = { items: [makePending({ status: 'published', title: '普通发布' })] };
+    renderPage();
+    await screen.findByText('普通发布');
+    expect(screen.queryByRole('button', { name: /洗稿/ })).toBeNull();
   });
 });

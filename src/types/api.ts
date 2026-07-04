@@ -158,6 +158,21 @@ export interface PanelPublish {
   imageUrl: string | null;
   /** 边端实际附着上传成功的图片张数（诚实信号：区分「生成了几张」与「真上传了几张」）。 */
   imagesAttachedCount: number;
+  /** 参照洗稿来稿快照；普通发布为 null。 */
+  sourceReference: PanelPublishSourceReference | null;
+}
+
+export interface PanelPublishSourceReference {
+  kind: 'curated_reference';
+  curatedContentId: number | null;
+  accountId: string;
+  sourceId: string;
+  title: string | null;
+  body: string | null;
+  author: string | null;
+  topics: string[];
+  sourceUrl: string | null;
+  capturedAt: number;
 }
 
 /** in-flight 发布队列（orchestrator getStatus）。 */
