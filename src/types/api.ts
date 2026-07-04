@@ -169,7 +169,7 @@ export interface ContentQueue {
 // ── 精选内容后台管理（change curated-content-admin-page）────────────────────────
 // ⚠ 与 cloud `src/cache/curated-content-store.ts` 的 CuratedPanelRow/CuratedPanelListResult/CuratedFacets
 //   手工镜像，两处须同步防漂移。诚实置空：计数 null=未抓到（区别真实 0）；时间戳为 epoch ms（number）。
-export type CuratedContentType = 'note' | 'comment';
+export type CuratedContentType = 'image_text' | 'video' | 'comment';
 
 export interface PanelCuratedContent {
   id: number;
@@ -199,6 +199,9 @@ export interface CuratedContentList {
 
 export interface CuratedFacets {
   admitReasons: { admitReason: string | null; count: number; botActionCount: number }[];
+  imageTextCount: number;
+  videoCount: number;
+  /** 兼容旧云端 / 旧面板字段；新语义为图文+视频。 */
   noteCount: number;
   commentCount: number;
 }

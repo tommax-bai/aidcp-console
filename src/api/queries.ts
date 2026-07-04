@@ -236,7 +236,7 @@ export function useNotificationContacts(accountId: string | undefined, limit = 1
  * accountId 给定＝按账号；undefined＝全账号合并视图（每行带 accountId，服务端分页+一致 total）。
  */
 export interface CuratedFilters {
-  contentType?: 'note' | 'comment';
+  contentType?: 'image_text' | 'video' | 'comment';
   admitReason?: string;
   limit?: number;
   offset?: number;
