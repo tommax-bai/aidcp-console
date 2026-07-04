@@ -202,4 +202,21 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       contentVersion: 1,
     });
   });
+
+  it('驳回成功后列表状态立即变为已否决', async () => {
+    vi.mocked(apiPost).mockImplementation(async () => {
+      state.published = { items: [makePending({ status: 'needs_review' })] };
+      return { written: true };
+    });
+    await openEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: /驳\s*回/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /确\s*定/ }));
+    expect(await screen.findByText('已驳回')).toBeTruthy();
+    expect(await screen.findByRole('row', { name: /测试账号 测试草稿标题 已否决/ })).toBeTruthy();
+    expect(screen.queryByRole('row', { name: /测试账号 测试草稿标题 待审/ })).toBeNull();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/publish/publish-1/approve', {
+      approved: false,
+      contentVersion: 0,
+    });
+  });
 });

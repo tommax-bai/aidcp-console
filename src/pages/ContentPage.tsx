@@ -170,7 +170,21 @@ export function ContentPage() {
     setEditContent(row.content ?? '');
   };
 
-  const refreshPublished = () => qc.invalidateQueries({ queryKey: ['content', 'published'] });
+  const refreshContent = () => {
+    void qc.invalidateQueries({ queryKey: ['content', 'published'] });
+    void qc.invalidateQueries({ queryKey: ['content', 'queue'] });
+  };
+
+  const patchPublishedRow = (id: number, patch: Partial<PanelPublish>) => {
+    qc.setQueriesData<{ items: PanelPublish[] }>({ queryKey: ['content', 'published'] }, (old) =>
+      old
+        ? {
+            ...old,
+            items: old.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+          }
+        : old,
+    );
+  };
 
   // 编辑草稿：就地改标题/正文（乐观 CAS，携带打开时快照版本）。返回写后真态（含自增版本 + 收口后的标题）。
   const editDraft = useMutation({
@@ -200,7 +214,8 @@ export function ContentPage() {
       setViewing({ ...viewing, title: res.title, content: res.content ?? editContent, contentVersion: res.contentVersion });
       setEditTitle(res.title ?? '');
       setEditContent(res.content ?? editContent);
-      refreshPublished();
+      patchPublishedRow(viewing.id, { title: res.title, content: res.content ?? editContent, contentVersion: res.contentVersion });
+      refreshContent();
       if (res.title !== editTitle) message.warning('标题超长已自动截断，请确认');
       else message.success('已保存');
     } catch (err) {
@@ -222,7 +237,8 @@ export function ContentPage() {
     setViewing({ ...viewing, title: edited.title, content: edited.content ?? editContent, contentVersion: edited.contentVersion });
     setEditTitle(edited.title ?? '');
     setEditContent(edited.content ?? editContent);
-    refreshPublished();
+    patchPublishedRow(viewing.id, { title: edited.title, content: edited.content ?? editContent, contentVersion: edited.contentVersion });
+    refreshContent();
     if (edited.title !== editTitle) {
       // 标题被 clampTitle 收口 → 中止自动批准，要求人就截断后的字节再点一次批准（绝不批前发后）。
       message.warning('标题超长已自动截断，请确认截断后的标题后再点「批准」');
@@ -236,7 +252,7 @@ export function ContentPage() {
       } else {
         message.info(`已决定：${res.alreadyDecided ? '通过' : '驳回'}`);
       }
-      refreshPublished();
+      refreshContent();
     } catch (err) {
       message.error(reasonMessage(err, '审批失败'));
     }
@@ -247,9 +263,13 @@ export function ContentPage() {
     if (!viewing) return;
     try {
       const res = await approve.mutateAsync({ id: viewing.id, approved: false, contentVersion: viewing.contentVersion });
-      if (res.written) message.success('已驳回');
-      else message.info(`已决定：${res.alreadyDecided ? '通过' : '驳回'}`);
-      refreshPublished();
+      if (res.written || res.alreadyDecided === false) {
+        message.success('已驳回');
+        patchPublishedRow(viewing.id, { status: 'needs_review' });
+      } else {
+        message.info(`已决定：${res.alreadyDecided ? '通过' : '驳回'}`);
+      }
+      refreshContent();
       setViewing(null);
     } catch (err) {
       message.error(reasonMessage(err, '驳回失败'));
