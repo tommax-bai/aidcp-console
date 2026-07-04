@@ -17,6 +17,7 @@ import type {
   CategoryConfigCatalog,
   PersonaConfigCatalog,
   QuotaConfigCatalog,
+  PacingConfigView,
   SessionLimitView,
   ResumeConfigView,
   LlmUsagePayload,
@@ -64,6 +65,14 @@ export function useQuotaConfig() {
   return useQuery({
     queryKey: ['config', 'quotas'],
     queryFn: () => apiGet<QuotaConfigCatalog>('/api/quotas'),
+  });
+}
+
+/** 节奏兜底配置目录（change pacing-floor-config-min-interval）。每类操作（action/scroll/card_gap/detail_dwell）最小间隔兜底区间生效值 + 覆盖标记 + 审计。 */
+export function usePacingConfig() {
+  return useQuery({
+    queryKey: ['config', 'pacing'],
+    queryFn: () => apiGet<PacingConfigView>('/api/pacing'),
   });
 }
 

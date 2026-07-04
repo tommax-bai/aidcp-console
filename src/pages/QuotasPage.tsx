@@ -3,7 +3,7 @@ import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typo
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig, useSessionLimits, useResumeConfig } from '../api/queries';
+import { useQuotaConfig, useSessionLimits, useResumeConfig, usePacingConfig } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import type {
   QuotaConfigRow,
@@ -13,6 +13,9 @@ import type {
   SessionLimitView,
   SessionInteractionBudget,
   ResumeConfigView,
+  PacingConfigRow,
+  PacingConfigView,
+  PacingOperation,
 } from '../types/api';
 import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, RISK_ACTION_LABEL } from '../types/aidcp-enums';
 
@@ -40,6 +43,23 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
 
 /** 单行全局表的稳定 key（全局配置只有一行）。 */
 const GLOBAL_ROW_KEY = 'global';
+
+// ── 节奏兜底（change pacing-floor-config-min-interval）──────────────────────────
+// CAP=15000ms 与 cloud 读出口 CAP_MS 同量级；表单只作上界与展宽本地闸，权威夹逼与非零防呆下限在云端读出口。
+const PACING_CAP_MS = 15_000;
+const PACING_OP_ORDER: Record<PacingOperation, number> = { action: 1, scroll: 2, card_gap: 3, detail_dwell: 4 };
+const PACING_OP_LABEL: Record<PacingOperation, string> = {
+  action: '互动动作',
+  scroll: '评论滚动',
+  card_gap: '图片翻页',
+  detail_dwell: '详情停留下限',
+};
+const PACING_OP_DESC: Record<PacingOperation, string> = {
+  action: '打开笔记/主页、点赞/收藏/关注/评论前',
+  scroll: '评论区滚动前',
+  card_gap: '详情页图片翻页前',
+  detail_dwell: '详情页离页前的兜底停留下限（内容驱动停留另由云端计算）',
+};
 
 
 /**
@@ -317,11 +337,87 @@ export function QuotasPage() {
     { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigView) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
   ];
 
+  // ── 节奏兜底（全局一套，change pacing-floor-config-min-interval）─────────────
+  // 每类操作两次动作之间的「最小间隔」兜底区间（毫秒）；写非乐观（round-trip 后 invalidate 重取真态）。
+  // 生效边界=连接级：各边缘节点下次重连后才拉到新快照。detail_dwell 仅兜底下限、内容驱动停留由云端算。
+  const pacing = usePacingConfig();
+  const [editingPacing, setEditingPacing] = useState<PacingConfigRow | null>(null);
+  const [pcMin, setPcMin] = useState<number | null>(null);
+  const [pcMax, setPcMax] = useState<number | null>(null);
+
+  const openEditPacing = (row: PacingConfigRow) => {
+    setEditingPacing(row);
+    setPcMin(row.minMs);
+    setPcMax(row.maxMs);
+  };
+
+  const savePacing = useMutation({
+    mutationFn: (v: { operation: PacingOperation; minMs: number; maxMs: number }) =>
+      apiPut<PacingConfigView>('/api/pacing', v),
+    onSuccess: () => {
+      message.success('已保存，节奏兜底在各边缘下次重连后生效（无需重启）');
+      setEditingPacing(null);
+      void qc.invalidateQueries({ queryKey: ['config', 'pacing'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(
+        msg === 'invalid_value'
+          ? '数字非法（须为 0–15000 的整数，且最大 ≥ 最小×1.5），未保存'
+          : msg === 'unknown_operation'
+            ? '未知操作类别，未保存'
+            : msg === 'no_valid_fields'
+              ? '未填写任何可改字段，未保存'
+              : '保存失败',
+      );
+    },
+  });
+
+  // 本地闸：与服务端拒绝规则同构（非负整数、≤CAP、max≥min×1.5 最小展宽）；服务端二次校验 + 读出口夹逼为权威。
+  const pcValid = (n: number | null): n is number =>
+    n !== null && Number.isInteger(n) && n >= 0 && n <= PACING_CAP_MS;
+  const canSavePacing = pcValid(pcMin) && pcValid(pcMax) && (pcMax as number) >= (pcMin as number) * 1.5;
+
+  const pacingRows = useMemo(
+    () =>
+      (pacing.data?.pacing ?? [])
+        .slice()
+        .sort((a, b) => PACING_OP_ORDER[a.operation] - PACING_OP_ORDER[b.operation]),
+    [pacing.data],
+  );
+
+  const pacingColumns: ColumnsType<PacingConfigRow> = [
+    { title: '操作类别', dataIndex: 'operation', width: 120, render: (op: PacingOperation) => PACING_OP_LABEL[op] },
+    {
+      title: '覆盖场景',
+      dataIndex: 'operation',
+      key: 'desc',
+      render: (op: PacingOperation) => <Typography.Text type="secondary">{PACING_OP_DESC[op]}</Typography.Text>,
+    },
+    { title: '最小(ms)', dataIndex: 'minMs', width: 96, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    { title: '最大(ms)', dataIndex: 'maxMs', width: 96, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    {
+      title: '来源',
+      dataIndex: 'overridden',
+      width: 100,
+      render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>),
+    },
+    {
+      title: '操作',
+      width: 80,
+      render: (_: unknown, row: PacingConfigRow) => (
+        <Button size="small" onClick={() => openEditPacing(row)}>
+          编辑
+        </Button>
+      ),
+    },
+  ];
+
   // 「可活跃时间」卡已整体移出本页（change content-schedule-auto-publish，2026-07-03 用户拍板）：
   // 活跃时段与可自动发内容位统一在「排期」页的三态周历编辑 / 查看，本页专注限额与看门狗数字。
 
   // 任一读查询首次加载失败 → 诚实报错 + 重试全部（否则各卡永久骨架屏）。
-  if (isError || sl.isError || rc.isError) {
+  if (isError || sl.isError || rc.isError || pacing.isError) {
     return (
       <QueryError
         title="加载安全配置失败"
@@ -329,6 +425,7 @@ export function QuotasPage() {
           void refetch();
           void sl.refetch();
           void rc.refetch();
+          void pacing.refetch();
         }}
       />
     );
@@ -411,6 +508,26 @@ export function QuotasPage() {
             rowKey={rowKey}
             columns={columns}
             dataSource={rows}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      <Card size="small" title="节奏兜底（全局）">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="配置每类操作两次动作之间的「最小间隔」兜底区间（毫秒）。语义为最小间隔：距上次操作已够久则立即执行、不够只补差额，绝不在云端往返之上再累加等待。三条运营须知：① 新配置在各边缘节点【下次重连后才生效】（连接级快照，稳定 fleet 可能数小时才全部铺满、灰度期各节点行为不一致）；② detail_dwell【仅是详情页停留的兜底下限】，真正由内容驱动的停留时长仍由云端按内容计算；③ 若 fleet 混版，本配置【仅对新版边缘生效】，旧版边缘忽略并沿用其内置默认。改完无需重启；过低的值会被系统自动抬到内置非零下限（绝不零延迟）。未配置时显示的是内置默认（= 当前真生效）。"
+        />
+        {pacing.isLoading || !pacing.data ? (
+          <Skeleton active />
+        ) : (
+          <Table<PacingConfigRow>
+            size="small"
+            rowKey={(r) => r.operation}
+            columns={pacingColumns}
+            dataSource={pacingRows}
             pagination={false}
           />
         )}
@@ -576,6 +693,40 @@ export function QuotasPage() {
             </Form.Item>
             <Form.Item label="看门狗放弃结束（分钟，须 > 轻推）">
               <InputNumber value={rcEndMin ?? undefined} onChange={(v) => setRcEndMin(v ?? null)} min={2} max={1440} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title={editingPacing ? `编辑节奏兜底：${PACING_OP_LABEL[editingPacing.operation]}` : ''}
+        open={!!editingPacing}
+        onCancel={() => setEditingPacing(null)}
+        confirmLoading={savePacing.isPending}
+        okButtonProps={{ disabled: !canSavePacing }}
+        onOk={() =>
+          editingPacing &&
+          canSavePacing &&
+          savePacing.mutate({
+            operation: editingPacing.operation,
+            minMs: pcMin as number,
+            maxMs: pcMax as number,
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+      >
+        {editingPacing && (
+          <Form layout="vertical" requiredMark={false}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              最小 / 最大间隔均须为 0–15000 的整数（毫秒），且最大 ≥ 最小×1.5（留出足够展宽避免节奏机械化）。
+              过低的值会被系统自动抬到内置非零下限——配置只能抬高延迟、抬不穿下限。保存前服务端会再校验，各边缘下次重连后生效。
+            </Typography.Paragraph>
+            <Form.Item label="最小间隔（毫秒）">
+              <InputNumber value={pcMin ?? undefined} onChange={(v) => setPcMin(v ?? null)} min={0} max={PACING_CAP_MS} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="最大间隔（毫秒，须 ≥ 最小×1.5）">
+              <InputNumber value={pcMax ?? undefined} onChange={(v) => setPcMax(v ?? null)} min={0} max={PACING_CAP_MS} precision={0} style={{ width: 200 }} />
             </Form.Item>
           </Form>
         )}
