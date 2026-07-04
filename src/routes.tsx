@@ -51,8 +51,8 @@ export interface AppRoute {
 export const APP_ROUTES: AppRoute[] = [
   { path: '/', element: <DashboardPage />, navLabel: '数据', navIcon: <DashboardOutlined />, showInNav: true },
   { path: '/accounts', element: <AccountsPage />, navLabel: '账号', navIcon: <TeamOutlined />, showInNav: true },
-  { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, showInNav: true },
   { path: '/content-schedule', element: <ContentSchedulePage />, navLabel: '排期', navIcon: <ClockCircleOutlined />, showInNav: true },
+  { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, showInNav: true },
   { path: '/curated', element: <CuratedContentPage />, navLabel: '精选', navIcon: <BulbOutlined />, showInNav: true },
   { path: '/notification-contacts', element: <NotificationContactsPage />, navLabel: '互动联系人', navIcon: <ContactsOutlined />, showInNav: true },
   { path: '/persona', element: <PersonaPage />, navLabel: '人设', navIcon: <IdcardOutlined />, showInNav: true },
