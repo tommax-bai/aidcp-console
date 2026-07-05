@@ -324,7 +324,7 @@ export function CuratedContentPage() {
   const accountColumn: ColumnsType<PanelCuratedContent>[number] = {
     title: '账号',
     dataIndex: 'accountId',
-    width: 130,
+    width: 112,
     render: (id: string) => <span>{namer(id)}</span>,
   };
 
@@ -332,28 +332,36 @@ export function CuratedContentPage() {
     {
       title: '类型',
       dataIndex: 'contentType',
-      width: 70,
+      width: 64,
       render: (v: CuratedContentType) => <Tag color={curatedTypeColor(v)}>{curatedTypeLabel(v)}</Tag>,
     },
     {
       title: '标题',
       dataIndex: 'title',
-      ellipsis: true,
-      render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text>,
+      width: 360,
+      className: 'curated-title-cell',
+      render: (v: string | null) =>
+        v ? (
+          <Tooltip title={v}>
+            <Typography.Text className="curated-title-text">{v}</Typography.Text>
+          </Tooltip>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
     },
     {
       title: '图片',
       dataIndex: 'referenceImages',
-      width: 110,
+      width: 96,
       render: (images: CuratedReferenceImage[]) => <ReferenceImageStrip images={images ?? []} compact />,
     },
-    { title: '作者', dataIndex: 'author', width: 120, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
-    { title: '赞', dataIndex: 'likeCount', width: 80, render: countCell },
-    { title: '藏', dataIndex: 'collectCount', width: 80, render: countCell },
+    { title: '作者', dataIndex: 'author', width: 104, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    { title: '赞', dataIndex: 'likeCount', width: 64, render: countCell },
+    { title: '藏', dataIndex: 'collectCount', width: 64, render: countCell },
     {
       title: 'AI 动作',
       key: 'marks',
-      width: 130,
+      width: 104,
       render: (_, row) => (
         <Space size={4}>
           {row.botCollected ? <Tag color="gold">收藏</Tag> : null}
@@ -365,7 +373,7 @@ export function CuratedContentPage() {
     {
       title: '纳入原因',
       dataIndex: 'admitReason',
-      width: 120,
+      width: 112,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       // 中文文案，悬浮显示原始机器码（便于排查）。
       render: (v: string | null) =>
@@ -380,21 +388,21 @@ export function CuratedContentPage() {
     {
       title: '更新时刻',
       dataIndex: 'updatedAt',
-      width: 140,
+      width: 132,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (v: number) => <span style={{ whiteSpace: 'nowrap' }}>{timeText(v)}</span>,
     },
     {
       title: '操作',
       key: 'action',
-      width: 250,
+      width: 184,
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
         const canComment = isSourcePost(row);
         const writeState = createPostState(row);
         return (
           <div onClick={(e) => e.stopPropagation()}>
-            <Space size={8}>
+            <Space size={6} wrap>
               {/* 洗稿：仅图文行且有正文；视频和评论暂不支持。 */}
               <Tooltip title={writeState.tip}>
                 <Popconfirm
@@ -493,6 +501,7 @@ export function CuratedContentPage() {
               onClick: () => setViewing(row),
               style: { cursor: 'pointer' },
             })}
+            scroll={{ x: allAccountsView ? 1416 : 1304 }}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,

@@ -294,6 +294,21 @@ body {
 /* ======================================================================
  * 精选内容池局部：计数/评论浮层
  * ====================================================================== */
+.curated-title-cell {
+  vertical-align: top;
+}
+.curated-title-text.ant-typography {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--aidcp-foreground);
+  line-height: 1.45;
+  white-space: normal;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .curated-count-text {
   font-size: inherit;
   line-height: inherit;
