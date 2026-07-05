@@ -27,8 +27,8 @@ const KIND_LABEL: Record<RoleConfigRow['llmKind'], { text: string; color: string
 const CATEGORY_META: Record<string, { label: string; order: number }> = {
   browse_judge: { label: '浏览 · 判定类', order: 1 },
   browse_compose: { label: '浏览 · 撰写改写类', order: 2 },
-  publish_create: { label: '发布 · 创作类', order: 3 },
-  publish_gate: { label: '发布 · 裁决类', order: 4 },
+  publish_create: { label: '发布 · 生成规划类', order: 3 },
+  publish_gate: { label: '发布 · 分析评审类', order: 4 },
   image: { label: '图像类', order: 5 },
 };
 const categoryLabel = (key: string) => CATEGORY_META[key]?.label ?? key;
@@ -113,7 +113,7 @@ export function RolesPage() {
   const [promptView, setPromptView] = useState<RolePromptView | null>(null);
   const [promptLoading, setPromptLoading] = useState(false);
 
-  // 按选定账号人设拉取预览（change prompt-preview-persona-selector）：accountId 空=系统默认人设。
+  // 按选定账号人设拉取预览（change prompt-preview-persona-selector）：accountId 空=示例人设。
   const loadPrompt = async (row: RoleConfigRow, accountId: string | undefined) => {
     setPromptView(null);
     setPromptLoading(true);
@@ -390,7 +390,7 @@ export function RolesPage() {
             <Select
               size="small"
               allowClear
-              placeholder="系统默认人设"
+              placeholder="示例人设"
               style={{ width: 220 }}
               value={previewAccountId}
               onChange={(v) => setPreviewAccountId(v ?? undefined)}
@@ -403,7 +403,7 @@ export function RolesPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。「预览人设」选一个账号，可按其人设带入查看 Prompt（空=系统默认人设；未配人设账号回落默认并标注）。"
+          message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。「预览人设」选一个账号，可按其人设带入查看 Prompt（空=示例人设；未配人设账号回落示例并标注）。"
         />
         <Table<RoleConfigRow>
           size="small"
