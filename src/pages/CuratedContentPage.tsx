@@ -385,7 +385,7 @@ export function CuratedContentPage() {
     {
       title: '标题',
       dataIndex: 'title',
-      width: 360,
+      width: 330,
       className: 'curated-title-cell',
       render: (v: string | null) =>
         v ? (
