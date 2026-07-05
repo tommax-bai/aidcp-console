@@ -363,7 +363,7 @@ export function CuratedContentPage() {
   const accountColumn: ColumnsType<PanelCuratedContent>[number] = {
     title: '账号',
     dataIndex: 'accountId',
-    width: 92,
+    width: 84,
     className: 'curated-compact-cell',
     render: (id: string) => {
       const label = namer(id);
@@ -379,13 +379,13 @@ export function CuratedContentPage() {
     {
       title: '类型',
       dataIndex: 'contentType',
-      width: 60,
+      width: 54,
       render: (v: CuratedContentType) => <Tag color={curatedTypeColor(v)}>{curatedTypeLabel(v)}</Tag>,
     },
     {
       title: '标题',
       dataIndex: 'title',
-      width: 530,
+      width: 360,
       className: 'curated-title-cell',
       render: (v: string | null) =>
         v ? (
@@ -399,7 +399,7 @@ export function CuratedContentPage() {
     {
       title: '图片',
       dataIndex: 'referenceImages',
-      width: 56,
+      width: 50,
       className: 'curated-image-cell',
       render: (images: CuratedReferenceImage[]) => (
         <ReferenceImageThumb images={images ?? []} onPreview={(previewImages) => setImagePreview({ images: previewImages, index: 0 })} />
@@ -408,7 +408,7 @@ export function CuratedContentPage() {
     {
       title: '作者',
       dataIndex: 'author',
-      width: 112,
+      width: 96,
       render: (v: string | null) =>
         v ? (
           <Tooltip title={v}>
@@ -418,12 +418,12 @@ export function CuratedContentPage() {
           <Typography.Text type="secondary">—</Typography.Text>
         ),
     },
-    { title: '赞', dataIndex: 'likeCount', width: 64, render: countCell },
-    { title: '藏', dataIndex: 'collectCount', width: 64, render: countCell },
+    { title: '赞', dataIndex: 'likeCount', width: 54, render: countCell },
+    { title: '藏', dataIndex: 'collectCount', width: 54, render: countCell },
     {
       title: 'AI',
       key: 'marks',
-      width: 70,
+      width: 60,
       className: 'curated-compact-cell',
       render: (_, row) => (
         <Space size={3} className="curated-ai-actions">
@@ -436,7 +436,7 @@ export function CuratedContentPage() {
     {
       title: '原因',
       dataIndex: 'admitReason',
-      width: 76,
+      width: 64,
       className: 'curated-compact-cell',
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       // 中文文案，悬浮显示原始机器码（便于排查）。
@@ -454,14 +454,14 @@ export function CuratedContentPage() {
     {
       title: '更新时刻',
       dataIndex: 'updatedAt',
-      width: 132,
+      width: 116,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (v: number) => <span style={{ whiteSpace: 'nowrap' }}>{timeText(v)}</span>,
     },
     {
       title: '操作',
       key: 'action',
-      width: 198,
+      width: 180,
       className: 'curated-action-cell',
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
@@ -573,7 +573,6 @@ export function CuratedContentPage() {
               onClick: () => setViewing(row),
               style: { cursor: 'pointer' },
             })}
-            scroll={{ x: allAccountsView ? 1456 : 1364 }}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
