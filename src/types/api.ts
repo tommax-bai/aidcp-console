@@ -158,8 +158,20 @@ export interface PanelPublish {
   imageUrl: string | null;
   /** 边端实际附着上传成功的图片张数（诚实信号：区分「生成了几张」与「真上传了几张」）。 */
   imagesAttachedCount: number;
+  /** 参照洗稿参考图是否真实被图片 provider 使用的审计；普通发布/历史行为 null。 */
+  imageReferenceAudit: PanelImageReferenceAudit | null;
   /** 参照洗稿来稿快照；普通发布为 null。 */
   sourceReference: PanelPublishSourceReference | null;
+}
+
+export type PanelImageReferenceAuditStatus = 'none' | 'used' | 'unsupported' | 'unavailable' | 'skipped';
+
+export interface PanelImageReferenceAudit {
+  requestedCount: number;
+  usableCount: number;
+  status: PanelImageReferenceAuditStatus;
+  providerClaimedUsed: boolean;
+  generatedCount: number;
 }
 
 export interface PanelPublishSourceReference {

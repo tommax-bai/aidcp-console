@@ -74,6 +74,7 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
     images: [],
     imageUrl: null,
     imagesAttachedCount: 0,
+    imageReferenceAudit: null,
     sourceReference: null,
     ...overrides,
   };
@@ -182,6 +183,64 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     const img = document.querySelector('img[src*="aidcp.oss-cn-beijing"]');
     expect(img).toBeTruthy();
     expect(screen.getByText(/配图 1 张（发布时实际附着 1 张）/)).toBeTruthy();
+    expect(screen.queryByText(/当前图片厂商不支持参考图/)).toBeNull();
+    expect(screen.queryByText(/图片模型已实际使用参考图/)).toBeNull();
+  });
+
+  it('参照洗稿配图审计：unsupported 明确提示按文本重新生成', async () => {
+    state.published = {
+      items: [
+        makePending({
+          status: 'pending_approval',
+          title: '洗稿待审标题',
+          images: ['https://aidcp.oss-cn-beijing.aliyuncs.com/publish/acc-1/run/1.jpeg'],
+          imageReferenceAudit: {
+            requestedCount: 2,
+            usableCount: 2,
+            status: 'unsupported',
+            providerClaimedUsed: false,
+            generatedCount: 1,
+          },
+          sourceReference: {
+            kind: 'curated_reference',
+            curatedContentId: 7,
+            accountId: 'acc-1',
+            sourceId: 'note-42',
+            title: '来稿标题',
+            body: '来稿正文',
+            author: '原作者',
+            topics: [],
+            sourceUrl: null,
+            capturedAt: new Date('2026-07-03T09:00:00').getTime(),
+          },
+        }),
+      ],
+    };
+    renderPage();
+    fireEvent.click(await screen.findByText('洗稿待审标题'));
+    expect(await screen.findByText(/参考图 2 张；当前图片厂商不支持参考图，配图已按文本重新生成/)).toBeTruthy();
+  });
+
+  it('参照洗稿配图审计：used 明确提示图片模型已使用参考图', async () => {
+    state.published = {
+      items: [
+        makePending({
+          status: 'pending_approval',
+          title: '已用参考图标题',
+          images: ['https://aidcp.oss-cn-beijing.aliyuncs.com/publish/acc-1/run/1.jpeg'],
+          imageReferenceAudit: {
+            requestedCount: 1,
+            usableCount: 1,
+            status: 'used',
+            providerClaimedUsed: true,
+            generatedCount: 1,
+          },
+        }),
+      ],
+    };
+    renderPage();
+    fireEvent.click(await screen.findByText('已用参考图标题'));
+    expect(await screen.findByText(/参考图 1 张；图片模型已实际使用参考图生成新图/)).toBeTruthy();
   });
 
   it('保存并批准 → 先编辑(CAS) 再按快照版本授权发布', async () => {

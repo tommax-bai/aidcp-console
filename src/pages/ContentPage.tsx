@@ -28,7 +28,7 @@ import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
-import type { PanelPublish, PanelPublishSourceReference } from '../types/api';
+import type { PanelImageReferenceAudit, PanelPublish, PanelPublishSourceReference } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
@@ -127,11 +127,29 @@ const IMG_FALLBACK =
     '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="#f0f0f0"/><g stroke="#bfbfbf" stroke-width="2"><line x1="32" y1="32" x2="64" y2="64"/><line x1="64" y1="32" x2="32" y2="64"/></g></svg>',
   );
 
+function imageReferenceAuditText(audit: PanelImageReferenceAudit | null): string | null {
+  if (!audit || audit.requestedCount <= 0 || audit.status === 'none') return null;
+  const prefix = `参考图 ${audit.requestedCount} 张`;
+  switch (audit.status) {
+    case 'used':
+      return `${prefix}；图片模型已实际使用参考图生成新图。`;
+    case 'unsupported':
+      return `${prefix}；当前图片厂商不支持参考图，配图已按文本重新生成。`;
+    case 'unavailable':
+      return `${prefix}；参考图不可用，配图已按文本重新生成。`;
+    case 'skipped':
+      return `${prefix}；本次未使用参考图，配图已按文本重新生成。`;
+    default:
+      return null;
+  }
+}
+
 /** 配图栏（查看/编辑共用）：缩略图 + 点击大图预览；诚实标注「实际附着张数」与死链可能。 */
 function ImagesStrip({ row }: { row: PanelPublish }) {
   // 防御旧负载：云端未升级/缓存数据无 images 字段时按无图处理，不白屏。
   const images = row.images ?? [];
   if (images.length === 0) return null;
+  const auditText = imageReferenceAuditText(row.imageReferenceAudit ?? null);
   return (
     <div style={{ marginBottom: 12 }}>
       <Image.PreviewGroup>
@@ -156,6 +174,14 @@ function ImagesStrip({ row }: { row: PanelPublish }) {
           ；较早记录的图片链接可能已过期，无法加载属正常。
         </Typography.Text>
       </div>
+      {auditText ? (
+        <Alert
+          type={row.imageReferenceAudit?.status === 'used' ? 'success' : 'warning'}
+          showIcon
+          message={auditText}
+          style={{ marginTop: 8 }}
+        />
+      ) : null}
     </div>
   );
 }
