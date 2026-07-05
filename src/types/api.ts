@@ -249,6 +249,12 @@ export interface CuratedActionReceipt {
 export interface ModelConfigCredential {
   provider: string;
   field: string;
+  label: string;
+  providerLabel: string;
+  group: 'model_api' | 'billing_access';
+  groupLabel: string;
+  secretKind: 'api_key' | 'access_key_id' | 'access_key_secret';
+  restartRequired: boolean;
   configured: boolean;
   maskedHint: string | null;
   /** db=库内加密凭据 / env=回退环境变量 / none=未配置。 */
@@ -280,7 +286,7 @@ export interface ModelConfig {
   providers: TextProviderOption[];
   /** 可选图片厂商列表（#5：设置页图片厂商下拉数据源；手工镜像 cloud）。 */
   imageProviders: ImageProviderOption[];
-  /** 各厂商凭据状态。 */
+  /** 平台凭据状态（模型 API key / 账单 AccessKey 等）。 */
   credentials: ModelConfigCredential[];
   /** 主加密密钥是否就位——凭据能否在后台编辑。 */
   canEditCredential: boolean;

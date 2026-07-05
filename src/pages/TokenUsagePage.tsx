@@ -38,6 +38,12 @@ const providerLabel: Record<string, { text: string; color: string }> = {
   unknown: { text: '未知', color: 'default' },
 };
 
+const billingCredentialLabel: Record<string, string> = {
+  aliyun: '阿里云账单凭据',
+  dashscope: '阿里云账单凭据',
+  volcengine: '火山账单凭据',
+};
+
 function providerTag(provider: string) {
   return providerLabel[provider] ?? { text: provider, color: 'default' };
 }
@@ -213,7 +219,8 @@ export function TokenUsagePage() {
   const handleRefreshPrices = () => {
     refreshPrices.mutate(undefined, {
       onSuccess: (result) => {
-        const missing = result.missingCredentials.length ? `；缺少凭据：${result.missingCredentials.join('、')}` : '';
+        const missingLabels = Array.from(new Set(result.missingCredentials.map((key) => billingCredentialLabel[key] ?? key)));
+        const missing = missingLabels.length ? `；缺少凭据：${missingLabels.join('、')}` : '';
         const skipped = result.skipped.length ? `；跳过 ${result.skipped.length} 个模型日` : '';
         message.success(`厂商模型定价已更新：写入 ${result.written} 条，检查 ${result.targetCount} 个模型日${skipped}${missing}`);
       },
