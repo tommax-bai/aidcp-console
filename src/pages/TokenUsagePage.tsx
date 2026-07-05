@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Card, DatePicker, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Card, DatePicker, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
@@ -10,6 +10,7 @@ import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { LlmUsageRow } from '../types/api';
+import { COST_ESTIMATE_TOOLTIP, estimateLlmUsageCost, formatEstimatedCostCny } from '../types/llmCostEstimate';
 import { roleLabel } from '../types/usageLabels';
 
 const { RangePicker } = DatePicker;
@@ -120,26 +121,48 @@ export function TokenUsagePage() {
       title: '输入 token',
       dataIndex: 'promptTokens',
       align: 'right' as const,
+      width: 120,
       render: (v: number) => fmtNum(v),
     },
     {
       title: '输出 token',
       dataIndex: 'completionTokens',
       align: 'right' as const,
+      width: 120,
       render: (v: number) => fmtNum(v),
     },
     {
       title: '总 token',
       dataIndex: 'totalTokens',
       align: 'right' as const,
+      width: 120,
       defaultSortOrder: 'descend',
       sorter: (a, b) => a.totalTokens - b.totalTokens,
       render: (v: number) => <Typography.Text strong>{fmtNum(v)}</Typography.Text>,
     },
     {
+      title: <Tooltip title={COST_ESTIMATE_TOOLTIP}>预估成本</Tooltip>,
+      key: 'estimatedCostCny',
+      align: 'right' as const,
+      width: 130,
+      sorter: (a, b) => (estimateLlmUsageCost(a)?.costCny ?? -1) - (estimateLlmUsageCost(b)?.costCny ?? -1),
+      render: (_: unknown, r: LlmUsageRow) => {
+        const estimate = estimateLlmUsageCost(r);
+        if (!estimate) return <Typography.Text type="secondary">--</Typography.Text>;
+        return (
+          <Tooltip
+            title={`${estimate.price.label}：输入 ¥${estimate.price.inputCnyPerMillion}/百万，输出 ¥${estimate.price.outputCnyPerMillion}/百万；${estimate.price.note}`}
+          >
+            <Typography.Text>{formatEstimatedCostCny(estimate.costCny)}</Typography.Text>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: '调用次数',
       dataIndex: 'calls',
       align: 'right' as const,
+      width: 120,
       sorter: (a, b) => a.calls - b.calls,
       render: (_: number, r: LlmUsageRow) => {
         const failed = r.calls - r.okCalls;
@@ -223,6 +246,7 @@ export function TokenUsagePage() {
             columns={columns}
             dataSource={rows}
             loading={displayQuery.isLoading}
+            scroll={{ x: 1120 }}
           />
         ) : displayQuery.isError ? (
           <QueryError title="加载 token 用量失败" onRetry={() => displayQuery.refetch()} />
