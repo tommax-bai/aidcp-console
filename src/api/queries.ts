@@ -20,6 +20,7 @@ import type {
   SessionLimitView,
   ResumeConfigView,
   LlmUsagePayload,
+  LlmBillingPriceRefreshPayload,
   PanelNotificationContact,
   CuratedContentList,
   CuratedFacets,
@@ -213,6 +214,16 @@ export function useLlmUsage(params: LlmUsageParams) {
     queryKey: ['llm-usage', suffix],
     queryFn: () => apiGet<LlmUsagePayload>(`/api/llm-usage${suffix ? `?${suffix}` : ''}`),
     refetchInterval: 60_000,
+  });
+}
+
+export function useRefreshLlmUsagePrices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<LlmBillingPriceRefreshPayload>('/api/llm-usage/prices/refresh'),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['llm-usage'] });
+    },
   });
 }
 

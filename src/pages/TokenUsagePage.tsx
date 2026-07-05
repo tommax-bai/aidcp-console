@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Card, DatePicker, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, DatePicker, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useLlmUsage, useAccounts } from '../api/queries';
+import { useLlmUsage, useAccounts, useRefreshLlmUsagePrices } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
 import { makeAccountNamer } from '../types/accountDisplay';
@@ -51,6 +52,7 @@ function distinct(values: string[]): string[] {
  * 账号今天单值 default（单租户）；多账号上线后自动按真实账号拆分。
  */
 export function TokenUsagePage() {
+  const { message } = App.useApp();
   // 默认窗：近 24 小时（曲线 144 桶）。
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => [dayjs().subtract(24, 'hour'), dayjs()]);
   // #17：账号筛选进 URL query（?account=<id>），可分享/刷新保持；清空/全部时删除该参数（其它 query 保留）。
@@ -76,6 +78,7 @@ export function TokenUsagePage() {
   // 无过滤时与下方展示查询同 key，react-query 自动去重不多打一次。
   const optionsQuery = useLlmUsage({ fromMs, toMs });
   const displayQuery = useLlmUsage({ fromMs, toMs, accountId, role, model });
+  const refreshPrices = useRefreshLlmUsagePrices();
 
   const optionRows = optionsQuery.data?.rows ?? [];
   const accountOptions = useMemo(
@@ -176,7 +179,7 @@ export function TokenUsagePage() {
         const cost = r.costEstimate;
         if (!cost) {
           return (
-            <Tooltip title="还没有匹配到账单数据，等费用中心账单同步后再估算">
+            <Tooltip title="还没有该厂商/模型的账单反推定价，点击“更新厂商模型定价”获取后再估算">
               <Typography.Text type="secondary">待账单</Typography.Text>
             </Tooltip>
           );
@@ -206,6 +209,17 @@ export function TokenUsagePage() {
       },
     },
   ];
+
+  const handleRefreshPrices = () => {
+    refreshPrices.mutate(undefined, {
+      onSuccess: (result) => {
+        const missing = result.missingCredentials.length ? `；缺少凭据：${result.missingCredentials.join('、')}` : '';
+        const skipped = result.skipped.length ? `；跳过 ${result.skipped.length} 个模型日` : '';
+        message.success(`厂商模型定价已更新：写入 ${result.written} 条，检查 ${result.targetCount} 个模型日${skipped}${missing}`);
+      },
+      onError: () => message.error('更新厂商模型定价失败'),
+    });
+  };
 
   return (
     <div className="page-stack">
@@ -243,6 +257,11 @@ export function TokenUsagePage() {
             onChange={setModel}
             options={modelOptions}
           />
+          <Tooltip title="按需查询 T-1/T-2 账单，反推出厂商/模型 token 收费标准；没有新样本时沿用历史价格">
+            <Button icon={<SyncOutlined />} loading={refreshPrices.isPending} onClick={handleRefreshPrices}>
+              更新厂商模型定价
+            </Button>
+          </Tooltip>
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
           账号维度当前为单租户（仅「默认账号」）；多账号上线后将按真实账号拆分。曲线时间轴为北京时间。
