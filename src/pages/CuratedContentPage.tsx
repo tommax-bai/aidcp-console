@@ -18,7 +18,16 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, HeartOutlined, LinkOutlined, MessageOutlined, StarOutlined } from '@ant-design/icons';
+import {
+  DeleteOutlined,
+  EditOutlined,
+  HeartOutlined,
+  LeftOutlined,
+  LinkOutlined,
+  MessageOutlined,
+  RightOutlined,
+  StarOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
@@ -112,6 +121,35 @@ function ReferenceImageStrip({ images, compact = false }: { images: CuratedRefer
         );
       })}
     </Space>
+  );
+}
+
+function ReferenceImageThumb({
+  images,
+  onPreview,
+}: {
+  images: CuratedReferenceImage[];
+  onPreview: (images: CuratedReferenceImage[]) => void;
+}) {
+  const usable = usableReferenceImages(images);
+  const first = usable[0];
+  if (!first) {
+    return <Typography.Text type="secondary">-</Typography.Text>;
+  }
+  const url = referenceImageUrl(first);
+  return (
+    <button
+      type="button"
+      className="curated-image-thumb"
+      aria-label={`查看 ${usable.length} 张参考图`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPreview(usable);
+      }}
+    >
+      <img src={url} alt={first.alt || 'reference image'} />
+      {usable.length > 1 ? <span className="curated-image-thumb__count">{usable.length}</span> : null}
+    </button>
   );
 }
 
@@ -209,6 +247,7 @@ export function CuratedContentPage() {
   const [viewing, setViewing] = useState<PanelCuratedContent | null>(null);
   const [createTarget, setCreateTarget] = useState<PanelCuratedContent | null>(null);
   const [createMode, setCreateMode] = useState<'image' | 'text'>('image');
+  const [imagePreview, setImagePreview] = useState<{ images: CuratedReferenceImage[]; index: number } | null>(null);
   // 评论弹窗：目标行 + 评论类型（内容评论 / 带群评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
   const [commentKind, setCommentKind] = useState<'content' | 'group'>('content');
@@ -324,21 +363,29 @@ export function CuratedContentPage() {
   const accountColumn: ColumnsType<PanelCuratedContent>[number] = {
     title: '账号',
     dataIndex: 'accountId',
-    width: 112,
-    render: (id: string) => <span>{namer(id)}</span>,
+    width: 92,
+    className: 'curated-compact-cell',
+    render: (id: string) => {
+      const label = namer(id);
+      return (
+        <Tooltip title={label}>
+          <Typography.Text className="curated-ellipsis-text">{label}</Typography.Text>
+        </Tooltip>
+      );
+    },
   };
 
   const columns: ColumnsType<PanelCuratedContent> = [
     {
       title: '类型',
       dataIndex: 'contentType',
-      width: 64,
+      width: 60,
       render: (v: CuratedContentType) => <Tag color={curatedTypeColor(v)}>{curatedTypeLabel(v)}</Tag>,
     },
     {
       title: '标题',
       dataIndex: 'title',
-      width: 420,
+      width: 530,
       className: 'curated-title-cell',
       render: (v: string | null) =>
         v ? (
@@ -352,8 +399,11 @@ export function CuratedContentPage() {
     {
       title: '图片',
       dataIndex: 'referenceImages',
-      width: 96,
-      render: (images: CuratedReferenceImage[]) => <ReferenceImageStrip images={images ?? []} compact />,
+      width: 56,
+      className: 'curated-image-cell',
+      render: (images: CuratedReferenceImage[]) => (
+        <ReferenceImageThumb images={images ?? []} onPreview={(previewImages) => setImagePreview({ images: previewImages, index: 0 })} />
+      ),
     },
     {
       title: '作者',
@@ -371,21 +421,23 @@ export function CuratedContentPage() {
     { title: '赞', dataIndex: 'likeCount', width: 64, render: countCell },
     { title: '藏', dataIndex: 'collectCount', width: 64, render: countCell },
     {
-      title: 'AI 动作',
+      title: 'AI',
       key: 'marks',
-      width: 104,
+      width: 70,
+      className: 'curated-compact-cell',
       render: (_, row) => (
-        <Space size={4}>
-          {row.botCollected ? <Tag color="gold">收藏</Tag> : null}
-          {row.botLiked ? <Tag color="magenta">点赞</Tag> : null}
+        <Space size={3} className="curated-ai-actions">
+          {row.botLiked ? <Tag color="magenta">赞</Tag> : null}
+          {row.botCollected ? <Tag color="gold">藏</Tag> : null}
           {!row.botCollected && !row.botLiked ? <Typography.Text type="secondary">—</Typography.Text> : null}
         </Space>
       ),
     },
     {
-      title: '纳入原因',
+      title: '原因',
       dataIndex: 'admitReason',
-      width: 88,
+      width: 76,
+      className: 'curated-compact-cell',
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       // 中文文案，悬浮显示原始机器码（便于排查）。
       render: (v: string | null) => {
@@ -409,14 +461,15 @@ export function CuratedContentPage() {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 198,
+      className: 'curated-action-cell',
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
         const canComment = isSourcePost(row);
         const writeState = createPostState(row);
         return (
           <div onClick={(e) => e.stopPropagation()}>
-            <Space size={6}>
+            <Space size={6} className="curated-row-actions">
               {/* 洗稿：仅图文行且有正文；视频和评论暂不支持。 */}
               <Tooltip title={writeState.tip}>
                 <Popconfirm
@@ -458,6 +511,10 @@ export function CuratedContentPage() {
       },
     },
   ];
+
+  const previewImage = imagePreview?.images[imagePreview.index];
+  const previewUrl = previewImage ? referenceImageUrl(previewImage) : '';
+  const previewCount = imagePreview?.images.length ?? 0;
 
   return (
     <div className="page-stack">
@@ -510,12 +567,13 @@ export function CuratedContentPage() {
             columns={allAccountsView ? [accountColumn, ...columns] : columns}
             dataSource={list.data.items}
             loading={list.isLoading}
+            tableLayout="fixed"
             // 整行可点：打开「笔记详情」浮层。
             onRow={(row) => ({
               onClick: () => setViewing(row),
               style: { cursor: 'pointer' },
             })}
-            scroll={{ x: allAccountsView ? 1476 : 1364 }}
+            scroll={{ x: allAccountsView ? 1456 : 1364 }}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
@@ -539,6 +597,47 @@ export function CuratedContentPage() {
           />
         )}
       </Card>
+
+      <Modal
+        open={!!imagePreview}
+        title={imagePreview ? `参考图 ${imagePreview.index + 1}/${imagePreview.images.length}` : '参考图'}
+        footer={null}
+        width={720}
+        onCancel={() => setImagePreview(null)}
+      >
+        {imagePreview && previewImage ? (
+          <div className="curated-image-preview">
+            <div className="curated-image-preview__frame">
+              <img src={previewUrl} alt={previewImage.alt || `reference ${imagePreview.index + 1}`} />
+            </div>
+            <div className="curated-image-preview__controls">
+              <Button
+                icon={<LeftOutlined />}
+                disabled={previewCount <= 1}
+                onClick={() =>
+                  setImagePreview((prev) =>
+                    prev ? { ...prev, index: (prev.index + prev.images.length - 1) % prev.images.length } : prev,
+                  )
+                }
+              >
+                上一张
+              </Button>
+              <Typography.Text type="secondary">
+                {imagePreview.index + 1} / {previewCount}
+              </Typography.Text>
+              <Button
+                icon={<RightOutlined />}
+                disabled={previewCount <= 1}
+                onClick={() =>
+                  setImagePreview((prev) => (prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : prev))
+                }
+              >
+                下一张
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       {/* 参考创作弹窗：有原帖图片时允许运营选择带图参考或仅文本参考。 */}
       <Modal
