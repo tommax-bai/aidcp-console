@@ -43,13 +43,17 @@ function providerTag(provider: string) {
   return providerLabel[provider] ?? { text: provider, color: 'default' };
 }
 
+function isImageUsageRow(row: LlmUsageRow): boolean {
+  return row.role === 'publish:ImageGenerator';
+}
+
 function distinct(values: string[]): string[] {
   return Array.from(new Set(values)).sort();
 }
 
 /**
- * token 用量统计页（change llm-token-usage-stats）。
- * 维度：日期 / 账号 / 角色 / 模型 / token 量。表格 + 每 10 分钟单条总量曲线（受筛选器约束）。
+ * 模型用量统计页（change llm-token-usage-stats）。
+ * 维度：日期 / 账号 / 角色 / 模型 / token 量。表格含图片模型调用；曲线仍是每 10 分钟 token 总量。
  * 账号今天单值 default（单租户）；多账号上线后自动按真实账号拆分。
  */
 export function TokenUsagePage() {
@@ -178,6 +182,13 @@ export function TokenUsagePage() {
       width: 130,
       render: (_: LlmUsageRow['costEstimate'], r: LlmUsageRow) => {
         const cost = r.costEstimate;
+        if (isImageUsageRow(r)) {
+          return (
+            <Tooltip title="图片生成不返回 token 用量；本列只估算 token 账单成本">
+              <Typography.Text type="secondary">不适用</Typography.Text>
+            </Tooltip>
+          );
+        }
         if (!cost) {
           return (
             <Tooltip title="还没有该厂商/模型的账单反推定价，点击“更新厂商模型定价”获取后再估算">
@@ -265,7 +276,7 @@ export function TokenUsagePage() {
           </Tooltip>
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-          账号维度当前为单租户（仅「默认账号」）；多账号上线后将按真实账号拆分。曲线时间轴为北京时间。
+          账号维度当前为单租户（仅「默认账号」）；多账号上线后将按真实账号拆分。曲线时间轴为北京时间。图片生成按调用次数记录，token 为 0。
         </Typography.Paragraph>
         {clampedToDays != null ? (
           <Alert
@@ -277,7 +288,7 @@ export function TokenUsagePage() {
         ) : null}
       </Card>
 
-      <Card size="small" title="token 消耗曲线（每 10 分钟 · 总量）">
+      <Card size="small" title="token 消耗曲线（每 10 分钟 · 文本模型总量）">
         {buckets.length > 0 ? (
           <ReactECharts option={chartOption} style={{ height: 320 }} notMerge />
         ) : displayQuery.isError ? (
@@ -287,7 +298,7 @@ export function TokenUsagePage() {
         )}
       </Card>
 
-      <Card size="small" title="token 消耗明细（日期 / 账号 / 角色 / 模型）">
+      <Card size="small" title="模型调用明细（日期 / 账号 / 角色 / 模型）">
         {rows.length > 0 ? (
           <Table
             size="small"
