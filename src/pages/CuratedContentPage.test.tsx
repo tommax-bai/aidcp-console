@@ -56,6 +56,7 @@ function makeRow(overrides: Partial<PanelCuratedContent> = {}): PanelCuratedCont
     admitReason: 'bot_collect',
     firstSeenAt: 1,
     updatedAt: 2,
+    referenceImages: [],
     ...overrides,
   };
 }
@@ -132,6 +133,41 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
     expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
+  });
+
+  it('带参考图的洗稿先弹参考模式；切到仅文本后发送 useReferenceImages:false', async () => {
+    state.items = [
+      makeRow({
+        referenceImages: [
+          {
+            index: 0,
+            sourceUrl: 'https://img.test/source.jpg',
+            ossUrl: 'https://oss.test/source.jpg',
+            alt: 'reference cover',
+            captureStatus: 'stored',
+            capturedAt: 1,
+          },
+        ],
+      }),
+    ];
+    vi.mocked(apiPost).mockResolvedValue({ triggered: true });
+    renderPage();
+    expect(await screen.findByAltText('reference cover')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /洗稿/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /触发洗稿/ }));
+
+    expect(await screen.findByText('带图参考')).toBeTruthy();
+    const imageMode = screen.getByLabelText('带图参考') as HTMLInputElement;
+    expect(imageMode.checked).toBe(true);
+    fireEvent.click(screen.getByLabelText('仅文本参考'));
+    fireEvent.click(screen.getByRole('button', { name: /触发创作/ }));
+
+    expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', {
+      accountId: 'acc-1',
+      useReferenceImages: false,
+    });
   });
 
   it('洗稿域内拒绝（publish_busy）→ 中文原因、绝不染绿', async () => {

@@ -186,6 +186,19 @@ export interface ContentQueue {
 //   手工镜像，两处须同步防漂移。诚实置空：计数 null=未抓到（区别真实 0）；时间戳为 epoch ms（number）。
 export type CuratedContentType = 'image_text' | 'video' | 'comment';
 
+export type CuratedReferenceImageStatus = 'stored' | 'url_only' | 'fetch_failed' | 'unsupported';
+
+export interface CuratedReferenceImage {
+  index: number;
+  sourceUrl: string;
+  ossUrl?: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+  captureStatus: CuratedReferenceImageStatus;
+  capturedAt: number;
+}
+
 export interface PanelCuratedContent {
   id: number;
   accountId: string;
@@ -205,6 +218,7 @@ export interface PanelCuratedContent {
   admitReason: string | null;
   firstSeenAt: number;
   updatedAt: number;
+  referenceImages: CuratedReferenceImage[];
 }
 
 export interface CuratedContentList {

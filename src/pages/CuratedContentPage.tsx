@@ -23,7 +23,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
 import { useAccounts, useCuratedContents, useCuratedFacets } from '../api/queries';
-import type { CuratedActionReceipt, CuratedContentType, PanelCuratedContent } from '../types/api';
+import type { CuratedActionReceipt, CuratedContentType, CuratedReferenceImage, PanelCuratedContent } from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
 const PAGE_SIZE = 20;
@@ -77,6 +77,42 @@ function curatedTypeColor(type: CuratedContentType): string {
 
 function isSourcePost(row: PanelCuratedContent): boolean {
   return row.contentType === 'image_text' || row.contentType === 'video';
+}
+
+function referenceImageUrl(img: CuratedReferenceImage): string {
+  return (img.ossUrl || img.sourceUrl || '').trim();
+}
+
+function usableReferenceImages(images: CuratedReferenceImage[]): CuratedReferenceImage[] {
+  return images.filter((img) => referenceImageUrl(img)).slice(0, 9);
+}
+
+function ReferenceImageStrip({ images, compact = false }: { images: CuratedReferenceImage[]; compact?: boolean }) {
+  const usable = usableReferenceImages(images);
+  if (usable.length === 0) {
+    return compact ? (
+      <Typography.Text type="secondary">-</Typography.Text>
+    ) : (
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无参考图" />
+    );
+  }
+  const size = compact ? 38 : 72;
+  return (
+    <Space size={compact ? 4 : 8} wrap>
+      {usable.map((img) => {
+        const url = referenceImageUrl(img);
+        return (
+          <a key={`${img.index}-${url}`} href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={url}
+              alt={img.alt || `reference ${img.index + 1}`}
+              style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, border: '1px solid #eee', display: 'block' }}
+            />
+          </a>
+        );
+      })}
+    </Space>
+  );
 }
 
 /**
@@ -171,6 +207,8 @@ export function CuratedContentPage() {
   const [admitReason, setAdmitReason] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [viewing, setViewing] = useState<PanelCuratedContent | null>(null);
+  const [createTarget, setCreateTarget] = useState<PanelCuratedContent | null>(null);
+  const [createMode, setCreateMode] = useState<'image' | 'text'>('image');
   // 评论弹窗：目标行 + 评论类型（内容评论 / 带群评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
   const [commentKind, setCommentKind] = useState<'content' | 'group'>('content');
@@ -208,8 +246,13 @@ export function CuratedContentPage() {
 
   // 洗稿（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
   const createPost = useMutation({
-    mutationFn: (row: PanelCuratedContent) =>
-      apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, { accountId: row.accountId }),
+    mutationFn: ({ row, useReferenceImages }: { row: PanelCuratedContent; useReferenceImages?: boolean }) => {
+      const body =
+        typeof useReferenceImages === 'boolean'
+          ? { accountId: row.accountId, useReferenceImages }
+          : { accountId: row.accountId };
+      return apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, body);
+    },
     onSuccess: (res) => {
       if (res.triggered) message.success('已触发洗稿：生成草稿后将发飞书人审卡，请到飞书完成审核');
       else message.info(actionReasonLabel(res.reason));
@@ -263,6 +306,15 @@ export function CuratedContentPage() {
     return { disabled, tip };
   };
 
+  const openCreatePost = (row: PanelCuratedContent) => {
+    if (usableReferenceImages(row.referenceImages).length > 0) {
+      setCreateTarget(row);
+      setCreateMode('image');
+      return;
+    }
+    createPost.mutate({ row });
+  };
+
   const openCommentModal = (row: PanelCuratedContent) => {
     setCommentKind('content');
     setCommentTarget(row);
@@ -288,6 +340,12 @@ export function CuratedContentPage() {
       dataIndex: 'title',
       ellipsis: true,
       render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text>,
+    },
+    {
+      title: '图片',
+      dataIndex: 'referenceImages',
+      width: 110,
+      render: (images: CuratedReferenceImage[]) => <ReferenceImageStrip images={images ?? []} compact />,
     },
     { title: '作者', dataIndex: 'author', width: 120, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     { title: '赞', dataIndex: 'likeCount', width: 80, render: countCell },
@@ -343,7 +401,7 @@ export function CuratedContentPage() {
                   title="以这篇图文洗稿成一篇新笔记？"
                   description={`由「${namer(row.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
                   okText="触发洗稿"
-                  onConfirm={() => createPost.mutate(row)}
+                  onConfirm={() => openCreatePost(row)}
                   disabled={writeState.disabled}
                 >
                   <Button size="small" icon={<EditOutlined />} loading={createPost.isPending} disabled={writeState.disabled}>
@@ -459,7 +517,44 @@ export function CuratedContentPage() {
         )}
       </Card>
 
-      {/* 评论弹窗：选类型（内容评论 / 带群评论）后触发；执行账号固定为该行归属账号。 */}
+      {/* 参考创作弹窗：有原帖图片时允许运营选择带图参考或仅文本参考。 */}
+      <Modal
+        open={!!createTarget}
+        title="参考创作"
+        okText="触发创作"
+        cancelText="取消"
+        confirmLoading={createPost.isPending}
+        onOk={() => {
+          if (!createTarget) return;
+          createPost.mutate(
+            { row: createTarget, useReferenceImages: createMode === 'image' },
+            {
+              onSuccess: (res) => {
+                if (res.triggered) {
+                  setCreateTarget(null);
+                  setViewing(null);
+                }
+              },
+            },
+          );
+        }}
+        onCancel={() => setCreateTarget(null)}
+        width={520}
+      >
+        {createTarget && (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Radio.Group value={createMode} onChange={(e) => setCreateMode(e.target.value as 'image' | 'text')}>
+              <Space direction="vertical">
+                <Radio value="image">带图参考</Radio>
+                <Radio value="text">仅文本参考</Radio>
+              </Space>
+            </Radio.Group>
+            <ReferenceImageStrip images={createTarget.referenceImages} />
+            <Alert type="info" showIcon message="参考图只用于生成阶段理解画面，不会直接复用或发布原图。" />
+          </Space>
+        )}
+      </Modal>
+
       <Modal
         open={!!commentTarget}
         title="评论"
@@ -545,6 +640,10 @@ export function CuratedContentPage() {
               </Typography.Title>
             ) : null}
 
+            <div style={{ marginBottom: 12 }}>
+              <ReferenceImageStrip images={viewing.referenceImages} />
+            </div>
+
             {/* 正文 */}
             {viewing.body ? (
               <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>
@@ -594,13 +693,7 @@ export function CuratedContentPage() {
                     title="以这篇图文洗稿成一篇新笔记？"
                     description={`由「${namer(viewing.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
                     okText="触发洗稿"
-                    onConfirm={() =>
-                      createPost.mutate(viewing, {
-                        onSuccess: (res) => {
-                          if (res.triggered) setViewing(null);
-                        },
-                      })
-                    }
+                    onConfirm={() => openCreatePost(viewing)}
                     disabled={createPostState(viewing).disabled}
                   >
                     <Button
