@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Card, DatePicker, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Card, DatePicker, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
@@ -22,6 +22,24 @@ function fmtBeijing(ms: number): string {
 }
 
 const fmtNum = (n: number): string => n.toLocaleString('zh-CN');
+
+const fmtCost = (amount: number, currency: string): string => {
+  const text = amount.toLocaleString('zh-CN', {
+    minimumFractionDigits: amount >= 1 ? 2 : 4,
+    maximumFractionDigits: amount >= 1 ? 2 : 4,
+  });
+  return currency === 'CNY' ? `¥${text}` : `${currency} ${text}`;
+};
+
+const providerLabel: Record<string, { text: string; color: string }> = {
+  dashscope: { text: '百炼', color: 'blue' },
+  volcengine: { text: '火山', color: 'volcano' },
+  unknown: { text: '未知', color: 'default' },
+};
+
+function providerTag(provider: string) {
+  return providerLabel[provider] ?? { text: provider, color: 'default' };
+}
 
 function distinct(values: string[]): string[] {
   return Array.from(new Set(values)).sort();
@@ -115,7 +133,20 @@ export function TokenUsagePage() {
       dataIndex: 'role',
       render: (v: string) => <Tag>{roleLabel(v)}</Tag>,
     },
-    { title: '模型', dataIndex: 'model' },
+    {
+      title: '模型',
+      dataIndex: 'model',
+      width: 260,
+      render: (_: string, r: LlmUsageRow) => {
+        const p = providerTag(r.provider);
+        return (
+          <Space size={4} wrap>
+            <Tag color={p.color}>{p.text}</Tag>
+            <Typography.Text className="tabular-nums">{r.model}</Typography.Text>
+          </Space>
+        );
+      },
+    },
     {
       title: '输入 token',
       dataIndex: 'promptTokens',
@@ -135,6 +166,29 @@ export function TokenUsagePage() {
       defaultSortOrder: 'descend',
       sorter: (a, b) => a.totalTokens - b.totalTokens,
       render: (v: number) => <Typography.Text strong>{fmtNum(v)}</Typography.Text>,
+    },
+    {
+      title: '预估成本',
+      dataIndex: 'costEstimate',
+      align: 'right' as const,
+      width: 130,
+      render: (_: LlmUsageRow['costEstimate'], r: LlmUsageRow) => {
+        const cost = r.costEstimate;
+        if (!cost) {
+          return (
+            <Tooltip title="还没有匹配到账单数据，等费用中心账单同步后再估算">
+              <Typography.Text type="secondary">待账单</Typography.Text>
+            </Tooltip>
+          );
+        }
+        const basis = cost.pricingBasis === 'input_output_tokens' ? '输入/输出 token' : '总 token';
+        const synced = cost.syncedAtMs ? `；同步：${fmtBeijing(cost.syncedAtMs)}` : '';
+        return (
+          <Tooltip title={`账单来源：${cost.source}；账期：${cost.sourceDate}；口径：${basis}${synced}`}>
+            <Typography.Text strong>{fmtCost(cost.amount, cost.currency)}</Typography.Text>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '调用次数',
@@ -218,11 +272,12 @@ export function TokenUsagePage() {
           <Table
             size="small"
             bordered
-            rowKey={(r) => `${r.day}|${r.accountId}|${r.role}|${r.model}`}
+            rowKey={(r) => `${r.day}|${r.accountId}|${r.role}|${r.provider}|${r.model}`}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             columns={columns}
             dataSource={rows}
             loading={displayQuery.isLoading}
+            scroll={{ x: 1180 }}
           />
         ) : displayQuery.isError ? (
           <QueryError title="加载 token 用量失败" onRetry={() => displayQuery.refetch()} />

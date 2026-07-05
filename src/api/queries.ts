@@ -196,6 +196,7 @@ export interface LlmUsageParams {
   toMs?: number;
   accountId?: string;
   role?: string;
+  provider?: string;
   model?: string;
 }
 
@@ -205,6 +206,7 @@ export function useLlmUsage(params: LlmUsageParams) {
   if (params.toMs !== undefined) qs.set('to', String(params.toMs));
   if (params.accountId) qs.set('accountId', params.accountId);
   if (params.role) qs.set('role', params.role);
+  if (params.provider) qs.set('provider', params.provider);
   if (params.model) qs.set('model', params.model);
   const suffix = qs.toString();
   return useQuery({

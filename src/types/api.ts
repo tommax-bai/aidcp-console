@@ -517,17 +517,28 @@ export interface ResumeConfigView {
 // ── token 用量统计（change llm-token-usage-stats，GET /api/llm-usage 形状，与 cloud 逐字对齐）──
 
 /** 表格一行：按北京日期 × (账号/角色/模型) 聚合。token 量为数值（BIGINT 求和后解析）。 */
+export interface LlmUsageCostEstimate {
+  amount: number;
+  currency: string;
+  source: string;
+  sourceDate: string;
+  syncedAtMs: number | null;
+  pricingBasis: 'input_output_tokens' | 'total_tokens';
+}
+
 export interface LlmUsageRow {
   /** 'YYYY-MM-DD'（Asia/Shanghai 北京日）。 */
   day: string;
   accountId: string;
   role: string;
+  provider: string;
   model: string;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
   calls: number;
   okCalls: number;
+  costEstimate: LlmUsageCostEstimate | null;
 }
 
 /** 曲线一点：10 分钟桶。bucketMs 为 UTC epoch ms（前端按 Asia/Shanghai 渲染）。 */
