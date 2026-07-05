@@ -58,6 +58,8 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/persona', element: <PersonaPage />, navLabel: '人设', navIcon: <IdcardOutlined />, showInNav: true },
   { path: '/roles', element: <RolesPage />, navLabel: '角色', navIcon: <RobotOutlined />, showInNav: true },
   { path: '/quotas', element: <QuotasPage />, navLabel: '安全', navIcon: <SafetyOutlined />, showInNav: true },
+  // 旧静态入口 `/intro.html` 由 Nginx 返回同一个 SPA 壳；客户端侧收敛到规范首页，避免应用内 404。
+  { path: '/intro.html', element: <Navigate to="/" replace />, showInNav: false },
   // 监控页已并入首页（merge-monitor-into-dashboard）：旧路径重定向护住书签与「登录后回原页」的来源路径。
   { path: '/monitor', element: <Navigate to="/" replace />, showInNav: false },
   { path: '/usage', element: <TokenUsagePage />, navLabel: '用量', navIcon: <FundOutlined />, showInNav: true },
