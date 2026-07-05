@@ -501,9 +501,7 @@ export function CuratedContentPage() {
                 okButtonProps={{ danger: true }}
                 onConfirm={() => del.mutate(row)}
               >
-                <Button size="small" danger icon={<DeleteOutlined />} loading={del.isPending}>
-                  删除
-                </Button>
+                <Button size="small" danger icon={<DeleteOutlined />} loading={del.isPending} aria-label="删除" />
               </Popconfirm>
             </Space>
           </div>
