@@ -12,6 +12,7 @@ import { QueryError } from '../components/QueryGate';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type { LlmUsageRow } from '../types/api';
 import { roleLabel } from '../types/usageLabels';
+import { formatBillingPriceRefreshMessage } from './tokenUsagePriceRefresh';
 
 const { RangePicker } = DatePicker;
 
@@ -36,12 +37,6 @@ const providerLabel: Record<string, { text: string; color: string }> = {
   dashscope: { text: '百炼', color: 'blue' },
   volcengine: { text: '火山', color: 'volcano' },
   unknown: { text: '未知', color: 'default' },
-};
-
-const billingCredentialLabel: Record<string, string> = {
-  aliyun: '阿里云账单凭据',
-  dashscope: '阿里云账单凭据',
-  volcengine: '火山账单凭据',
 };
 
 function providerTag(provider: string) {
@@ -219,10 +214,9 @@ export function TokenUsagePage() {
   const handleRefreshPrices = () => {
     refreshPrices.mutate(undefined, {
       onSuccess: (result) => {
-        const missingLabels = Array.from(new Set(result.missingCredentials.map((key) => billingCredentialLabel[key] ?? key)));
-        const missing = missingLabels.length ? `；缺少凭据：${missingLabels.join('、')}` : '';
-        const skipped = result.skipped.length ? `；跳过 ${result.skipped.length} 个模型日` : '';
-        message.success(`厂商模型定价已更新：写入 ${result.written} 条，检查 ${result.targetCount} 个模型日${skipped}${missing}`);
+        const outcome = formatBillingPriceRefreshMessage(result);
+        if (outcome.level === 'warning') message.warning(outcome.text);
+        else message.success(outcome.text);
       },
       onError: () => message.error('更新厂商模型定价失败'),
     });
