@@ -338,12 +338,12 @@ export function CuratedContentPage() {
     {
       title: '标题',
       dataIndex: 'title',
-      width: 360,
+      width: 420,
       className: 'curated-title-cell',
       render: (v: string | null) =>
         v ? (
           <Tooltip title={v}>
-            <Typography.Text className="curated-title-text">{v}</Typography.Text>
+            <Typography.Text className="curated-ellipsis-text">{v}</Typography.Text>
           </Tooltip>
         ) : (
           <Typography.Text type="secondary">—</Typography.Text>
@@ -355,7 +355,19 @@ export function CuratedContentPage() {
       width: 96,
       render: (images: CuratedReferenceImage[]) => <ReferenceImageStrip images={images ?? []} compact />,
     },
-    { title: '作者', dataIndex: 'author', width: 104, render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    {
+      title: '作者',
+      dataIndex: 'author',
+      width: 112,
+      render: (v: string | null) =>
+        v ? (
+          <Tooltip title={v}>
+            <Typography.Text className="curated-ellipsis-text">{v}</Typography.Text>
+          </Tooltip>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
     { title: '赞', dataIndex: 'likeCount', width: 64, render: countCell },
     { title: '藏', dataIndex: 'collectCount', width: 64, render: countCell },
     {
@@ -373,17 +385,19 @@ export function CuratedContentPage() {
     {
       title: '纳入原因',
       dataIndex: 'admitReason',
-      width: 112,
+      width: 88,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       // 中文文案，悬浮显示原始机器码（便于排查）。
-      render: (v: string | null) =>
-        v ? (
+      render: (v: string | null) => {
+        const label = v ? admitReasonLabel(v) : null;
+        return label ? (
           <Tooltip title={v}>
-            <span style={{ whiteSpace: 'nowrap' }}>{admitReasonLabel(v)}</span>
+            <Typography.Text className="curated-ellipsis-text">{label}</Typography.Text>
           </Tooltip>
         ) : (
           <Typography.Text type="secondary">—</Typography.Text>
-        ),
+        );
+      },
     },
     {
       title: '更新时刻',
@@ -395,14 +409,14 @@ export function CuratedContentPage() {
     {
       title: '操作',
       key: 'action',
-      width: 184,
+      width: 220,
       // 操作列内部一律 stopPropagation：按钮点击不触发整行的「打开详情」。
       render: (_, row) => {
         const canComment = isSourcePost(row);
         const writeState = createPostState(row);
         return (
           <div onClick={(e) => e.stopPropagation()}>
-            <Space size={6} wrap>
+            <Space size={6}>
               {/* 洗稿：仅图文行且有正文；视频和评论暂不支持。 */}
               <Tooltip title={writeState.tip}>
                 <Popconfirm
@@ -501,7 +515,7 @@ export function CuratedContentPage() {
               onClick: () => setViewing(row),
               style: { cursor: 'pointer' },
             })}
-            scroll={{ x: allAccountsView ? 1416 : 1304 }}
+            scroll={{ x: allAccountsView ? 1476 : 1364 }}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,

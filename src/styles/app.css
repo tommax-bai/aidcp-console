@@ -297,16 +297,14 @@ body {
 .curated-title-cell {
   vertical-align: top;
 }
-.curated-title-text.ant-typography {
-  display: -webkit-box;
+.curated-ellipsis-text.ant-typography {
+  display: block;
   max-width: 100%;
   overflow: hidden;
   color: var(--aidcp-foreground);
-  line-height: 1.45;
-  white-space: normal;
-  word-break: break-word;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  line-height: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .curated-count-text {
