@@ -295,7 +295,7 @@ body {
  * 精选内容池局部：计数/评论浮层
  * ====================================================================== */
 .curated-title-cell {
-  vertical-align: top;
+  vertical-align: middle;
 }
 .curated-ellipsis-text.ant-typography {
   display: block;
