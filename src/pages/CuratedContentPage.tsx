@@ -96,7 +96,15 @@ function usableReferenceImages(images: CuratedReferenceImage[]): CuratedReferenc
   return images.filter((img) => referenceImageUrl(img)).slice(0, 9);
 }
 
-function ReferenceImageStrip({ images, compact = false }: { images: CuratedReferenceImage[]; compact?: boolean }) {
+function ReferenceImageStrip({
+  images,
+  compact = false,
+  onPreview,
+}: {
+  images: CuratedReferenceImage[];
+  compact?: boolean;
+  onPreview?: (images: CuratedReferenceImage[], index: number) => void;
+}) {
   const usable = usableReferenceImages(images);
   if (usable.length === 0) {
     return compact ? (
@@ -107,17 +115,26 @@ function ReferenceImageStrip({ images, compact = false }: { images: CuratedRefer
   }
   const size = compact ? 38 : 72;
   return (
-    <Space size={compact ? 4 : 8} wrap>
-      {usable.map((img) => {
+    <Space size={compact ? 4 : 8} wrap className="curated-image-strip">
+      {usable.map((img, index) => {
         const url = referenceImageUrl(img);
         return (
-          <a key={`${img.index}-${url}`} href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+          <button
+            key={`${img.index}-${url}`}
+            type="button"
+            className="curated-image-strip__item"
+            style={{ width: size, height: size }}
+            aria-label={`预览参考图 ${index + 1}/${usable.length}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview?.(usable, index);
+            }}
+          >
             <img
               src={url}
               alt={img.alt || `reference ${img.index + 1}`}
-              style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, border: '1px solid #eee', display: 'block' }}
             />
-          </a>
+          </button>
         );
       })}
     </Space>
@@ -357,6 +374,10 @@ export function CuratedContentPage() {
   const openCommentModal = (row: PanelCuratedContent) => {
     setCommentKind('content');
     setCommentTarget(row);
+  };
+
+  const openImagePreview = (images: CuratedReferenceImage[], index: number) => {
+    setImagePreview({ images, index });
   };
 
   // 全账号视图下前置「账号」列，标明每行精选归属（单账号视图不显示）。
@@ -668,7 +689,7 @@ export function CuratedContentPage() {
                 <Radio value="text">仅文本参考</Radio>
               </Space>
             </Radio.Group>
-            <ReferenceImageStrip images={createTarget.referenceImages} />
+            <ReferenceImageStrip images={createTarget.referenceImages} onPreview={openImagePreview} />
             <Alert type="info" showIcon message="参考图只用于生成阶段理解画面，不会直接复用或发布原图。" />
           </Space>
         )}
@@ -760,7 +781,7 @@ export function CuratedContentPage() {
             ) : null}
 
             <div style={{ marginBottom: 12 }}>
-              <ReferenceImageStrip images={viewing.referenceImages} />
+              <ReferenceImageStrip images={viewing.referenceImages} onPreview={openImagePreview} />
             </div>
 
             {/* 正文 */}

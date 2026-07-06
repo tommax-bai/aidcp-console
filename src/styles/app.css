@@ -354,6 +354,21 @@ body {
 .curated-row-actions .ant-btn-sm {
   padding-inline: 6px;
 }
+.curated-image-strip__item {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  background: #f7f7f7;
+  cursor: pointer;
+}
+.curated-image-strip__item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .curated-image-preview {
   display: flex;
   flex-direction: column;

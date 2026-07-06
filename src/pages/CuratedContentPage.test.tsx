@@ -191,6 +191,46 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
   });
 
+  it('查看笔记详情里的参考图点击打开站内预览浮层，不渲染原图链接或下载目标', async () => {
+    state.items = [
+      makeRow({
+        referenceImages: [
+          {
+            index: 0,
+            sourceUrl: 'https://img.test/one.jpg',
+            ossUrl: 'https://oss.test/one.jpg',
+            alt: 'first reference',
+            captureStatus: 'stored',
+            capturedAt: 1,
+          },
+          {
+            index: 1,
+            sourceUrl: 'https://img.test/two.jpg',
+            ossUrl: 'https://oss.test/two.jpg',
+            alt: 'second reference',
+            captureStatus: 'stored',
+            capturedAt: 1,
+          },
+        ],
+      }),
+    ];
+
+    renderPage();
+    fireEvent.click(await screen.findByText('目标笔记标题'));
+    const detail = await screen.findByRole('dialog');
+
+    expect(detail.querySelector('a[href="https://oss.test/one.jpg"]')).toBeNull();
+    expect(detail.querySelector('a[href="https://oss.test/two.jpg"]')).toBeNull();
+    expect(detail.querySelector('[download]')).toBeNull();
+
+    const detailImageButtons = within(detail).getAllByRole('button', { name: /预览参考图/ });
+    fireEvent.click(detailImageButtons[1]);
+
+    expect(await screen.findByText('参考图 2/2')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /下一张/ }));
+    expect(await screen.findByText('参考图 1/2')).toBeTruthy();
+  });
+
   it('评论：弹窗选「带群评论」→ POST comment 带 withGroup:true；未配群码拒绝呈现中文', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'group_code_missing' });
     renderPage();
