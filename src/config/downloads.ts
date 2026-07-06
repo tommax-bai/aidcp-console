@@ -19,7 +19,7 @@ export const EDGE_DOWNLOAD = {
   base: '/downloads',
   /**
    * 各平台安装包（文件名须与 `/opt/aidcp/downloads/` 下实际文件一致）。
-   * 三平台均 0.2.6（2026-07-06：GitHub Actions run 28775900894 构建，
+   * 三平台均 0.2.6（2026-07-06：GitHub Actions run 28776740543 构建，
    * 见 aidcp-edge/.github/workflows/build-desktop.yml）。
    */
   items: [
