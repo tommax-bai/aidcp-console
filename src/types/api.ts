@@ -401,6 +401,10 @@ export interface RolePromptView {
    * true=该账号运行会被拒，下示 prompt 为示例人设渲染、仅供查看（绝不冒充该账号人设）。
    */
   personaFallback?: boolean;
+  /** 本次预览的人设来源（可选，旧后端不返回时前端回退推断）。 */
+  personaSource?: 'sample' | 'account' | 'fallback_sample' | 'none';
+  /** 面向操作员的人设来源短标签。 */
+  personaSourceLabel?: string;
 }
 
 // 账号人设配置（change account-persona-config，stream F）。与 cloud PersonaConfigRowView 手动对齐。

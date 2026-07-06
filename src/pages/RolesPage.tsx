@@ -6,6 +6,7 @@ import { apiGet, apiPut } from '../api/client';
 import { useRoleConfig, useCategoryConfig, useModelConfig, useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import { ProfileLink } from '../components';
+import { promptPersonaSourceSummary } from './rolePromptPersonaSource';
 import { makeAccountNamer, accountName } from '../types/accountDisplay';
 import type {
   RoleConfigRow,
@@ -87,6 +88,12 @@ export function RolesPage() {
   });
   // 统一走诚实回落（真名→运营名→ID），不再内联手写（防漂移）。
   const accountLabel = makeAccountNamer(accounts);
+  const previewAccount = previewAccountId ? accounts.find((a) => a.accountId === previewAccountId) : undefined;
+  const previewPersonaHint = previewAccountId
+    ? previewAccount?.personaBound
+      ? `查看 Prompt 时使用账号「${accountLabel(previewAccountId)}」的真实人设；实时卡片/正文仍为示例占位。`
+      : `账号「${accountLabel(previewAccountId)}」未绑定人设，运行会被拒绝；查看 Prompt 时仅按示例人设渲染。`
+    : '未选择账号，查看 Prompt 时使用示例人设；实时卡片/正文仍为示例占位。';
 
   // 文本厂商下拉项（取自模型配置真态；未载入时回退仅 dashscope）。
   const providerOptions = (modelCfg?.providers ?? [{ id: 'dashscope', displayName: '阿里百炼 DashScope', baseUrl: '' }]).map(
@@ -381,29 +388,32 @@ export function RolesPage() {
         )}
       </Card>
 
-      <Card
-        size="small"
-        title="角色模型配置"
-        extra={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--aidcp-text-secondary, #888)' }}>预览人设</span>
-            <Select
-              size="small"
-              allowClear
-              placeholder="示例人设"
-              style={{ width: 220 }}
-              value={previewAccountId}
-              onChange={(v) => setPreviewAccountId(v ?? undefined)}
-              options={accountOptions}
-            />
-          </span>
-        }
-      >
+      <Card size="small" title="角色模型配置">
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。「预览人设」选一个账号，可按其人设带入查看 Prompt（空=示例人设；未配人设账号回落示例并标注）。"
+          message="Prompt 预览人设"
+          description={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span>{previewPersonaHint}</span>
+              <Select
+                size="small"
+                allowClear
+                placeholder="示例人设"
+                style={{ width: 260 }}
+                value={previewAccountId}
+                onChange={(v) => setPreviewAccountId(v ?? undefined)}
+                options={accountOptions}
+              />
+            </div>
+          }
+        />
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。"
         />
         <Table<RoleConfigRow>
           size="small"
@@ -625,23 +635,33 @@ export function RolesPage() {
           <Skeleton active />
         ) : promptView ? (
           <div>
-            {promptView.accountId && (
-              <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--aidcp-text-secondary, #888)' }}>
-                {/* 账号名可点：跳转其小红书主页（accountId = xhs userid）。非真实 id 回落纯文本。 */}
-                预览人设来自账号：
-                <strong>
-                  <ProfileLink userId={promptView.accountId}>{accountLabel(promptView.accountId)}</ProfileLink>
-                </strong>
-              </div>
-            )}
-            {promptView.personaFallback && (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 'var(--aidcp-space-3)' }}
-                message="该账号未绑定人设（运行会被拒绝）。下面展示的是示例人设渲染的 prompt，仅供查看，非该账号人设。"
-              />
-            )}
+            {(() => {
+              const persona = promptPersonaSourceSummary(promptView, accountLabel);
+              return (
+                <Alert
+                  type={persona.alertType}
+                  showIcon
+                  style={{ marginBottom: 'var(--aidcp-space-3)' }}
+                  message={
+                    <span>
+                      预览人设：<Tag color={persona.alertType === 'warning' ? 'orange' : 'blue'}>{persona.label}</Tag>
+                    </span>
+                  }
+                  description={
+                    <span>
+                      {persona.description}
+                      {promptView.accountId && (
+                        <>
+                          {' '}
+                          账号：
+                          <ProfileLink userId={promptView.accountId}>{accountLabel(promptView.accountId)}</ProfileLink>
+                        </>
+                      )}
+                    </span>
+                  }
+                />
+              );
+            })()}
             <Alert
               type={promptView.available ? 'info' : 'warning'}
               showIcon
