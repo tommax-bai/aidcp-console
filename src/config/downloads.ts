@@ -14,18 +14,18 @@
 
 export const EDGE_DOWNLOAD = {
   /** 当前发布版本（显示用；改包时一并改）。 */
-  version: '0.2.4',
+  version: '0.2.5',
   /** 同机 Nginx 静态目录前缀（相对路径=同源，无需写域名/端口）。 */
   base: '/downloads',
   /**
    * 各平台安装包（文件名须与 `/opt/aidcp/downloads/` 下实际文件一致）。
-   * 三平台均 0.2.4（2026-07-05：GitHub Actions run 28736743911 构建，
+   * 三平台均 0.2.5（2026-07-06：GitHub Actions run 28766101415 构建，
    * 见 aidcp-edge/.github/workflows/build-desktop.yml）。
    */
   items: [
-    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.2.4-arm64.dmg' },
-    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.2.4.dmg' },
-    { key: 'win-x64', label: 'Windows · x64', file: 'AIDCP Setup 0.2.4.exe' },
+    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.2.5-arm64.dmg' },
+    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.2.5.dmg' },
+    { key: 'win-x64', label: 'Windows · x64', file: 'AIDCP Setup 0.2.5.exe' },
   ],
 } as const;
 
