@@ -54,6 +54,20 @@ export interface PanelAccount {
   needsPersonaSetup: boolean;
 }
 
+/**
+ * 每账号 Facebook 定时评论配置（change facebook-scheduled-comment 2.1）。手工镜像 cloud
+ * config/facebook-comment-config-store.ts。关键词或容器任一为空 = 不生效（云端 fail-closed）。
+ */
+export interface FacebookCommentConfig {
+  accountId: string;
+  /** 搜索关键词列表（随机选一个）。 */
+  keywords: string[];
+  /** 允许的容器列表（运营方自己的 / 已加入的 Facebook 主页、群）；只在这些容器内部搜索。 */
+  containers: string[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 export interface LikeRate {
   likes: number;
   views: number;

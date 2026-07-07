@@ -17,6 +17,10 @@ function severityRank(a: PanelAccount): number {
 
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
+// 平台展示（拆分不同平台）。platform 为自由字符串（cloud accounts.platform 事实源）：xiaohongshu / facebook。
+const PLATFORM_LABEL: Record<string, string> = { xiaohongshu: '小红书', facebook: 'Facebook' };
+const PLATFORM_COLOR: Record<string, string> = { xiaohongshu: 'magenta', facebook: 'blue' };
+
 const viewsColumn: ColumnsType<PanelAccount>[number] = {
   // #17：站内深链——一键跳到该账号在其它页的视图，带 ?account=<id> 深链（各页读 URL 预置账号筛选）。
   // 与「账号名」的站外小红书主页 ProfileLink 互不影响：那是外链，这是站内导航。
@@ -37,12 +41,26 @@ const viewsColumn: ColumnsType<PanelAccount>[number] = {
 
 const columns: ColumnsType<PanelAccount> = [
   {
+    title: '平台',
+    dataIndex: 'platform',
+    width: 92,
+    filters: [
+      { text: '小红书', value: 'xiaohongshu' },
+      { text: 'Facebook', value: 'facebook' },
+    ],
+    onFilter: (value, r) => r.platform === value,
+    render: (p: string) => <Tag color={PLATFORM_COLOR[p] ?? 'default'}>{PLATFORM_LABEL[p] ?? p}</Tag>,
+  },
+  {
     title: '账号',
     key: 'account',
-    // 账号名可点：跳转其小红书主页（accountId = 登录派生的 xhs userid）。非真实 id 回落纯文本。
-    render: (_, r) => (
-      <ProfileLink userId={r.accountId}>{accountDisplayName(r.nickname, r.label, r.accountId)}</ProfileLink>
-    ),
+    // 账号名可点：仅小红书账号跳其站外主页（accountId = 登录派生的 xhs userid）；其它平台回落纯文本，绝不出死链。
+    render: (_, r) =>
+      r.platform === 'xiaohongshu' ? (
+        <ProfileLink userId={r.accountId}>{accountDisplayName(r.nickname, r.label, r.accountId)}</ProfileLink>
+      ) : (
+        <span>{accountDisplayName(r.nickname, r.label, r.accountId)}</span>
+      ),
   },
   {
     title: '人设',

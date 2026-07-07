@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
 import { useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
-import { AccountsTable, RiskControls } from '../components';
+import { AccountsTable, RiskControls, FacebookSearchConfig } from '../components';
 import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
 
@@ -75,6 +75,7 @@ export function AccountsPage() {
         </Popconfirm>
       )}
       <RiskControls account={a} />
+      {a.platform === 'facebook' ? <FacebookSearchConfig account={a} /> : null}
     </Space>
   );
 
