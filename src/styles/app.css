@@ -292,6 +292,152 @@ body {
 }
 
 /* ======================================================================
+ * 发布内容页：进行中队列阶段总览
+ * ====================================================================== */
+.publish-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aidcp-space-2);
+}
+.publish-queue-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-3);
+  margin-top: var(--aidcp-space-2);
+}
+.publish-queue-draft {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--aidcp-space-3);
+  align-items: center;
+  min-height: 72px;
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: #fafafa;
+}
+.publish-queue-draft__main {
+  min-width: 0;
+}
+.publish-queue-draft__eyebrow.ant-typography {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--aidcp-font-size-xs);
+}
+.publish-queue-draft__title.ant-typography {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--aidcp-font-size-title-3);
+  line-height: var(--aidcp-line-height-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publish-queue-draft__source.ant-typography {
+  display: block;
+  max-width: 100%;
+  margin-top: var(--aidcp-space-1);
+  overflow: hidden;
+  font-size: var(--aidcp-font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publish-queue-draft__facts {
+  justify-content: flex-end;
+}
+.publish-queue-stage-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(148px, 1fr));
+  gap: var(--aidcp-space-2);
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.publish-queue-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 148px;
+  min-height: 104px;
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-card);
+}
+.publish-queue-stage--done {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+.publish-queue-stage--active {
+  border-color: #91caff;
+  background: #e6f4ff;
+}
+.publish-queue-stage--pending {
+  background: #fafafa;
+}
+.publish-queue-stage__top {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: var(--aidcp-space-1);
+  align-items: center;
+}
+.publish-queue-stage__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  font-weight: var(--aidcp-font-weight-medium);
+  line-height: 1;
+}
+.publish-queue-stage__label.ant-typography,
+.publish-queue-stage__fields.ant-typography,
+.publish-queue-stage__fact.ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publish-queue-stage__label.ant-typography {
+  font-size: var(--aidcp-font-size-sm);
+}
+.publish-queue-stage__fields.ant-typography,
+.publish-queue-stage__fact.ant-typography {
+  display: block;
+  font-size: var(--aidcp-font-size-xs);
+}
+.publish-queue-stage__fact.ant-typography {
+  color: var(--aidcp-foreground);
+}
+.publish-queue-stage__tag.ant-tag {
+  margin-inline-end: 0;
+}
+.publish-queue-raw {
+  margin-top: var(--aidcp-space-2);
+}
+.publish-queue-empty {
+  margin-top: var(--aidcp-space-2);
+}
+
+@media (max-width: 768px) {
+  .publish-queue-draft {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .publish-queue-draft__facts {
+    justify-content: flex-start;
+  }
+  .publish-queue-stage-strip {
+    grid-template-columns: none;
+    grid-auto-columns: minmax(188px, 82%);
+    grid-auto-flow: column;
+  }
+}
+
+/* ======================================================================
  * 精选内容池局部：计数/评论浮层
  * ====================================================================== */
 .curated-title-cell {

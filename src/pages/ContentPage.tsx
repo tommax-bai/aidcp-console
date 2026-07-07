@@ -39,6 +39,288 @@ const PUBLISH_STATUS_LABEL: Record<string, string> = {
   draft: '草稿',
 };
 
+type SnapshotRecord = Record<string, unknown>;
+type QueueStageState = 'done' | 'active' | 'pending';
+
+interface QueueStageField {
+  key: string;
+  label: string;
+}
+
+interface QueueStageDefinition {
+  key: string;
+  label: string;
+  fields: QueueStageField[];
+}
+
+interface QueueStageView {
+  key: string;
+  label: string;
+  state: QueueStageState;
+  presentLabels: string[];
+  fact: string | null;
+}
+
+interface QueueDraftSummary {
+  title: string;
+  sourceTitle: string | null;
+  accountId: string | null;
+  author: string | null;
+  facts: string[];
+}
+
+const QUEUE_STATUS_LABEL: Record<string, string> = {
+  idle: '空闲',
+  running: '生成中',
+  completed: '已完成',
+  failed: '失败',
+  timeout: '超时',
+};
+
+const QUEUE_STATUS_COLOR: Record<string, string> = {
+  idle: 'default',
+  running: 'processing',
+  completed: 'success',
+  failed: 'error',
+  timeout: 'warning',
+};
+
+const STAGE_STATE_LABEL: Record<QueueStageState, string> = {
+  done: '已完成',
+  active: '进行中',
+  pending: '未开始',
+};
+
+const STAGE_STATE_COLOR: Record<QueueStageState, string> = {
+  done: 'green',
+  active: 'blue',
+  pending: 'default',
+};
+
+const QUEUE_STAGE_DEFINITIONS: QueueStageDefinition[] = [
+  {
+    key: 'source',
+    label: '来源/触发',
+    fields: [{ key: 'trigger', label: '触发输入' }],
+  },
+  {
+    key: 'draft',
+    label: '洗稿/正文',
+    fields: [
+      { key: 'referenceAnalysis', label: '原稿分析' },
+      { key: 'faithfulRewritePlan', label: '改写规划' },
+      { key: 'faithfulDraft', label: '洗稿草稿' },
+      { key: 'fidelityAuditReport', label: '忠实度审核' },
+      { key: 'scoutDecision', label: '选题判断' },
+      { key: 'createdContent', label: '正文草稿' },
+    ],
+  },
+  {
+    key: 'quality',
+    label: '质检/清洗',
+    fields: [
+      { key: 'cleanedContent', label: '去 AI 味' },
+      { key: 'aiFlavorScore', label: 'AI 味分' },
+      { key: 'qualityReport', label: '质量分' },
+      { key: 'assembledContent', label: '终稿组装' },
+      { key: 'titleSelection', label: '标题定稿' },
+    ],
+  },
+  {
+    key: 'media',
+    label: '配图/元数据',
+    fields: [
+      { key: 'postCategory', label: '品类' },
+      { key: 'imageSetPlan', label: '图集规划' },
+      { key: 'imagePlan', label: '生图指令' },
+      { key: 'imageDirective', label: '配图结果' },
+      { key: 'coverSelection', label: '封面' },
+      { key: 'topicCandidates', label: '话题候选' },
+      { key: 'topicSelection', label: '话题' },
+      { key: 'mentionSelection', label: '@ 提及' },
+      { key: 'locationSelection', label: '地点' },
+      { key: 'collectionSelection', label: '合集' },
+      { key: 'visibilityDecision', label: '可见范围' },
+      { key: 'permissionDecision', label: '权限' },
+      { key: 'publishModeDecision', label: '发布方式' },
+      { key: 'complianceDecision', label: '合规声明' },
+      { key: 'publishMetadata', label: '元数据汇总' },
+    ],
+  },
+  {
+    key: 'review',
+    label: '人审/下发',
+    fields: [
+      { key: 'gateDecision', label: '人审裁决' },
+      { key: 'publishResult', label: '发布结果' },
+      { key: 'pipelineAbort', label: '中止原因' },
+    ],
+  },
+];
+
+function isRecord(value: unknown): value is SnapshotRecord {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function objectField(record: SnapshotRecord, key: string): SnapshotRecord | null {
+  const value = record[key];
+  return isRecord(value) ? value : null;
+}
+
+function stringField(record: SnapshotRecord | null, key: string): string | null {
+  const value = record?.[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function numberField(record: SnapshotRecord | null, key: string): number | null {
+  const value = record?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function hasSnapshotValue(snapshot: SnapshotRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(snapshot, key) && snapshot[key] != null;
+}
+
+function triggerRecord(snapshot: SnapshotRecord): SnapshotRecord | null {
+  return objectField(snapshot, 'trigger');
+}
+
+function referenceNoteRecord(snapshot: SnapshotRecord): SnapshotRecord | null {
+  const trigger = triggerRecord(snapshot);
+  const generateInput = trigger ? objectField(trigger, 'generateInput') : null;
+  return generateInput ? objectField(generateInput, 'referenceNote') : null;
+}
+
+function imageCountFrom(value: unknown): number | null {
+  if (Array.isArray(value)) return value.length;
+  return null;
+}
+
+function contentLengthFrom(record: SnapshotRecord | null, key: string): number | null {
+  const value = stringField(record, key);
+  return value ? value.length : null;
+}
+
+function compactJson(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '—';
+  if (typeof value !== 'object') return String(value);
+  return JSON.stringify(value);
+}
+
+function queueStageFact(stageKey: string, snapshot: SnapshotRecord): string | null {
+  const trigger = triggerRecord(snapshot);
+  const referenceNote = referenceNoteRecord(snapshot);
+  const faithfulDraft = objectField(snapshot, 'faithfulDraft');
+  const createdContent = objectField(snapshot, 'createdContent');
+  const titleSelection = objectField(snapshot, 'titleSelection');
+  const qualityReport = objectField(snapshot, 'qualityReport');
+  const aiFlavorScore = objectField(snapshot, 'aiFlavorScore');
+  const imageSetPlan = objectField(snapshot, 'imageSetPlan');
+  const imagePlan = objectField(snapshot, 'imagePlan');
+  const imageDirective = objectField(snapshot, 'imageDirective');
+  const publishMetadata = objectField(snapshot, 'publishMetadata');
+  const gateDecision = objectField(snapshot, 'gateDecision');
+  const publishResult = objectField(snapshot, 'publishResult');
+
+  if (stageKey === 'source') {
+    const facts = [
+      stringField(trigger, 'accountId') ? `账号 ${stringField(trigger, 'accountId')}` : null,
+      imageCountFrom(referenceNote?.images) != null ? `参考图 ${imageCountFrom(referenceNote?.images)} 张` : null,
+      stringField(referenceNote, 'author') ? `作者 ${stringField(referenceNote, 'author')}` : null,
+    ].filter(Boolean);
+    return facts.length > 0 ? facts.join(' · ') : null;
+  }
+
+  if (stageKey === 'draft') {
+    const draftTitle = stringField(faithfulDraft, 'title') ?? stringField(createdContent, 'title');
+    const draftLength = contentLengthFrom(faithfulDraft, 'content') ?? contentLengthFrom(createdContent, 'content');
+    const audit = objectField(snapshot, 'fidelityAuditReport');
+    const facts = [
+      draftTitle ? `标题：${draftTitle}` : null,
+      draftLength != null ? `正文 ${draftLength} 字` : null,
+      numberField(audit, 'score') != null ? `忠实度 ${numberField(audit, 'score')}` : null,
+    ].filter(Boolean);
+    return facts.length > 0 ? facts.join(' · ') : null;
+  }
+
+  if (stageKey === 'quality') {
+    const facts = [
+      stringField(titleSelection, 'title') ? `定稿标题：${stringField(titleSelection, 'title')}` : null,
+      numberField(qualityReport, 'qualityScore') != null ? `质量 ${numberField(qualityReport, 'qualityScore')}` : null,
+      numberField(aiFlavorScore, 'aiScore') != null ? `AI 味 ${numberField(aiFlavorScore, 'aiScore')}` : null,
+    ].filter(Boolean);
+    return facts.length > 0 ? facts.join(' · ') : null;
+  }
+
+  if (stageKey === 'media') {
+    const generatedImages = imageCountFrom(imageDirective?.imageUrls);
+    const plannedImages = numberField(imagePlan, 'imageCount') ?? numberField(imageSetPlan, 'imageCount');
+    const topics = imageCountFrom(publishMetadata?.topics);
+    const facts = [
+      generatedImages != null ? `已生图 ${generatedImages} 张` : plannedImages != null ? `计划配图 ${plannedImages} 张` : null,
+      topics != null ? `话题 ${topics} 个` : null,
+      stringField(publishMetadata, 'visibility') ? `可见范围 ${stringField(publishMetadata, 'visibility')}` : null,
+    ].filter(Boolean);
+    return facts.length > 0 ? facts.join(' · ') : null;
+  }
+
+  if (stageKey === 'review') {
+    const facts = [
+      stringField(gateDecision, 'recommendedAction') ? `裁决 ${stringField(gateDecision, 'recommendedAction')}` : null,
+      stringField(publishResult, 'status') ? `结果 ${stringField(publishResult, 'status')}` : null,
+      numberField(publishResult, 'recordId') != null ? `记录 #${numberField(publishResult, 'recordId')}` : null,
+    ].filter(Boolean);
+    return facts.length > 0 ? facts.join(' · ') : null;
+  }
+
+  return null;
+}
+
+function buildQueueStages(snapshot: SnapshotRecord): QueueStageView[] {
+  const doneFlags = QUEUE_STAGE_DEFINITIONS.map((stage) => stage.fields.some((field) => hasSnapshotValue(snapshot, field.key)));
+  const firstPending = doneFlags.findIndex((done) => !done);
+
+  return QUEUE_STAGE_DEFINITIONS.map((stage, index) => {
+    const state: QueueStageState = doneFlags[index] ? 'done' : index === firstPending ? 'active' : 'pending';
+    return {
+      key: stage.key,
+      label: stage.label,
+      state,
+      presentLabels: stage.fields.filter((field) => hasSnapshotValue(snapshot, field.key)).map((field) => field.label),
+      fact: queueStageFact(stage.key, snapshot),
+    };
+  });
+}
+
+function buildQueueDraftSummary(snapshot: SnapshotRecord): QueueDraftSummary {
+  const trigger = triggerRecord(snapshot);
+  const referenceNote = referenceNoteRecord(snapshot);
+  const faithfulDraft = objectField(snapshot, 'faithfulDraft');
+  const createdContent = objectField(snapshot, 'createdContent');
+  const titleSelection = objectField(snapshot, 'titleSelection');
+  const imageDirective = objectField(snapshot, 'imageDirective');
+  const title =
+    stringField(titleSelection, 'title') ??
+    stringField(faithfulDraft, 'title') ??
+    stringField(createdContent, 'title') ??
+    stringField(referenceNote, 'title') ??
+    '进行中稿件';
+  const sourceTitle = stringField(referenceNote, 'title');
+  const accountId = stringField(trigger, 'accountId') ?? stringField(referenceNote, 'accountId');
+  const author = stringField(referenceNote, 'author');
+  const referenceImageCount = imageCountFrom(referenceNote?.images);
+  const generatedImageCount = imageCountFrom(imageDirective?.imageUrls);
+  const facts = [
+    accountId ? `账号 ${accountId}` : null,
+    author ? `作者 ${author}` : null,
+    referenceImageCount != null ? `参考图 ${referenceImageCount} 张` : null,
+    generatedImageCount != null ? `生成图 ${generatedImageCount} 张` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return { title, sourceTitle, accountId, author, facts };
+}
+
 /**
  * 编辑/审批的可区分拒因 → 说人话文案（change edit-note-draft-before-publish）。
  * 收口于集中映射 errorText（change console-cloud-panel-hardening #31）：保留本函数签名与调用点，
@@ -410,29 +692,105 @@ export function ContentPage() {
       value: a.accountId,
     })),
   ];
+  const queueStatus = queue.data?.status ?? '—';
+  const queueSnapshot = isRecord(queue.data?.snapshot) ? queue.data.snapshot : null;
+  const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot) : [];
+  const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot) : null;
+  const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
 
   return (
     <div className="page-stack">
       <Card size="small" title="发布队列（进行中）">
-        <Typography.Text>
-          状态：<Tag>{queue.data?.status ?? '—'}</Tag>
-        </Typography.Text>
-        {/* #18：展开生成管道快照（选题/正文/配图等中间产物），排查卡在哪一阶段，不必翻服务器日志。 */}
-        {queue.data?.snapshot != null && typeof queue.data.snapshot === 'object' ? (
+        <div className="publish-queue-head">
+          <Space wrap size={8}>
+            <Typography.Text>
+              状态：<Tag color={QUEUE_STATUS_COLOR[queueStatus] ?? 'default'}>{QUEUE_STATUS_LABEL[queueStatus] ?? queueStatus}</Tag>
+            </Typography.Text>
+            {queueSnapshot ? (
+              <Typography.Text type="secondary">已产出 {rawSnapshotEntries.length} 个管道字段</Typography.Text>
+            ) : null}
+          </Space>
+        </div>
+
+        {queueSnapshot && queueDraft ? (
+          <div className="publish-queue-overview">
+            <div className="publish-queue-draft">
+              <div className="publish-queue-draft__main">
+                <Typography.Text type="secondary" className="publish-queue-draft__eyebrow">
+                  活跃稿件
+                </Typography.Text>
+                <Typography.Title level={5} className="publish-queue-draft__title" title={queueDraft.title}>
+                  {queueDraft.title}
+                </Typography.Title>
+                {queueDraft.sourceTitle && queueDraft.sourceTitle !== queueDraft.title ? (
+                  <Typography.Text type="secondary" className="publish-queue-draft__source" title={queueDraft.sourceTitle}>
+                    来源：{queueDraft.sourceTitle}
+                  </Typography.Text>
+                ) : null}
+              </div>
+              {queueDraft.facts.length > 0 ? (
+                <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
+                  {queueDraft.facts.map((fact) => (
+                    <Tag key={fact} color="default">{fact}</Tag>
+                  ))}
+                </Space>
+              ) : null}
+            </div>
+
+            <div className="publish-queue-stage-strip" aria-label="发布生成阶段">
+              {queueStages.map((stage, index) => {
+                const visibleLabels = stage.presentLabels.slice(0, 2);
+                const extraCount = stage.presentLabels.length - visibleLabels.length;
+                return (
+                  <div key={stage.key} className={`publish-queue-stage publish-queue-stage--${stage.state}`}>
+                    <div className="publish-queue-stage__top">
+                      <span className="publish-queue-stage__index">{index + 1}</span>
+                      <Typography.Text strong className="publish-queue-stage__label">{stage.label}</Typography.Text>
+                      <Tag color={STAGE_STATE_COLOR[stage.state]} className="publish-queue-stage__tag">
+                        {STAGE_STATE_LABEL[stage.state]}
+                      </Tag>
+                    </div>
+                    <Typography.Text type="secondary" className="publish-queue-stage__fields">
+                      {visibleLabels.length > 0
+                        ? `已产出：${visibleLabels.join('、')}${extraCount > 0 ? ` +${extraCount}` : ''}`
+                        : stage.state === 'active'
+                          ? '正在等待本阶段产出'
+                          : '等待上游'}
+                    </Typography.Text>
+                    {stage.fact ? (
+                      <Typography.Text className="publish-queue-stage__fact" title={stage.fact}>
+                        {stage.fact}
+                      </Typography.Text>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            className="publish-queue-empty"
+            description={queueStatus === 'running' ? '生成管道快照尚未写入' : '暂无进行中生成任务'}
+          />
+        )}
+
+        {/* #18：保留生成管道原始快照（选题/正文/配图等中间产物），阶段摘要未识别的未来字段仍可排查。 */}
+        {queueSnapshot ? (
           <Collapse
             size="small"
             ghost
-            style={{ marginTop: 'var(--aidcp-space-2)' }}
+            className="publish-queue-raw"
             items={[
               {
                 key: 'snapshot',
-                label: '生成管道快照',
+                label: `原始字段（${rawSnapshotEntries.length}）`,
                 children: (
                   <Descriptions size="small" column={1} bordered>
-                    {Object.entries(queue.data.snapshot as Record<string, unknown>).map(([k, v]) => (
+                    {rawSnapshotEntries.map(([k, v]) => (
                       <Descriptions.Item key={k} label={k}>
                         <Typography.Text style={{ fontSize: 12, wordBreak: 'break-all' }}>
-                          {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                          {compactJson(v)}
                         </Typography.Text>
                       </Descriptions.Item>
                     ))}

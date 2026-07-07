@@ -111,6 +111,43 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     vi.mocked(apiPost).mockReset();
   });
 
+  it('发布队列运行中快照按阶段摘要展示，并保留原始字段', async () => {
+    state.published = { items: [] };
+    state.queue = {
+      status: 'running',
+      snapshot: {
+        trigger: {
+          accountId: 'acc-1',
+          generateInput: {
+            referenceNote: {
+              title: '来稿标题',
+              author: '原作者',
+              images: [{ index: 0 }, { index: 1 }],
+            },
+          },
+        },
+        referenceAnalysis: { thesis: '原稿主旨' },
+        faithfulDraft: { title: '洗稿后标题', content: '洗稿后的正文内容' },
+        customDebug: { reason: 'keep-me' },
+      },
+    };
+
+    renderPage();
+
+    expect(await screen.findByText('生成中')).toBeTruthy();
+    expect(await screen.findByText('活跃稿件')).toBeTruthy();
+    expect(screen.getByText('洗稿后标题')).toBeTruthy();
+    expect(screen.getByText('来源：来稿标题')).toBeTruthy();
+    expect(screen.getByText('参考图 2 张')).toBeTruthy();
+    expect(screen.getByText('洗稿/正文')).toBeTruthy();
+    expect(screen.getByText(/已产出：原稿分析、洗稿草稿/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/原始字段/));
+
+    expect(await screen.findByText('customDebug')).toBeTruthy();
+    expect(await screen.findByText(/keep-me/)).toBeTruthy();
+  });
+
   it('保存草稿成功 → 「已保存」提示，抽屉保持打开', async () => {
     vi.mocked(apiPut).mockResolvedValue({
       recordId: 1,
