@@ -1,6 +1,7 @@
 import { Navigate, Outlet, RouterProvider, createBrowserRouter, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { AppShell } from './pages/AppShell';
+import { CaptchaAssistPage } from './pages/CaptchaAssistPage';
 import { LoginPage } from './pages/LoginPage';
 import { APP_ROUTES } from './routes';
 
@@ -18,6 +19,7 @@ function RequireAuth() {
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/captcha-assist/:incidentId', element: <CaptchaAssistPage /> },
   {
     element: <RequireAuth />,
     children: [

@@ -114,6 +114,87 @@ export interface DispatchResult {
   edgesOnline: number;
 }
 
+export interface CaptchaAssistViewport {
+  width: number;
+  height: number;
+  deviceScaleFactor?: number;
+}
+
+export interface CaptchaAssistCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CaptchaAssistImage {
+  mime: 'image/png' | 'image/jpeg';
+  data: string;
+  width: number;
+  height: number;
+}
+
+export interface CaptchaAssistSnapshot {
+  incidentId: string;
+  edgeId?: string;
+  accountId?: string;
+  snapshotId: string;
+  capturedAt: number;
+  expiresAt?: number;
+  kind: 'captcha' | 'unknown';
+  url?: string;
+  viewport: CaptchaAssistViewport;
+  crop: CaptchaAssistCrop;
+  image: CaptchaAssistImage;
+  overlay?: {
+    kind: 'captcha' | 'unknown';
+    firstDetectedUrl?: string;
+    capturedAt: number;
+    text?: string;
+    dom?: { tag: string; text?: string; rect?: CaptchaAssistCrop; matchReasons?: string[] };
+    candidates: unknown[];
+  };
+}
+
+export type CaptchaAssistIncidentStatus =
+  | 'detected'
+  | 'capture_pending'
+  | 'ready'
+  | 'click_pending'
+  | 'cleared'
+  | 'still_blocked'
+  | 'failed'
+  | 'expired';
+
+export interface CaptchaAssistIncident {
+  incidentId: string;
+  edgeId: string;
+  accountId?: string;
+  accountName?: string;
+  machineLabel?: string;
+  remoteAddr?: string;
+  kind: 'captcha' | 'unknown';
+  status: CaptchaAssistIncidentStatus;
+  riskStatus?: string;
+  detectedAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  url?: string;
+  snapshot?: CaptchaAssistSnapshot;
+  lastResult?: {
+    status: 'cleared' | 'still_blocked' | 'stale_snapshot' | 'not_blocked' | 'invalid_target' | 'failed';
+    reason?: string;
+    checkedAt: number;
+    snapshotId?: string;
+  };
+  lastDispatch?: {
+    type: 'capture' | 'click';
+    requestedAt: number;
+    sent: number;
+    actor: string;
+  };
+}
+
 export interface DashboardSummary {
   asOf: number;
   edgesOnline: number;

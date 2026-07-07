@@ -354,6 +354,114 @@ body {
 .curated-row-actions .ant-btn-sm {
   padding-inline: 6px;
 }
+
+/* ======================================================================
+ * 验证码云端协助页（公开 scoped-token 路由）
+ * ====================================================================== */
+.captcha-assist-page {
+  min-height: 100vh;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--aidcp-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-4);
+}
+.captcha-assist-page--center {
+  align-items: center;
+  justify-content: center;
+}
+.captcha-assist-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--aidcp-space-4);
+  padding-bottom: var(--aidcp-space-3);
+  border-bottom: 1px solid var(--aidcp-border);
+}
+.captcha-assist-header h3.ant-typography {
+  margin: 0 0 var(--aidcp-space-2);
+  font-size: var(--aidcp-font-size-title-1);
+  letter-spacing: 0;
+}
+.captcha-assist-meta {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: var(--aidcp-space-4);
+  flex-wrap: wrap;
+}
+.captcha-assist-url {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.captcha-assist-workbench {
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: #fff;
+  overflow: hidden;
+}
+.captcha-assist-stage {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  background: #111;
+  cursor: crosshair;
+  user-select: none;
+}
+.captcha-assist-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.captcha-assist-point {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #c81e1e;
+  color: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  font-size: var(--aidcp-font-size-xs);
+  font-weight: var(--aidcp-font-weight-semibold);
+  line-height: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+.captcha-assist-empty {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .captcha-assist-page {
+    padding: var(--aidcp-space-4);
+  }
+  .captcha-assist-header {
+    flex-direction: column;
+  }
+  .captcha-assist-header .ant-space {
+    width: 100%;
+  }
+  .captcha-assist-header .ant-btn {
+    flex: 1;
+  }
+  .captcha-assist-workbench {
+    min-height: 260px;
+  }
+}
 .curated-image-strip__item {
   display: block;
   padding: 0;
