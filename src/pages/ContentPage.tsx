@@ -22,6 +22,7 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
@@ -426,26 +427,60 @@ function imageReferenceAuditText(audit: PanelImageReferenceAudit | null): string
   }
 }
 
-/** 配图栏（查看/编辑共用）：缩略图 + 点击大图预览；诚实标注「实际附着张数」与死链可能。 */
-function ImagesStrip({ row }: { row: PanelPublish }) {
+/** 配图栏（查看/编辑共用）：缩略图 + 点击大图预览；诚实标注「实际附着张数」与死链可能。
+    可编辑态（editable + onDelete）每张叠删除角标，走乐观 CAS 删配图（change pending-draft-image-delete）。 */
+function ImagesStrip({
+  row,
+  editable = false,
+  onDelete,
+  deleting = false,
+}: {
+  row: PanelPublish;
+  editable?: boolean;
+  onDelete?: (url: string) => void;
+  deleting?: boolean;
+}) {
   // 防御旧负载：云端未升级/缓存数据无 images 字段时按无图处理，不白屏。
   const images = row.images ?? [];
   if (images.length === 0) return null;
   const auditText = imageReferenceAuditText(row.imageReferenceAudit ?? null);
+  const canDelete = editable && !!onDelete;
   return (
     <div style={{ marginBottom: 12 }}>
       <Image.PreviewGroup>
         <Space wrap size={8}>
           {images.map((src, i) => (
-            <Image
-              key={`${row.id}-${i}`}
-              src={src}
-              alt={`配图 ${i + 1}`}
-              width={96}
-              height={96}
-              style={{ objectFit: 'cover', borderRadius: 8 }}
-              fallback={IMG_FALLBACK}
-            />
+            <div key={`${row.id}-${i}`} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+              <Image
+                src={src}
+                alt={`配图 ${i + 1}`}
+                width={96}
+                height={96}
+                style={{ objectFit: 'cover', borderRadius: 8 }}
+                fallback={IMG_FALLBACK}
+              />
+              {canDelete ? (
+                <Popconfirm
+                  title={images.length === 1 ? '删除最后一张配图？该帖将作为纯文字帖发布' : '删除这张配图？'}
+                  okText="删除"
+                  okButtonProps={{ danger: true }}
+                  cancelText="取消"
+                  onConfirm={() => onDelete!(src)}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    type="primary"
+                    shape="circle"
+                    icon={<CloseOutlined />}
+                    loading={deleting}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`删除配图 ${i + 1}`}
+                    style={{ position: 'absolute', top: -8, right: -8, zIndex: 2, minWidth: 20, width: 20, height: 20 }}
+                  />
+                </Popconfirm>
+              ) : null}
+            </div>
           ))}
         </Space>
       </Image.PreviewGroup>
@@ -453,6 +488,7 @@ function ImagesStrip({ row }: { row: PanelPublish }) {
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           配图 {images.length} 张
           {row.imagesAttachedCount > 0 ? `（发布时实际附着 ${row.imagesAttachedCount} 张）` : ''}
+          {canDelete ? '；点右上角 × 删除该张' : ''}
           ；较早记录的图片链接可能已过期，无法加载属正常。
         </Typography.Text>
       </div>
@@ -613,7 +649,16 @@ export function ContentPage() {
       }),
   });
 
-  const busy = editDraft.isPending || approve.isPending;
+  // 删配图（change pending-draft-image-delete）：走同一 draft CAS 通道，只发 images 保留子集补丁；回读真态含删后 images。
+  const deleteImage = useMutation({
+    mutationFn: (v: { id: number; expectedVersion: number; images: string[] }) =>
+      apiPut<{ recordId: number; contentVersion: number; title: string | null; content: string; images: string[] }>(
+        `/api/publish/${v.id}/draft`,
+        { expectedVersion: v.expectedVersion, images: v.images },
+      ),
+  });
+
+  const busy = editDraft.isPending || approve.isPending || deleteImage.isPending;
 
   // 保存草稿：改完留待审（回读真态刷新浮层与列表）。
   const onSaveDraft = async () => {
@@ -664,6 +709,21 @@ export function ContentPage() {
       refreshContent();
     } catch (err) {
       message.error(reasonMessage(err, '审批失败'));
+    }
+  };
+
+  // 删配图：从当前列表移除该 URL（保留子集），走乐观 CAS；成功用后端回读真态刷新（非乐观），删空提示纯文字帖。
+  const onDeleteImage = async (url: string) => {
+    if (!viewing) return;
+    const kept = (viewing.images ?? []).filter((u) => u !== url);
+    try {
+      const res = await deleteImage.mutateAsync({ id: viewing.id, expectedVersion: viewing.contentVersion, images: kept });
+      setViewing({ ...viewing, images: res.images, contentVersion: res.contentVersion });
+      patchPublishedRow(viewing.id, { images: res.images, contentVersion: res.contentVersion });
+      refreshContent();
+      message.success(res.images.length === 0 ? '已删除；本帖将作为纯文字帖发布' : '已删除该配图');
+    } catch (err) {
+      message.error(reasonMessage(err, '删除失败'));
     }
   };
 
@@ -921,7 +981,7 @@ export function ContentPage() {
                   <Typography.Text type="secondary">标题（过长将由服务端自动截断至 18 字素）</Typography.Text>
                   <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="标题" />
                 </div>
-                <ImagesStrip row={viewing} />
+                <ImagesStrip row={viewing} editable onDelete={onDeleteImage} deleting={deleteImage.isPending} />
                 <div>
                   <Typography.Text type="secondary">正文</Typography.Text>
                   <Input.TextArea
@@ -932,7 +992,7 @@ export function ContentPage() {
                   />
                 </div>
                 <Typography.Text type="secondary">
-                  可见范围 / 话题 / 配图本期在此不可改（保留原值）；「保存并批准」= 存改动后立即授权，标题被截断则需再确认一次。
+                  配图可删（不可增/换，删空将作为纯文字帖）；可见范围 / 话题本期在此不可改（保留原值）。「保存并批准」= 存改动后立即授权，标题被截断则需再确认一次。
                 </Typography.Text>
               </Space>
             ) : (

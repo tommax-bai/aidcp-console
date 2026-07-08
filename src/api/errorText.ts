@@ -19,6 +19,7 @@ const CODE_TEXT: Record<string, string> = {
   not_found: '目标不存在',
   missing_visibility: '可见范围不能为空',
   invalid_title: '标题不能为空',
+  invalid_field: '提交内容不合法或已过期，请刷新后重试',
   // 通用写入 / 校验拒因
   bad_request: '请求格式有误',
   value_type: '字段类型不合法',

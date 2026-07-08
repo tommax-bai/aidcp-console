@@ -358,3 +358,69 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.queryByRole('button', { name: /洗稿/ })).toBeNull();
   });
 });
+
+describe('ContentPage 待审配图删除（change pending-draft-image-delete）', () => {
+  beforeEach(() => {
+    state.queue = { status: 'idle', snapshot: null };
+    state.accounts = { accounts: [] };
+    vi.mocked(apiPut).mockReset();
+    vi.mocked(apiPost).mockReset();
+  });
+
+  it('删一张配图 → 携保留子集走 draft CAS，回读真态刷新、提示已删除', async () => {
+    state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg', 'https://c.jpg'], imageUrl: 'https://a.jpg' })] };
+    vi.mocked(apiPut).mockResolvedValue({
+      recordId: 1,
+      contentVersion: 1,
+      title: '测试草稿标题',
+      content: '正文内容',
+      images: ['https://b.jpg', 'https://c.jpg'],
+    });
+    await openEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
+    expect(await screen.findByText('已删除该配图')).toBeTruthy();
+    expect(vi.mocked(apiPut)).toHaveBeenCalledWith('/api/publish/1/draft', {
+      expectedVersion: 0,
+      images: ['https://b.jpg', 'https://c.jpg'],
+    });
+  });
+
+  it('删最后一张 → 二次确认提示纯文字帖 + 成功提示 + 发空 images', async () => {
+    state.published = { items: [makePending({ images: ['https://only.jpg'], imageUrl: 'https://only.jpg' })] };
+    vi.mocked(apiPut).mockResolvedValue({ recordId: 1, contentVersion: 1, title: '测试草稿标题', content: '正文内容', images: [] });
+    await openEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
+    expect(await screen.findByText('删除最后一张配图？该帖将作为纯文字帖发布')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
+    expect(await screen.findByText('已删除；本帖将作为纯文字帖发布')).toBeTruthy();
+    expect(vi.mocked(apiPut)).toHaveBeenCalledWith('/api/publish/1/draft', { expectedVersion: 0, images: [] });
+  });
+
+  it('删配图版本冲突 → 中文拒因、绝不上屏英文码', async () => {
+    state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg'], imageUrl: 'https://a.jpg' })] };
+    vi.mocked(apiPut).mockRejectedValue(new ApiError(409, 'version_conflict'));
+    await openEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
+    expect(await screen.findByText('内容已被他处修改，请刷新后重试')).toBeTruthy();
+    expect(screen.queryByText('version_conflict')).toBeNull();
+  });
+
+  it('删配图 invalid_field（防注入/过期）→ 中文拒因', async () => {
+    state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg'], imageUrl: 'https://a.jpg' })] };
+    vi.mocked(apiPut).mockRejectedValue(new ApiError(400, 'invalid_field'));
+    await openEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
+    expect(await screen.findByText('提交内容不合法或已过期，请刷新后重试')).toBeTruthy();
+  });
+
+  it('已发布记录（查看态）不显示删除入口', async () => {
+    state.published = { items: [makePending({ status: 'published', title: '已发布帖', images: ['https://a.jpg'], imageUrl: 'https://a.jpg' })] };
+    renderPage();
+    fireEvent.click(await screen.findByText('已发布帖'));
+    await screen.findByText('无链接');
+    expect(screen.queryByRole('button', { name: /删除配图/ })).toBeNull();
+  });
+});
