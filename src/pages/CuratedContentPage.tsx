@@ -384,13 +384,15 @@ export function CuratedContentPage() {
   const accountColumn: ColumnsType<PanelCuratedContent>[number] = {
     title: '账号',
     dataIndex: 'accountId',
-    width: 84,
+    width: 104,
     className: 'curated-compact-cell',
+    // 账号 = 纯标签展示（Tag），不可点：账号是「归属」标注、非导航目标。
+    // 窄列内单行省略 + Tooltip 看全名（不换行的表格设计标准）。
     render: (id: string) => {
       const label = namer(id);
       return (
         <Tooltip title={label}>
-          <Typography.Text className="curated-ellipsis-text">{label}</Typography.Text>
+          <Tag className="curated-account-tag">{label}</Tag>
         </Tooltip>
       );
     },

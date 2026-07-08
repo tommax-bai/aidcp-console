@@ -457,6 +457,15 @@ body {
 .ant-table .ant-table-cell.curated-action-cell {
   padding-inline: 6px;
 }
+/* 精选内容池「账号」列：纯标签（Tag）展示、不可点；窄列内单行省略，全名走 Tooltip。 */
+.curated-account-tag.ant-tag {
+  max-width: 100%;
+  margin-inline-end: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 .curated-image-thumb {
   position: relative;
   display: block;
