@@ -3,7 +3,7 @@ import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typo
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig, useSessionLimits, useResumeConfig, usePacingConfig } from '../api/queries';
+import { useQuotaConfig, useSessionLimits, useHotLeadConfig, useResumeConfig, usePacingConfig } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import type {
   QuotaConfigRow,
@@ -12,6 +12,7 @@ import type {
   QuotaAction,
   SessionLimitView,
   SessionInteractionBudget,
+  HotLeadConfigView,
   ResumeConfigView,
   PacingConfigRow,
   PacingConfigView,
@@ -289,6 +290,63 @@ export function QuotasPage() {
     },
   ];
 
+  // ── 内容热度过滤（全局单例，change feed-hot-lead-group-comment）─────────────────
+  // 判定「涨得快的热帖线索」的三道客观闸：帖龄上限（小时）+ 每小时点赞速率下限 + 最小点赞绝对数。
+  // 独立于账号限频表（那是本账号动作节流，语义不同），走独立 /api/hot-lead-config 端点。
+  const hotLead = useHotLeadConfig();
+  const [editingHotLead, setEditingHotLead] = useState(false);
+  const [hlPostAge, setHlPostAge] = useState<number | null>(null);
+  const [hlVelocity, setHlVelocity] = useState<number | null>(null);
+  const [hlMinLike, setHlMinLike] = useState<number | null>(null);
+
+  const openEditHotLead = (row: HotLeadConfigView) => {
+    setEditingHotLead(true);
+    setHlPostAge(row.postAgeMaxHours);
+    setHlVelocity(row.velocityMin);
+    setHlMinLike(row.minLikeFloor);
+  };
+
+  const saveHotLead = useMutation({
+    mutationFn: (v: { postAgeMaxHours: number; velocityMin: number; minLikeFloor: number }) =>
+      apiPut<HotLeadConfigView>('/api/hot-lead-config', v),
+    onSuccess: () => {
+      message.success('已保存，内容热度过滤即时生效（无需重启）');
+      setEditingHotLead(false);
+      void qc.invalidateQueries({ queryKey: ['config', 'hot-lead-config'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(
+        msg === 'invalid_value'
+          ? '数字非法（三项均须为 ≥1 的正整数），未保存'
+          : msg === 'no_valid_fields'
+            ? '未填写任何可改字段，未保存'
+            : '保存失败',
+      );
+    },
+  });
+
+  const hlValid = (n: number | null): n is number => n !== null && Number.isInteger(n) && n >= 1 && n <= QUOTA_MAX;
+  const canSaveHotLead = hlValid(hlPostAge) && hlValid(hlVelocity) && hlValid(hlMinLike);
+
+  const hotLeadRows = hotLead.data ? [hotLead.data] : [];
+
+  const hotLeadColumns: ColumnsType<HotLeadConfigView> = [
+    { title: '帖龄上限（小时）', dataIndex: 'postAgeMaxHours', width: 150, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    { title: '每小时点赞阈值', dataIndex: 'velocityMin', width: 150, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    { title: '最小点赞数', dataIndex: 'minLikeFloor', width: 120, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    { title: '来源', dataIndex: 'overridden', width: 100, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
+    {
+      title: '操作',
+      width: 80,
+      render: (_: unknown, row: HotLeadConfigView) => (
+        <Button size="small" onClick={() => openEditHotLead(row)}>
+          编辑
+        </Button>
+      ),
+    },
+  ];
+
   // ── 自动续场护栏 + 看门狗阈值（全局单例）─────────────────────────────────────
   // 看门狗阈值在 UI 以「分钟」编辑（更友好），保存时 ×60000 转毫秒；GET 回来的 ms ÷60000 显示。
   const rc = useResumeConfig();
@@ -442,13 +500,14 @@ export function QuotasPage() {
   // 活跃时段与可自动发内容位统一在「排期」页的三态周历编辑 / 查看，本页专注限额与看门狗数字。
 
   // 任一读查询首次加载失败 → 诚实报错 + 重试全部（否则各卡永久骨架屏）。
-  if (isError || sl.isError || rc.isError || pacing.isError) {
+  if (isError || sl.isError || hotLead.isError || rc.isError || pacing.isError) {
     return (
       <QueryError
         title="加载安全配置失败"
         onRetry={() => {
           void refetch();
           void sl.refetch();
+          void hotLead.refetch();
           void rc.refetch();
           void pacing.refetch();
         }}
@@ -493,6 +552,26 @@ export function QuotasPage() {
             rowKey={() => GLOBAL_ROW_KEY}
             columns={ratioColumns}
             dataSource={slRows}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      <Card size="small" title="内容热度过滤（全局）">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="对所有账号生效的「涨得快的热帖」判定阈值——三道客观闸共同决定一条帖是否算「热」。帖龄上限（小时）：超过这个时长的帖不再算「涨得快」（建议 24–48）。每小时点赞阈值：达到这个每小时点赞速率才算热帖。最小点赞数：绝对点赞低于此不算，挡掉小基数的假热。改完即时生效（热加载、无需重启）。未配置时用内置默认（= 当前真生效）。此项与账号限频表物理隔离（那是本账号动作节流、非候选帖热度）。"
+        />
+        {hotLead.isLoading || !hotLead.data ? (
+          <Skeleton active />
+        ) : (
+          <Table<HotLeadConfigView>
+            size="small"
+            rowKey={() => GLOBAL_ROW_KEY}
+            columns={hotLeadColumns}
+            dataSource={hotLeadRows}
             pagination={false}
           />
         )}
@@ -667,6 +746,41 @@ export function QuotasPage() {
             </Form.Item>
             <Form.Item label="关注门槛分母 N（粉丝:赞藏 ≥ 1:N）">
               <InputNumber value={ratioFollow ?? undefined} onChange={(v) => setRatioFollow(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title="编辑内容热度过滤"
+        open={editingHotLead}
+        onCancel={() => setEditingHotLead(false)}
+        confirmLoading={saveHotLead.isPending}
+        okButtonProps={{ disabled: !canSaveHotLead }}
+        onOk={() =>
+          canSaveHotLead &&
+          saveHotLead.mutate({
+            postAgeMaxHours: hlPostAge as number,
+            velocityMin: hlVelocity as number,
+            minLikeFloor: hlMinLike as number,
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+      >
+        {editingHotLead && (
+          <Form layout="vertical" requiredMark={false}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              对所有账号生效。三项均须为 ≥1 的整数。帖龄上限（小时）建议 24–48：超过这个时长的帖不再算「涨得快」；每小时点赞阈值是热帖的最低点赞速率；最小点赞数挡掉小基数的假热。保存前服务端会再校验。
+            </Typography.Paragraph>
+            <Form.Item label="帖龄上限（小时）">
+              <InputNumber value={hlPostAge ?? undefined} onChange={(v) => setHlPostAge(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="每小时点赞阈值">
+              <InputNumber value={hlVelocity ?? undefined} onChange={(v) => setHlVelocity(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+            <Form.Item label="最小点赞数">
+              <InputNumber value={hlMinLike ?? undefined} onChange={(v) => setHlMinLike(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />
             </Form.Item>
           </Form>
         )}

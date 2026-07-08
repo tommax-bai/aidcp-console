@@ -592,6 +592,23 @@ export interface SessionLimitView {
   updatedBy: string | null;
 }
 
+// 内容热度过滤阈值（全局单例，change feed-hot-lead-group-comment）。与 cloud 手动对齐。
+// 判定「涨得快的热帖线索」的三道客观闸；对所有账号生效，热加载即时生效。速率阈值与账号限频物理隔离。
+
+/** 全局内容热度过滤阈值生效值 + 来源/审计（GET/PUT /api/hot-lead-config 形状）。三项均为正整数。 */
+export interface HotLeadConfigView {
+  /** 帖龄上限（小时）：超过此时长的帖不再算「涨得快」（建议 24–48）。 */
+  postAgeMaxHours: number;
+  /** 每小时点赞阈值：达到此每小时点赞速率才算热帖。 */
+  velocityMin: number;
+  /** 最小点赞数：绝对点赞低于此不算，挡小基数假热。 */
+  minLikeFloor: number;
+  /** 是否存在库内覆盖（false=显示的是内置写死默认，即当前真生效）。 */
+  overridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 // 节奏兜底配置（change pacing-floor-config-min-interval）。与 cloud PacingConfigRowView 手动对齐，两处须同步防漂移。
 // 语义=「最小间隔」兜底：每类操作两次动作之间的下限区间（毫秒）。生效值已含读出口夹逼护栏（≥ 非零防呆下限、≤ 类别上限），
 // 故 minMs 恒非零——配置只能抬高延迟、抬不穿下限（绝不零延迟红线不可经配置绕过）。

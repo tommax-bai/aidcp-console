@@ -18,6 +18,7 @@ import type {
   QuotaConfigCatalog,
   PacingConfigView,
   SessionLimitView,
+  HotLeadConfigView,
   ResumeConfigView,
   LlmUsagePayload,
   LlmBillingPriceRefreshPayload,
@@ -81,6 +82,14 @@ export function useSessionLimits() {
   return useQuery({
     queryKey: ['config', 'session-limits'],
     queryFn: () => apiGet<SessionLimitView>('/api/session-limits'),
+  });
+}
+
+/** 内容热度过滤阈值（全局单例，change feed-hot-lead-group-comment）。帖龄上限 + 每小时点赞速率下限 + 最小点赞数；对所有账号生效 + 审计。 */
+export function useHotLeadConfig() {
+  return useQuery({
+    queryKey: ['config', 'hot-lead-config'],
+    queryFn: () => apiGet<HotLeadConfigView>('/api/hot-lead-config'),
   });
 }
 
