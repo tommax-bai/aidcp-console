@@ -7,6 +7,7 @@ import { usePersonaConfig, useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import { ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
+import { tagOf } from '../types/aidcp-enums';
 import type { PersonaConfigRow, PersonaConfigCatalog, PersonaDetailView, PersonaSource } from '../types/api';
 
 // 人设绑定状态标注（persona-driven-content-pipeline：系统不存在默认/兜底人设）。
@@ -119,7 +120,10 @@ export function PersonaPage() {
       title: '来源',
       dataIndex: 'source',
       width: 120,
-      render: (s: PersonaSource) => <Tag color={SOURCE_TAG[s].color}>{SOURCE_TAG[s].text}</Tag>,
+      render: (s: PersonaSource) => {
+        const t = tagOf(SOURCE_TAG, s);
+        return <Tag color={t.color}>{t.text}</Tag>;
+      },
     },
     {
       title: '最近修改',

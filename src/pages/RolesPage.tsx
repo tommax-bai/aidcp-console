@@ -8,6 +8,7 @@ import { QueryError } from '../components/QueryGate';
 import { ProfileLink } from '../components';
 import { promptPersonaSourceSummary } from './rolePromptPersonaSource';
 import { makeAccountNamer, accountName } from '../types/accountDisplay';
+import { tagOf } from '../types/aidcp-enums';
 import type {
   RoleConfigRow,
   RoleConfigCatalog,
@@ -48,13 +49,6 @@ const PROVIDER_TAG: Record<string, { text: string; color: string }> = {
   volcengine: { text: '火山', color: 'volcano' },
 };
 const providerTag = (id: string) => PROVIDER_TAG[id] ?? { text: id, color: 'default' };
-
-// 枚举标签容错取值：已知键走映射；未知键（云端新增枚举、控制台类型手动同步漂移那类）诚实回落成
-// 灰底原值标签而非 throw——避免一个未知枚举值把整个角色配置页 white-screen（自愈不自残）。
-const tagOf = (
-  map: Record<string, { text: string; color: string }>,
-  key: string,
-): { text: string; color: string } => map[key] ?? { text: key, color: 'default' };
 
 // 思考模式（change role-thinking-mode-config）：三态标签 + 与 cloud buildThinkingParams 同源的"可开启"判定。
 const THINKING_TAG: Record<'default' | 'off' | 'on', { text: string; color: string }> = {

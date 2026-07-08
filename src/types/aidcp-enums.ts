@@ -110,3 +110,22 @@ export const ALERT_SEVERITY_LABEL: Record<AlertSeverity, string> = {
   P2: '警告',
   P3: '提示',
 };
+
+// ── 对象值徽标映射的容错取值（防云端↔控制台枚举漂移把整页 white-screen）─────────────
+/**
+ * `Record<Union, {text,color}>` 徽标映射按 wire 值取值的**唯一安全入口**。
+ *
+ * 背景：控制台的枚举类型是手动镜像 cloud 的（见本文件头与 [[protocol]] 四处同步同源思路），
+ * 会漂移。若直接写 `MAP[wireValue].color`，遇到镜像里还没有的新枚举值（如曾经的
+ * `llmKind:'vision'`）就会 `undefined.color` 抛错、整页崩成 "Unexpected Application Error!"。
+ * 本函数令未知值诚实回落成灰底原值标签、绝不 throw（自愈不自残、坏一格 ≠ 垮整页）。
+ *
+ * 约束：全站所有对象值徽标映射按 wire 值取值**必须**走此函数——`enumTagSafety.test.ts`
+ * 扫描源码、发现任何 `大写映射[...] .color/.text/.label` 裸取即失败（本仓无 ESLint，测试即闸）。
+ */
+export function tagOf(
+  map: Record<string, { text: string; color: string }>,
+  key: string,
+): { text: string; color: string } {
+  return map[key] ?? { text: key, color: 'default' };
+}
