@@ -69,6 +69,15 @@ const RESUME_CONFIG = {
   updatedBy: null,
 };
 
+const HOT_LEAD_CONFIG = {
+  postAgeMaxHours: 48,
+  velocityMin: 300,
+  minLikeFloor: 500,
+  overridden: false,
+  updatedAt: null,
+  updatedBy: null,
+};
+
 const state = vi.hoisted(() => ({
   pacingRows: [] as unknown[],
   getCalls: [] as string[],
@@ -84,6 +93,7 @@ vi.mock('../api/client', async () => ({
     if (path === '/api/quotas') return Promise.resolve({ quotas: [] });
     if (path === '/api/session-limits') return Promise.resolve(SESSION_LIMITS);
     if (path === '/api/resume-config') return Promise.resolve(RESUME_CONFIG);
+    if (path === '/api/hot-lead-config') return Promise.resolve(HOT_LEAD_CONFIG);
     return Promise.reject(new Error(`unexpected apiGet ${path}`));
   }),
   apiPut: vi.fn((path: string, body: unknown) => {
