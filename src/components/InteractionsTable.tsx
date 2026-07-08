@@ -39,8 +39,9 @@ function makeColumns(nameOf: (id: string) => string): ColumnsType<PanelInteracti
       render: (_: unknown, r: PanelInteraction) => {
         const label = r.title || r.targetId;
         if (r.url) {
+          // 外链可点性同口径（.ext-link）：下划线 + 悬停高亮 + 尾随 ↗（近黑品牌不变）。
           return (
-            <a href={r.url} target="_blank" rel="noreferrer">
+            <a className="ext-link" href={r.url} target="_blank" rel="noreferrer">
               {label}
             </a>
           );

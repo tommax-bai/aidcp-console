@@ -16,9 +16,11 @@ export function ProfileLink({
   children: ReactNode;
 }) {
   const url = xhsProfileUrl(userId);
+  // 缺 id / 退役 default / 形状不符 → 纯文本回落，绝不渲染死链、也不加可点样式（否则误导）。
   if (!url) return <>{children}</>;
+  // 外链可点性（.ext-link）：下划线 + 悬停高亮 + 尾随 ↗ 图标，一眼可点（近黑品牌不变）。
   return (
-    <a href={url} target="_blank" rel="noreferrer noopener" title="打开小红书主页">
+    <a className="ext-link" href={url} target="_blank" rel="noreferrer noopener" title="打开小红书主页">
       {children}
     </a>
   );

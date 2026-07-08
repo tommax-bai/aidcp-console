@@ -26,14 +26,15 @@ const viewsColumn: ColumnsType<PanelAccount>[number] = {
   // 与「账号名」的站外小红书主页 ProfileLink 互不影响：那是外链，这是站内导航。
   title: '站内视图',
   key: 'views',
-  width: 128,
+  width: 172,
   render: (_, r) => {
     const acc = encodeURIComponent(r.accountId);
+    // 站内导航做成「胶囊按钮」而非裸文本链接：静息即有描边+浅底、悬停高亮，一眼可点（近黑品牌不变）。
     return (
       <Space size={4} style={{ whiteSpace: 'nowrap' }}>
-        <Link to={`/content?account=${acc}`}>内容</Link>
-        <Link to={`/usage?account=${acc}`}>用量</Link>
-        <Link to={`/notification-contacts?account=${acc}`}>联系人</Link>
+        <Link className="table-link-chip" to={`/content?account=${acc}`}>内容</Link>
+        <Link className="table-link-chip" to={`/usage?account=${acc}`}>用量</Link>
+        <Link className="table-link-chip" to={`/notification-contacts?account=${acc}`}>联系人</Link>
       </Space>
     );
   },
@@ -65,16 +66,17 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '人设',
     key: 'persona',
-    // 未绑人设（非 default）→「需设置人设」红标 + 跳转人设页；已绑 → 绿标；default 豁免 → 中性「默认人设」。
+    // 标签去掉冗余「人设」后缀（列头已是「人设」；避免换行的表格设计标准）：
+    // 未绑（非 default）→「需设置」橙标 + 跳转人设页；已绑 → 绿标「已绑」；default 豁免 → 中性「默认」。
     render: (_, r) =>
       r.needsPersonaSetup ? (
         <Link to="/persona">
-          <Tag color="warning">需设置人设</Tag>
+          <Tag color="warning">需设置</Tag>
         </Link>
       ) : r.personaBound ? (
-        <Tag color="green">已绑人设</Tag>
+        <Tag color="green">已绑</Tag>
       ) : (
-        <Tag>默认人设</Tag>
+        <Tag>默认</Tag>
       ),
   },
   { title: '分组', dataIndex: 'groupLabel', render: (v: string | null) => v ?? dash },
@@ -86,18 +88,20 @@ const columns: ColumnsType<PanelAccount> = [
       v === 'paused' ? <Tag>{OPERATOR_STATUS_LABEL.paused}</Tag> : <Tag color="green">{OPERATOR_STATUS_LABEL.active}</Tag>,
   },
   {
-    title: '风控状态',
+    // 列头即消歧（原「风控状态」→「风控」，徽标不再带「状态：」前缀；避免换行的表格设计标准）
+    title: '风控',
     dataIndex: 'riskStatus',
-    // 两个独立徽标之一：风控 STATUS
+    // 两个独立徽标之一：风控 STATUS（暖色实底）
     render: (v: RiskStatus | null) => (v ? <RiskStatusBadge status={v} /> : dash),
   },
   {
-    title: '配额档位',
+    // 列头即消歧（原「配额档位」→「档位」，徽标不再带「档位：」前缀；避免换行的表格设计标准）
+    title: '档位',
     key: 'tier',
-    // 两个独立徽标之二：风控 QUOTA-TIER（与 status 永不合并）
+    // 两个独立徽标之二：风控 QUOTA-TIER 冷色描边（与 status 永不合并）
     render: (_, r) => (r.riskQuotaLevel ? <QuotaTierBadge tier={r.riskQuotaLevel} /> : dash),
   },
-  { title: '信号数', dataIndex: 'signalCount', render: (v: number | null) => v ?? dash },
+  { title: '信号', dataIndex: 'signalCount', render: (v: number | null) => v ?? dash },
 ];
 
 export function AccountsTable({

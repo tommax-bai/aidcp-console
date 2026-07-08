@@ -787,3 +787,58 @@ body {
 .editable-cell:hover {
   background: var(--aidcp-muted);
 }
+
+/* ======================================================================
+ * 可点性 affordance（近黑品牌下，让「可点的东西一眼看出来」）
+ * ----------------------------------------------------------------------
+ * 本站主色近黑（colorLink=#030213），链接默认与正文近黑同色、又无下划线，
+ * 站内 <Link>/外链 <a> 渲染成「看不出可点」的纯文本。以下两类 affordance 在
+ * 不引入蓝/青、不破近黑品牌的前提下，把可点元素显式化——静息态即可辨、悬停再强化。
+ *
+ *   · .table-link-chip —— 站内导航「动作簇」（如账号页「站内视图」的 内容/用量/联系人）：
+ *       做成小号胶囊按钮，静息即带描边 + 浅底 + 圆角，点击区更大、最像按钮。
+ *   · .ext-link       —— 行内「名字/标题」外链（ProfileLink 账号名/联系人名、互动目标标题）：
+ *       下划线 + 悬停高亮 + 尾随 ↗ 外链图标；保持行内文本流、不喧宾夺主。
+ * ====================================================================== */
+.table-link-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-sm);
+  background: var(--aidcp-background);
+  color: var(--aidcp-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  line-height: 1.7;
+  white-space: nowrap; /* 胶囊内标签不换行（避免换行的表格设计标准） */
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.table-link-chip:hover {
+  border-color: var(--aidcp-primary);
+  background: var(--aidcp-muted);
+  color: var(--aidcp-primary);
+}
+
+.ext-link {
+  color: var(--aidcp-foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--aidcp-muted-foreground);
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.ext-link:hover {
+  color: var(--aidcp-primary);
+  text-decoration-color: currentColor;
+}
+/* 尾随 ↗ 外链图标：轻量、muted，与文字间留 2px；nowrap 防箭头单独换行 */
+.ext-link::after {
+  content: "\2197";
+  margin-left: 2px;
+  font-size: 0.85em;
+  color: var(--aidcp-muted-foreground);
+  white-space: nowrap;
+}
+.ext-link:hover::after {
+  color: var(--aidcp-primary);
+}

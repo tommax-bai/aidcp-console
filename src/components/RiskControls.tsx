@@ -75,12 +75,12 @@ export function RiskControls({ account }: { account: PanelAccount }) {
       </Dropdown>
       <Select
         size="small"
-        style={{ width: 120 }}
+        style={{ width: 92 }}
         value={account.riskQuotaLevel ?? undefined}
-        placeholder="配额档位"
+        placeholder="档位"
         loading={quota.isPending}
         onChange={(v) => quota.mutate(v)}
-        options={RISK_QUOTA_LEVELS.map((l) => ({ label: `档位：${RISK_QUOTA_LABEL[l]}`, value: l }))}
+        options={RISK_QUOTA_LEVELS.map((l) => ({ label: RISK_QUOTA_LABEL[l], value: l }))}
       />
       <Modal
         title="强制恢复 — 绕过风控恢复时间窗（特权操作）"
