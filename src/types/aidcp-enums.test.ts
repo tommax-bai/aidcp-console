@@ -6,6 +6,10 @@ import {
   ALERT_SEVERITIES,
   RISK_ACTION_LABEL,
   RISK_ACTION_COLOR,
+  LLM_KINDS,
+  MODEL_EFFECTIVE_SOURCES,
+  PERSONA_SOURCES,
+  THINKING_MODES_API,
 } from './aidcp-enums';
 import type { VersionPayload } from './api';
 
@@ -17,6 +21,11 @@ describe('aidcp-enums 镜像（D11 漂移哨兵）', () => {
     expect([...RISK_QUOTA_LEVELS]).toEqual(['conservative', 'normal', 'aggressive']);
     expect([...RISK_ACTIONS]).toEqual(['like', 'collect', 'comment', 'follow', 'publish', 'view', 'comment_like']);
     expect([...ALERT_SEVERITIES]).toEqual(['P0', 'P1', 'P2', 'P3']);
+    // 面板角色/模型配置枚举镜像（change console-panel-config-enum-fingerprint）。
+    expect([...LLM_KINDS]).toEqual(['text', 'image', 'vision', 'none']);
+    expect([...MODEL_EFFECTIVE_SOURCES]).toEqual(['override', 'category', 'default', 'image', 'vision']);
+    expect([...PERSONA_SOURCES]).toEqual(['override', 'none']);
+    expect([...THINKING_MODES_API]).toEqual(['default', 'off', 'on']);
   });
 
   it('每个风控动作都配了 label 与 color（结构自洽：加动作忘配即失败）', () => {
@@ -41,5 +50,10 @@ describe('aidcp-enums 镜像（D11 漂移哨兵）', () => {
     // #5/#6：图片厂商全集 + DTO 字段指纹对拍（console 镜像须与 cloud live 一致）。
     expect(body.enums.imageProvider).toContain('volcengine');
     expect(body.dtoFields.panelAccount).toContain('accountId');
+    // 配置枚举哨兵（change console-panel-config-enum-fingerprint）：镜像须与 cloud live 全集一致。
+    expect(body.enums.llmKind).toEqual([...LLM_KINDS]);
+    expect(body.enums.effectiveSource).toEqual([...MODEL_EFFECTIVE_SOURCES]);
+    expect(body.enums.personaSource).toEqual([...PERSONA_SOURCES]);
+    expect(body.enums.thinkingMode).toEqual([...THINKING_MODES_API]);
   });
 });

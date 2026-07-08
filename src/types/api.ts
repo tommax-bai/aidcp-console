@@ -1,6 +1,19 @@
 /** 面板 API DTO 类型（与 cloud src/panel 对齐）。 */
 
-import type { RiskStatus, RiskQuotaLevel, RiskAction, AlertSeverity } from './aidcp-enums';
+import type {
+  RiskStatus,
+  RiskQuotaLevel,
+  RiskAction,
+  AlertSeverity,
+  LlmKind,
+  ModelEffectiveSource,
+  PersonaSource,
+  ThinkingModeApi,
+} from './aidcp-enums';
+
+// 面板角色/模型配置枚举：单源在 aidcp-enums（对 cloud /api/version 对拍防漂移，
+// change console-panel-config-enum-fingerprint）；此处复出，既有消费方仍从 '../types/api' 导入。
+export type { LlmKind, ModelEffectiveSource, PersonaSource, ThinkingModeApi };
 
 export interface VersionPayload {
   panelApiVersion: number;
@@ -13,6 +26,11 @@ export interface VersionPayload {
     /** 文本/图片生成厂商全集（手工镜像 cloud；哨兵对拍，change console-cloud-panel-hardening #5/#6）。 */
     textProvider: string[];
     imageProvider: string[];
+    /** 面板角色/模型配置枚举全集（哨兵对拍防漂移，change console-panel-config-enum-fingerprint）。 */
+    llmKind: LlmKind[];
+    effectiveSource: ModelEffectiveSource[];
+    personaSource: PersonaSource[];
+    thinkingMode: ThinkingModeApi[];
   };
   /** 关键 DTO 字段指纹（手工镜像 cloud；哨兵对拍防漂移，#6）。 */
   dtoFields: {
@@ -401,11 +419,7 @@ export interface ModelConfig {
 
 // 角色级模型/温度配置（change console-role-model-config）。与 cloud RoleConfigRowView 手动对齐。
 
-/** 生效模型来源（change role-model-category-config）：覆盖 / 继承分类 / 继承默认 / 图像全局 / 视觉全局。 */
-export type ModelEffectiveSource = 'override' | 'category' | 'default' | 'image' | 'vision';
-
-/** 思考模式三态（change role-thinking-mode-config）。default=不干预、跟模型走。 */
-export type ThinkingModeApi = 'default' | 'off' | 'on';
+// ModelEffectiveSource / ThinkingModeApi 已上移 aidcp-enums 单源（见文件头 import + 复出）。
 
 /** 单角色目录行 + 生效值（GET /api/roles 形状）。 */
 export interface RoleConfigRow {
@@ -415,7 +429,7 @@ export interface RoleConfigRow {
   /** 所属分类（稳定 key，与 category_config.category_id 一致）。 */
   category: string;
   /** text=可配模型/温度；image=全局配置不在此覆盖；vision=视觉角色（模型经 env 解析，只读）；none=不调模型。 */
-  llmKind: 'text' | 'image' | 'vision' | 'none';
+  llmKind: LlmKind;
   /** 是否开放温度调节（仅生成/改写类）。 */
   tunableTemperature: boolean;
   /** 当前生效模型（文本类=覆盖/分类默认/全局；图像类=全局图片模型）。 */
@@ -504,11 +518,7 @@ export interface RolePromptView {
 
 // 账号人设配置（change account-persona-config，stream F）。与 cloud PersonaConfigRowView 手动对齐。
 
-/**
- * 人设来源（change persona-driven-content-pipeline：系统不存在默认/兜底人设）：
- * override=该账号已绑定人设 / none=未绑定（该账号浏览/发布/评论会被诚实拒绝）。
- */
-export type PersonaSource = 'override' | 'none';
+// PersonaSource（override=已绑定 / none=未绑定；系统无默认/兜底人设）已上移 aidcp-enums 单源（见文件头 import + 复出）。
 
 /** 单账号人设目录行（GET /api/persona 形状）。列出所有账号（含未绑定者）。 */
 export interface PersonaConfigRow {

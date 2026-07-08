@@ -19,6 +19,27 @@ export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 
 export type EdgeOnlineState = 'online' | 'stale' | 'offline';
 
+// ── 面板角色/模型配置枚举镜像（cloud src/panel/version.ts 权威全集的 console 副本，
+//    change console-panel-config-enum-fingerprint）：对 GET /api/version 对拍防漂移。
+//    这些是 console `{text,color}` 徽标映射的键——漂移→键缺失→曾致 /roles 整页崩（vision）。
+//    类型由数组派生（控制台侧单源）；api.ts 复出这些类型供既有消费方按原路径导入。──
+
+/** 角色模型类型（含 vision 视觉角色）。 */
+export const LLM_KINDS = ['text', 'image', 'vision', 'none'] as const;
+export type LlmKind = (typeof LLM_KINDS)[number];
+
+/** 生效模型来源（含 vision 视觉全局）。 */
+export const MODEL_EFFECTIVE_SOURCES = ['override', 'category', 'default', 'image', 'vision'] as const;
+export type ModelEffectiveSource = (typeof MODEL_EFFECTIVE_SOURCES)[number];
+
+/** 人设来源（override=已绑定 / none=未绑定）。 */
+export const PERSONA_SOURCES = ['override', 'none'] as const;
+export type PersonaSource = (typeof PERSONA_SOURCES)[number];
+
+/** 思考模式三态（default=跟模型走 / off / on）。 */
+export const THINKING_MODES_API = ['default', 'off', 'on'] as const;
+export type ThinkingModeApi = (typeof THINKING_MODES_API)[number];
+
 // ── 视觉映射（design-ui §2）：status = filled warm / tier = outlined cool，构造级分离 ──
 
 /** STATUS 徽标色（AntD Tag preset，warm 族）。 */
