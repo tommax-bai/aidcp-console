@@ -754,20 +754,30 @@ export function ContentPage() {
   const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot) : [];
   const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot) : null;
   const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
+  // 「进行中」判定：有生成快照，或状态正在生成。都没有 = 空闲，卡片主体收起、只留标题栏
+  //（消除「标题写『进行中』、状态却『空闲』」的文案冲突）。
+  const queueActive = !!queueSnapshot || queueStatus === 'running';
 
   return (
     <div className="page-stack">
-      <Card size="small" title="发布队列（进行中）">
-        <div className="publish-queue-head">
-          <Space wrap size={8}>
-            <Typography.Text>
-              状态：<Tag color={QUEUE_STATUS_COLOR[queueStatus] ?? 'default'}>{QUEUE_STATUS_LABEL[queueStatus] ?? queueStatus}</Tag>
-            </Typography.Text>
-            {queueSnapshot ? (
-              <Typography.Text type="secondary">已产出 {rawSnapshotEntries.length} 个管道字段</Typography.Text>
-            ) : null}
-          </Space>
-        </div>
+      <Card
+        size="small"
+        title="发布队列"
+        className={queueActive ? undefined : 'publish-queue-card--collapsed'}
+        extra={
+          <Tag color={QUEUE_STATUS_COLOR[queueStatus] ?? 'default'}>
+            {QUEUE_STATUS_LABEL[queueStatus] ?? queueStatus}
+          </Tag>
+        }
+      >
+        {/* 空闲（无进行中任务）时收起卡片主体，只留标题栏；有进行中任务才展开状态/阶段/原始字段。 */}
+        {queueActive ? (
+          <>
+        {queueSnapshot ? (
+          <div className="publish-queue-head">
+            <Typography.Text type="secondary">已产出 {rawSnapshotEntries.length} 个管道字段</Typography.Text>
+          </div>
+        ) : null}
 
         {queueSnapshot && queueDraft ? (
           <div className="publish-queue-overview">
@@ -856,6 +866,8 @@ export function ContentPage() {
               },
             ]}
           />
+        ) : null}
+          </>
         ) : null}
       </Card>
 
