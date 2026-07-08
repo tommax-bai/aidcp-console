@@ -8,6 +8,7 @@ import {
   FileTextOutlined,
   FundOutlined,
   IdcardOutlined,
+  NotificationOutlined,
   RobotOutlined,
   SafetyOutlined,
   TeamOutlined,
@@ -18,6 +19,7 @@ import { ContentSchedulePage } from './pages/ContentSchedulePage';
 import { CuratedContentPage } from './pages/CuratedContentPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { NotificationContactsPage } from './pages/NotificationContactsPage';
+import { NotificationRoutesPage } from './pages/NotificationRoutesPage';
 import { PersonaPage } from './pages/PersonaPage';
 import { QuotasPage } from './pages/QuotasPage';
 import { RolesPage } from './pages/RolesPage';
@@ -55,6 +57,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, showInNav: true },
   { path: '/curated', element: <CuratedContentPage />, navLabel: '精选', navIcon: <BulbOutlined />, showInNav: true },
   { path: '/notification-contacts', element: <NotificationContactsPage />, navLabel: '互动联系人', navIcon: <ContactsOutlined />, showInNav: true },
+  { path: '/notification-routes', element: <NotificationRoutesPage />, navLabel: '通知路由', navIcon: <NotificationOutlined />, showInNav: true },
   { path: '/persona', element: <PersonaPage />, navLabel: '人设', navIcon: <IdcardOutlined />, showInNav: true },
   { path: '/roles', element: <RolesPage />, navLabel: '角色', navIcon: <RobotOutlined />, showInNav: true },
   { path: '/quotas', element: <QuotasPage />, navLabel: '安全', navIcon: <SafetyOutlined />, showInNav: true },

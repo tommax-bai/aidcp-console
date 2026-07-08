@@ -23,6 +23,8 @@ import type {
   LlmUsagePayload,
   LlmBillingPriceRefreshPayload,
   PanelNotificationContact,
+  PanelGroupRoute,
+  PanelBotChat,
   CuratedContentList,
   CuratedFacets,
   ContentScheduleGlobalView,
@@ -140,6 +142,22 @@ export function useAccounts() {
   return useQuery({
     queryKey: ['accounts'],
     queryFn: () => apiGet<{ accounts: PanelAccount[] }>('/api/accounts'),
+  });
+}
+
+/** 团队 → 群路由映射（change feishu-per-team-notification-routing）。未注入时后端 503。 */
+export function useNotificationRoutes() {
+  return useQuery({
+    queryKey: ['notification', 'routes'],
+    queryFn: () => apiGet<{ routes: PanelGroupRoute[] }>('/api/notification/routes'),
+  });
+}
+
+/** 机器人当前所在群（供路由目标下拉；杜绝手贴 raw chat_id 贴错群 → 跨客户 PII 泄漏）。 */
+export function useBotChats() {
+  return useQuery({
+    queryKey: ['bot-chats'],
+    queryFn: () => apiGet<{ chats: PanelBotChat[] }>('/api/bot-chats'),
   });
 }
 

@@ -775,6 +775,24 @@ export interface PanelNotificationContact {
   updatedAt: number | null;
 }
 
+// ── 团队 → 飞书群路由（change feishu-per-team-notification-routing）。手工镜像 cloud DTO，两处须同步防漂移。 ──
+
+/** 一条团队路由：账号 group_label → 目标飞书群 chat_id（opaque，非枚举 → 结构性避免枚举漂移白屏）。 */
+export interface PanelGroupRoute {
+  groupLabel: string;
+  chatId: string;
+  updatedBy: string | null;
+  updatedAt: number;
+}
+
+/** 机器人当前所在的一个群（供路由目标下拉；杜绝手贴 raw chat_id）。 */
+export interface PanelBotChat {
+  chatId: string;
+  chatName: string | null;
+  chatType: string | null;
+  isDefault: boolean;
+}
+
 // ── 内容排期（change content-schedule-auto-publish，Phase 1 只做发帖）。手工镜像 cloud DTO，两处须同步防漂移。 ──
 
 /**
