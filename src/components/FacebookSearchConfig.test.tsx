@@ -79,29 +79,49 @@ function renderCmp(): void {
 
 describe('FacebookSearchConfig', () => {
   beforeEach(() => {
-    state.cfg = { accountId: 'fb-1', keywords: ['手冲咖啡'], containers: ['group-123'], updatedAt: null, updatedBy: null };
+    state.cfg = {
+      accountId: 'fb-1',
+      keywords: ['手冲咖啡'],
+      // 已识别群名 + 一个待识别（只有 url）的容器。
+      containers: [
+        { url: 'https://www.facebook.com/groups/123', name: 'Puerto Rico Y Sus Encantos e Historia' },
+        { url: 'https://www.facebook.com/groups/456' },
+      ],
+      updatedAt: null,
+      updatedBy: null,
+    };
     state.getCalls = [];
     state.putCalls = [];
   });
 
-  it('点开时以正确 path 拉配置并回填（显示已有关键词/容器标签）', async () => {
+  it('点开时回填：容器标签展示群名（缺则「待识别」），绝不展示群 id', async () => {
     renderCmp();
     fireEvent.click(screen.getByText('配置搜索词'));
     await waitFor(() =>
       expect(state.getCalls).toContain('/api/accounts/fb-1/facebook-comment-config'),
     );
-    // 回填的关键词/容器作为 tag 出现在弹层里
     await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
-    expect(screen.getByText('group-123')).toBeTruthy();
+    // 展示真实群名，未识别的显示「待识别」。
+    expect(screen.getByText('Puerto Rico Y Sus Encantos e Historia')).toBeTruthy();
+    expect(screen.getByText('待识别')).toBeTruthy();
+    // 绝不把群 id / url 直接展示给人（标签里不出现裸群号）。
+    expect(screen.queryByText('123')).toBeNull();
+    expect(screen.queryByText('https://www.facebook.com/groups/123')).toBeNull();
   });
 
-  it('保存 → apiPut 到同一 path，body 为回填的 { keywords, containers }', async () => {
+  it('保存 → apiPut body 保留已识别群名（改关键词不丢名）', async () => {
     renderCmp();
     fireEvent.click(screen.getByText('配置搜索词'));
     await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(state.putCalls.length).toBe(1));
     expect(state.putCalls[0].path).toBe('/api/accounts/fb-1/facebook-comment-config');
-    expect(state.putCalls[0].body).toEqual({ keywords: ['手冲咖啡'], containers: ['group-123'] });
+    expect(state.putCalls[0].body).toEqual({
+      keywords: ['手冲咖啡'],
+      containers: [
+        { url: 'https://www.facebook.com/groups/123', name: 'Puerto Rico Y Sus Encantos e Historia' },
+        { url: 'https://www.facebook.com/groups/456' },
+      ],
+    });
   });
 });

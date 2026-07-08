@@ -73,15 +73,25 @@ export interface PanelAccount {
 }
 
 /**
- * 每账号 Facebook 定时评论配置（change facebook-scheduled-comment 2.1）。手工镜像 cloud
- * config/facebook-comment-config-store.ts。关键词或容器任一为空 = 不生效（云端 fail-closed）。
+ * 容器（群/主页）配置项（change facebook-container-display-name）。手工镜像 cloud FacebookContainer。
+ * `url` 是功能主键（含群 id，边缘据此站内搜）；`name` 是真实群名（边缘自动解析回填）。
+ * **对人一律展示 name（缺则「待识别」占位），绝不展示 url 里的 id**（id 对人无辨识度）。
+ */
+export interface FacebookContainer {
+  url: string;
+  name?: string;
+}
+
+/**
+ * 每账号 Facebook 定时评论配置（change facebook-scheduled-comment 2.1 + facebook-container-display-name）。
+ * 手工镜像 cloud config/facebook-comment-config-store.ts。关键词或容器任一为空 = 不生效（云端 fail-closed）。
  */
 export interface FacebookCommentConfig {
   accountId: string;
   /** 搜索关键词列表（随机选一个）。 */
   keywords: string[];
-  /** 允许的容器列表（运营方自己的 / 已加入的 Facebook 主页、群）；只在这些容器内部搜索。 */
-  containers: string[];
+  /** 允许的容器列表（运营方自己的 / 已加入的 Facebook 主页、群）；只在这些容器内部搜索。展示用群名、不用 id。 */
+  containers: FacebookContainer[];
   updatedAt: string | null;
   updatedBy: string | null;
 }
