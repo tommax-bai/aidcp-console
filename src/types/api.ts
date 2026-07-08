@@ -401,8 +401,8 @@ export interface ModelConfig {
 
 // 角色级模型/温度配置（change console-role-model-config）。与 cloud RoleConfigRowView 手动对齐。
 
-/** 生效模型来源（change role-model-category-config）：覆盖 / 继承分类 / 继承默认 / 图像全局。 */
-export type ModelEffectiveSource = 'override' | 'category' | 'default' | 'image';
+/** 生效模型来源（change role-model-category-config）：覆盖 / 继承分类 / 继承默认 / 图像全局 / 视觉全局。 */
+export type ModelEffectiveSource = 'override' | 'category' | 'default' | 'image' | 'vision';
 
 /** 思考模式三态（change role-thinking-mode-config）。default=不干预、跟模型走。 */
 export type ThinkingModeApi = 'default' | 'off' | 'on';
@@ -414,15 +414,15 @@ export interface RoleConfigRow {
   group: 'browse' | 'publish';
   /** 所属分类（稳定 key，与 category_config.category_id 一致）。 */
   category: string;
-  /** text=可配模型/温度；image=全局配置不在此覆盖；none=不调模型。 */
-  llmKind: 'text' | 'image' | 'none';
+  /** text=可配模型/温度；image=全局配置不在此覆盖；vision=视觉角色（模型经 env 解析，只读）；none=不调模型。 */
+  llmKind: 'text' | 'image' | 'vision' | 'none';
   /** 是否开放温度调节（仅生成/改写类）。 */
   tunableTemperature: boolean;
   /** 当前生效模型（文本类=覆盖/分类默认/全局；图像类=全局图片模型）。 */
   effectiveModel: string;
   /** 当前生效厂商（change model-config-volcengine-provider）：取自贡献生效模型那一层；图像类恒 dashscope。 */
   effectiveProvider: string;
-  /** 生效模型来源：override=按角色覆盖 / category=继承分类默认 / default=继承全局默认 / image=图像全局。 */
+  /** 生效模型来源：override=按角色覆盖 / category=继承分类默认 / default=继承全局默认 / image=图像全局 / vision=视觉全局。 */
   effectiveSource: ModelEffectiveSource;
   /** 是否存在按角色模型覆盖。 */
   modelOverridden: boolean;

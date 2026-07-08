@@ -22,6 +22,7 @@ const GROUP_LABEL: Record<RoleConfigRow['group'], string> = { browse: '浏览', 
 const KIND_LABEL: Record<RoleConfigRow['llmKind'], { text: string; color: string }> = {
   text: { text: '文本模型', color: 'blue' },
   image: { text: '图像模型', color: 'purple' },
+  vision: { text: '视觉模型', color: 'geekblue' },
   none: { text: '不调模型', color: 'default' },
 };
 // 分类 key → 展示名/排序（UI 标签，与 cloud role-catalog CATEGORY_CATALOG 一致；可编辑分类默认仍以 API 为准）。
@@ -39,6 +40,7 @@ const SOURCE_TAG: Record<ModelEffectiveSource, { text: string; color: string }> 
   category: { text: '继承分类', color: 'cyan' },
   default: { text: '继承默认', color: 'default' },
   image: { text: '图像全局', color: 'purple' },
+  vision: { text: '视觉全局', color: 'geekblue' },
 };
 // 厂商短标签（change model-config-volcengine-provider）。
 const PROVIDER_TAG: Record<string, { text: string; color: string }> = {
@@ -46,6 +48,13 @@ const PROVIDER_TAG: Record<string, { text: string; color: string }> = {
   volcengine: { text: '火山', color: 'volcano' },
 };
 const providerTag = (id: string) => PROVIDER_TAG[id] ?? { text: id, color: 'default' };
+
+// 枚举标签容错取值：已知键走映射；未知键（云端新增枚举、控制台类型手动同步漂移那类）诚实回落成
+// 灰底原值标签而非 throw——避免一个未知枚举值把整个角色配置页 white-screen（自愈不自残）。
+const tagOf = (
+  map: Record<string, { text: string; color: string }>,
+  key: string,
+): { text: string; color: string } => map[key] ?? { text: key, color: 'default' };
 
 // 思考模式（change role-thinking-mode-config）：三态标签 + 与 cloud buildThinkingParams 同源的"可开启"判定。
 const THINKING_TAG: Record<'default' | 'off' | 'on', { text: string; color: string }> = {
@@ -264,7 +273,10 @@ export function RolesPage() {
       title: '思考',
       dataIndex: 'effectiveThinkingMode',
       width: 100,
-      render: (m: ThinkingModeApi) => <Tag color={THINKING_TAG[m].color}>{THINKING_TAG[m].text}</Tag>,
+      render: (m: ThinkingModeApi) => {
+        const t = tagOf(THINKING_TAG, m);
+        return <Tag color={t.color}>{t.text}</Tag>;
+      },
     },
     {
       title: '操作',
@@ -297,17 +309,23 @@ export function RolesPage() {
       title: '类型',
       dataIndex: 'llmKind',
       width: 110,
-      render: (kind: RoleConfigRow['llmKind']) => <Tag color={KIND_LABEL[kind].color}>{KIND_LABEL[kind].text}</Tag>,
+      render: (kind: RoleConfigRow['llmKind']) => {
+        const t = tagOf(KIND_LABEL, kind);
+        return <Tag color={t.color}>{t.text}</Tag>;
+      },
     },
     {
       title: '当前生效模型',
       dataIndex: 'effectiveModel',
-      render: (model: string, row) => (
-        <span className="tabular-nums">
-          <Tag color={providerTag(row.effectiveProvider).color}>{providerTag(row.effectiveProvider).text}</Tag>
-          {model} <Tag color={SOURCE_TAG[row.effectiveSource].color}>{SOURCE_TAG[row.effectiveSource].text}</Tag>
-        </span>
-      ),
+      render: (model: string, row) => {
+        const src = tagOf(SOURCE_TAG, row.effectiveSource);
+        return (
+          <span className="tabular-nums">
+            <Tag color={providerTag(row.effectiveProvider).color}>{providerTag(row.effectiveProvider).text}</Tag>
+            {model} <Tag color={src.color}>{src.text}</Tag>
+          </span>
+        );
+      },
     },
     {
       title: '温度',
@@ -324,15 +342,16 @@ export function RolesPage() {
       title: '思考',
       dataIndex: 'effectiveThinkingMode',
       width: 110,
-      render: (m: ThinkingModeApi, row) =>
-        row.llmKind === 'text' ? (
-          <Tag color={THINKING_TAG[m].color}>
-            {THINKING_TAG[m].text}
+      render: (m: ThinkingModeApi, row) => {
+        if (row.llmKind !== 'text') return <Typography.Text type="secondary">—</Typography.Text>;
+        const t = tagOf(THINKING_TAG, m);
+        return (
+          <Tag color={t.color}>
+            {t.text}
             {row.thinkingModeSource === 'category' ? '·类' : ''}
           </Tag>
-        ) : (
-          <Typography.Text type="secondary">—</Typography.Text>
-        ),
+        );
+      },
     },
     {
       title: '操作',
