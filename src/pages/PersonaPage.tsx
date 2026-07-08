@@ -90,18 +90,13 @@ export function PersonaPage() {
     {
       title: '账号',
       dataIndex: 'accountId',
-      render: (id: string) => {
-        const name = nameOf(id);
-        return (
-          <span>
-            {/* 账号名可点：跳转其小红书主页（id = xhs userid）。非真实 id 回落纯文本。 */}
-            <ProfileLink userId={id}>
-              <strong>{name}</strong>
-            </ProfileLink>
-            {name !== id ? <Typography.Text type="secondary"> （{id}）</Typography.Text> : null}
-          </span>
-        );
-      },
+      // 账号名可点：跳转其小红书主页（id = xhs userid）。非真实 id 回落纯文本。
+      // 不再在名字旁明文展示账号 ID（nameOf 已做 真名→运营名→ID 的诚实回落）。
+      render: (id: string) => (
+        <ProfileLink userId={id}>
+          <strong>{nameOf(id)}</strong>
+        </ProfileLink>
+      ),
     },
     {
       title: '当前人设',

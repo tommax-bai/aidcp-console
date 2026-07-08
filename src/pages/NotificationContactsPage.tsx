@@ -168,30 +168,22 @@ export function NotificationContactsPage() {
   ];
 
   // 全账号视图下前置「账号」列，标明每行联系人归属（单账号视图不显示）。
-  // 标签样式：与内容页「账号」列同口径（Tag 包 ProfileLink），可点跳该账号小红书主页。
+  // 账号名 = 可点外链（.ext-link 下划线），不再套 Tag 胶囊（避免「胶囊 + 下划线」两种可点样式叠加）。
   const accountColumn: ColumnsType<PanelNotificationContact>[number] = {
     title: '账号',
     dataIndex: 'accountId',
     width: 140,
-    render: (id: string) => (
-      <Tag>
-        <ProfileLink userId={id}>{namer(id)}</ProfileLink>
-      </Tag>
-    ),
+    render: (id: string) => <ProfileLink userId={id}>{namer(id)}</ProfileLink>,
   };
 
   // 列顺序：账号（全账号视图前置）→ 昵称 → 微信 → 标签 → 互动次数 → 加入原因 → 备注 → 添加时间 → 更新时间。
   const columns: ColumnsType<PanelNotificationContact> = [
     {
-      // 标签样式：与内容页「账号」列同口径（Tag 包 ProfileLink）。
-      // 联系人昵称可点：跳转其小红书主页（userId = 通知行解析出的主页 id）。无 userId 时回落纯文本，绝不渲染死链。
+      // 联系人昵称 = 可点外链（.ext-link 下划线），不再套 Tag 胶囊（避免两种可点样式叠加）。
+      // 无 userId 时 ProfileLink 回落纯文本，绝不渲染死链。
       title: '昵称',
       dataIndex: 'nickname',
-      render: (n: string | null, row) => (
-        <Tag>
-          <ProfileLink userId={row.userId}>{n ? n : '昵称缺失'}</ProfileLink>
-        </Tag>
-      ),
+      render: (n: string | null, row) => <ProfileLink userId={row.userId}>{n ? n : '昵称缺失'}</ProfileLink>,
     },
     {
       // 就地编辑：点击进入输入框，回车或失焦保存。窄列：约放得下 12 个字母。

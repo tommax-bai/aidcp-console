@@ -354,11 +354,12 @@ function buildColumns(openSource: (ref: PanelPublishSourceReference) => void): C
       title: '账号',
       dataIndex: 'accountLabel',
       width: 140,
-      // 账号链接可独立点击（stopPropagation：点昵称跳主页，不触发整行的「打开详情」）。
+      // 账号名 = 可点外链（.ext-link 下划线），不再套 Tag 胶囊（避免「胶囊 + 下划线」两种可点样式叠加）。
+      // stopPropagation 移到包裹 span 上：点名字跳主页、不触发整行「打开详情」（行为不变）。
       render: (v: string, row) => (
-        <Tag onClick={(e) => e.stopPropagation()}>
+        <span onClick={(e) => e.stopPropagation()}>
           <ProfileLink userId={row.accountId}>{v || row.accountId}</ProfileLink>
-        </Tag>
+        </span>
       ),
     },
     { title: '标题', dataIndex: 'title', render: (v: string | null) => v ?? '—' },

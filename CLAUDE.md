@@ -19,6 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **可点元素要一眼可点（近黑品牌下的 affordance）**：主色近黑（`colorLink=#030213`），链接默认与正文同色又无下划线，会渲染成「看不出可点」的纯文本。统一走 `src/styles/app.css` 两个类，别再裸写 `<Link>`/`<a>`：
   - `.table-link-chip` —— 站内导航「动作簇」（如账号页「站内视图」）：小号胶囊按钮，静息即带描边 + 浅底 + 圆角。
   - `.ext-link` —— 行内名字/标题外链（`ProfileLink`、互动目标标题）：下划线 + 悬停高亮 + 尾随 ↗。
+  - **名字/标题类链接不再套 `<Tag>` 胶囊**：胶囊(小按钮语义) + 下划线(链接语义)两种可点样式叠加会显重复/杂乱，只保留 `.ext-link` 下划线即可（`站内视图`那类**动作簇**才用 `.table-link-chip` 胶囊）。
   - 不引入蓝 / 青强调色（保持近黑品牌）；纯文本回落（无有效链接）绝不加可点样式，以免误导。
 
 ## 提交 / 推送 / 部署
