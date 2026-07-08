@@ -168,12 +168,12 @@ export function NotificationContactsPage() {
   ];
 
   // 全账号视图下前置「账号」列，标明每行联系人归属（单账号视图不显示）。
-  // 账号名 = 可点外链（.ext-link 下划线），不再套 Tag 胶囊（避免「胶囊 + 下划线」两种可点样式叠加）。
+  // 账号 = 纯标签展示（Tag），不可点：账号是「归属」标注、非导航目标（只有联系人昵称才是外链）。
   const accountColumn: ColumnsType<PanelNotificationContact>[number] = {
     title: '账号',
     dataIndex: 'accountId',
     width: 140,
-    render: (id: string) => <ProfileLink userId={id}>{namer(id)}</ProfileLink>,
+    render: (id: string) => <Tag>{namer(id)}</Tag>,
   };
 
   // 列顺序：账号（全账号视图前置）→ 昵称 → 微信 → 标签 → 互动次数 → 加入原因 → 备注 → 添加时间 → 更新时间。
