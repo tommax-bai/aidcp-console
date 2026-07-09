@@ -66,6 +66,7 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '人设',
     key: 'persona',
+    width: 84,
     // 标签去掉冗余「人设」后缀（列头已是「人设」；避免换行的表格设计标准）：
     // 未绑（非 default）→「需设置」橙标 + 跳转人设页；已绑 → 绿标「已绑」；default 豁免 → 中性「默认」。
     render: (_, r) =>
@@ -81,8 +82,10 @@ const columns: ColumnsType<PanelAccount> = [
   },
   { title: '分组', dataIndex: 'groupLabel', render: (v: string | null) => v ?? dash },
   {
-    title: '运营',
+    // 列头「状态」= 运营开关（运行中 / 运营已暂停），与验证码暂停、风控态相互独立。
+    title: '状态',
     dataIndex: 'operatorStatus',
+    width: 112,
     // 运营暂停态，区别于验证码暂停（不共用一个含糊 paused 徽标）
     render: (v: 'active' | 'paused') =>
       v === 'paused' ? <Tag>{OPERATOR_STATUS_LABEL.paused}</Tag> : <Tag color="green">{OPERATOR_STATUS_LABEL.active}</Tag>,
@@ -91,6 +94,7 @@ const columns: ColumnsType<PanelAccount> = [
     // 列头即消歧（原「风控状态」→「风控」，徽标不再带「状态：」前缀；避免换行的表格设计标准）
     title: '风控',
     dataIndex: 'riskStatus',
+    width: 96,
     // 两个独立徽标之一：风控 STATUS（暖色实底）
     render: (v: RiskStatus | null) => (v ? <RiskStatusBadge status={v} /> : dash),
   },
@@ -98,10 +102,11 @@ const columns: ColumnsType<PanelAccount> = [
     // 列头即消歧（原「配额档位」→「档位」，徽标不再带「档位：」前缀；避免换行的表格设计标准）
     title: '档位',
     key: 'tier',
+    width: 88,
     // 两个独立徽标之二：风控 QUOTA-TIER 冷色描边（与 status 永不合并）
     render: (_, r) => (r.riskQuotaLevel ? <QuotaTierBadge tier={r.riskQuotaLevel} /> : dash),
   },
-  { title: '信号', dataIndex: 'signalCount', render: (v: number | null) => v ?? dash },
+  { title: '信号', dataIndex: 'signalCount', width: 76, render: (v: number | null) => v ?? dash },
 ];
 
 export function AccountsTable({
@@ -143,10 +148,6 @@ export function AccountsTable({
     if (a.groupChatInfo) codeCounts.set(a.groupChatInfo, (codeCounts.get(a.groupChatInfo) ?? 0) + 1);
   }
   const isDupCode = (c: string | null): boolean => !!c && (codeCounts.get(c) ?? 0) > 1;
-  const codePreview = (c: string): string => {
-    const oneLine = c.replace(/\s+/g, ' ').trim();
-    return oneLine.length > 16 ? `${oneLine.slice(0, 16)}…` : oneLine;
-  };
 
   const beginEditChat = (r: PanelAccount) => {
     setEditingChatId(r.accountId);
@@ -178,6 +179,7 @@ export function AccountsTable({
     ? {
         title: '分组',
         key: 'groupLabel',
+        width: 100,
         render: (_, r) =>
           editingId === r.accountId ? (
             <Input
@@ -201,7 +203,7 @@ export function AccountsTable({
             </div>
           ),
       }
-    : { title: '分组', dataIndex: 'groupLabel', render: (v: string | null) => v ?? dash };
+    : { title: '分组', dataIndex: 'groupLabel', width: 100, render: (v: string | null) => v ?? dash };
 
   const baseCols: ColumnsType<PanelAccount> = columns.map((c) =>
     (c as { dataIndex?: string }).dataIndex === 'groupLabel' ? groupColumn : c,
@@ -212,6 +214,7 @@ export function AccountsTable({
     ? {
         title: '群聊引流',
         key: 'groupChatInfo',
+        width: 104,
         render: (_, r) =>
           editingChatId === r.accountId ? (
             <Input.TextArea
@@ -225,18 +228,17 @@ export function AccountsTable({
               style={{ minWidth: 240 }}
             />
           ) : r.groupChatInfo ? (
+            // 只展示标签、不展示群聊引流码正文（原文可能含 emoji/换行/长文，列宽收窄后不再内联预览）。
             <div className="editable-cell" onClick={() => beginEditChat(r)} title="点击编辑群聊引流码">
               <Space size={4} wrap>
                 <Tag color="green">已配</Tag>
                 {isDupCode(r.groupChatInfo) && <Tag color="warning">多账号同码</Tag>}
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {codePreview(r.groupChatInfo)}
-                </Typography.Text>
               </Space>
             </div>
           ) : (
+            // 未配置：给一个可点的「点击配置」标签（替代裸破折号），点击即进编辑态。
             <div className="editable-cell" onClick={() => beginEditChat(r)} title="点击设置群聊引流码">
-              {dash}
+              <Tag color="blue" style={{ cursor: 'pointer' }}>点击配置</Tag>
             </div>
           ),
       }
