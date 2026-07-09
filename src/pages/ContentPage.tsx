@@ -600,7 +600,9 @@ export function ContentPage() {
   const [editContent, setEditContent] = useState('');
 
   const accounts = useAccounts();
-  const published = usePublished(accountFilter);
+  // 只看待审走服务端 status 过滤（change parallel-rewrite-drafts）：老 pending 不被全局 50 窗口挤出；
+  // 客户端过滤仍兜底（旧 cloud 忽略参数时回落全量）。
+  const published = usePublished(accountFilter, pendingOnly ? 'pending_approval' : undefined);
   const queue = useContentQueue();
 
   const isEditable = viewing?.status === 'pending_approval';
@@ -754,9 +756,12 @@ export function ContentPage() {
   const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot) : [];
   const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot) : null;
   const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
-  // 「进行中」判定：有生成快照，或状态正在生成。都没有 = 空闲，卡片主体收起、只留标题栏
+  // 并行多轮（change parallel-rewrite-drafts）：runs 可空缺（旧 cloud）——回落旧单快照渲染，绝不白屏。
+  const queueRuns = queue.data?.runs ?? [];
+  const multiRun = queueRuns.length > 1;
+  // 「进行中」判定：有在跑轮 / 有生成快照 / 状态正在生成。都没有 = 空闲，卡片主体收起、只留标题栏
   //（消除「标题写『进行中』、状态却『空闲』」的文案冲突）。
-  const queueActive = !!queueSnapshot || queueStatus === 'running';
+  const queueActive = queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
 
   return (
     <div className="page-stack">
@@ -773,6 +778,45 @@ export function ContentPage() {
         {/* 空闲（无进行中任务）时收起卡片主体，只留标题栏；有进行中任务才展开状态/阶段/原始字段。 */}
         {queueActive ? (
           <>
+        {/* 并行多轮列表（change parallel-rewrite-drafts）：每轮账号/类型/参照稿/阶段进度；单轮时沿用下方聚合渲染。 */}
+        {multiRun ? (
+          <div className="publish-queue-runs">
+            {queueRuns.map((run) => {
+              const runSnapshot = isRecord(run.snapshot) ? run.snapshot : null;
+              const runStages = runSnapshot ? buildQueueStages(runSnapshot) : [];
+              const runDraft = runSnapshot ? buildQueueDraftSummary(runSnapshot) : null;
+              const doneStages = runStages.filter((s) => s.state === 'done').length;
+              const accountLabel =
+                accountOptions.find((o) => o.value === run.accountId)?.label ?? run.accountId;
+              return (
+                <div key={run.runId} className="publish-queue-run" style={{ marginBottom: 8 }}>
+                  <Space wrap size={[6, 6]}>
+                    <Tag color={run.kind === 'rewrite' ? 'blue' : 'purple'}>
+                      {run.kind === 'rewrite' ? '参照洗稿' : '自主创作'}
+                    </Tag>
+                    <Typography.Text strong>{accountLabel}</Typography.Text>
+                    {run.sourceId ? (
+                      <Typography.Text type="secondary" title={run.sourceId}>
+                        参照稿 {runDraft?.sourceTitle ?? run.sourceId}
+                      </Typography.Text>
+                    ) : null}
+                    <Typography.Text type="secondary">
+                      阶段 {doneStages}/{runStages.length || '—'}
+                    </Typography.Text>
+                    {runDraft?.title ? (
+                      <Typography.Text type="secondary" title={runDraft.title}>
+                        「{runDraft.title}」
+                      </Typography.Text>
+                    ) : null}
+                  </Space>
+                </div>
+              );
+            })}
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              并行 {queueRuns.length} 轮生成中；下方阶段详情为最新启动的一轮。
+            </Typography.Text>
+          </div>
+        ) : null}
         {queueSnapshot ? (
           <div className="publish-queue-head">
             <Typography.Text type="secondary">已产出 {rawSnapshotEntries.length} 个管道字段</Typography.Text>

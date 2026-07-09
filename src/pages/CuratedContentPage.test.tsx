@@ -176,7 +176,18 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
     fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
-    expect(await screen.findByText(/发布链路正在生成其它草稿/)).toBeTruthy();
+    // change parallel-rewrite-drafts：publish_busy 语义收窄为并发帽满（全局串行已消灭）。
+    expect(await screen.findByText(/生成并发已满/)).toBeTruthy();
+    expect(screen.queryByText(/已触发洗稿/)).toBeNull();
+  });
+
+  it('洗稿域内拒绝（duplicate_source / publish_capacity）→ 各自中文原因、绝不染绿', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'duplicate_source' });
+    renderPage();
+    await screen.findByText('目标笔记标题');
+    fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
+    expect(await screen.findByText(/已有一轮洗稿在途/)).toBeTruthy();
     expect(screen.queryByText(/已触发洗稿/)).toBeNull();
   });
 

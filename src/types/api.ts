@@ -310,10 +310,29 @@ export interface PanelPublishSourceReference {
   capturedAt: number;
 }
 
-/** in-flight 发布队列（orchestrator getStatus）。 */
+/**
+ * 生成中单轮摘要（change parallel-rewrite-drafts：并行多轮观测）。与 cloud publish-orchestrator RunSummary 镜像。
+ * kind：rewrite=参照洗稿轮（sourceId 为锚定参照稿）；autonomous=自主创作轮。
+ */
+export interface ContentQueueRun {
+  runId: string;
+  accountId: string;
+  kind: 'rewrite' | 'autonomous';
+  sourceId: string | null;
+  startedAt: number;
+  status: string;
+  snapshot: unknown | null;
+}
+
+/**
+ * in-flight 发布队列（orchestrator getStatus，change parallel-rewrite-drafts 兼容形状）。
+ * 旧字段 status/snapshot=聚合视图（最新启动的 running 轮，无 running 则最近终态）；runs=全部在跑轮。
+ * runs 可空缺（旧 cloud 未升级时）——渲染必须优雅回落旧单快照，绝不因缺字段白屏。
+ */
 export interface ContentQueue {
   status: string;
   snapshot: unknown | null;
+  runs?: ContentQueueRun[];
 }
 
 // ── 精选内容后台管理（change curated-content-admin-page）────────────────────────

@@ -161,14 +161,21 @@ export function useBotChats() {
   });
 }
 
-/** 已发布历史（change publish-history-account-and-detail）；可选按账号过滤。 */
-export function usePublished(accountId?: string) {
+/**
+ * 已发布历史（change publish-history-account-and-detail）；可选按账号过滤。
+ * status 服务端过滤（change parallel-rewrite-drafts）：待审集合完整可见、不受全局 LIMIT 50 窗口挤出；
+ * 旧 cloud 忽略未知参数 → 自然回落全量（客户端过滤仍兜底）。
+ */
+export function usePublished(accountId?: string, status?: string) {
   return useQuery({
-    queryKey: ['content', 'published', accountId ?? 'all'],
-    queryFn: () =>
-      apiGet<{ items: PanelPublish[] }>(
-        `/api/content/published${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
-      ),
+    queryKey: ['content', 'published', accountId ?? 'all', status ?? 'all'],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (accountId) params.set('accountId', accountId);
+      if (status) params.set('status', status);
+      const qs = params.toString();
+      return apiGet<{ items: PanelPublish[] }>(`/api/content/published${qs ? `?${qs}` : ''}`);
+    },
   });
 }
 

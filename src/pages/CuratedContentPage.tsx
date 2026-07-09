@@ -189,7 +189,11 @@ function actionReasonLabel(reason: string | undefined): string {
     case 'needs_persona':
       return '该账号未绑定人设——请先到「人设」页设置';
     case 'publish_busy':
-      return '发布链路正在生成其它草稿（全局串行），请稍后再试';
+      return '生成并发已满，请稍后再试';
+    case 'duplicate_source':
+      return '该笔记已有一轮洗稿在途——等它出稿后可再洗一版对比';
+    case 'publish_capacity':
+      return '该账号在途待审草稿已达上限——请先在「内容」页批准或驳回存量草稿';
     case 'publish_unready':
       return '发布触发器未就绪（云端依赖不可用）';
     case 'comment_unready':
