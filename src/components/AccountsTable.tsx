@@ -55,8 +55,8 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '账号',
     key: 'account',
-    // 账号名是主标识、原为无宽度弹性列被右侧诸列挤到折行；给固定宽度 + 省略号截断（避免换行的表格设计标准），过长悬停看全名。
-    width: 200,
+    // 账号名主标识：约 7 个字宽即可，超出省略号截断（避免换行的表格设计标准），过长悬停看全名。
+    width: 120,
     ellipsis: { showTitle: false },
     // 账号名可点：仅小红书账号跳其站外主页（accountId = 登录派生的 xhs userid）；其它平台回落纯文本，绝不出死链。
     render: (_, r) => {
@@ -71,7 +71,7 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '人设',
     key: 'persona',
-    width: 84,
+    width: 76,
     // 标签去掉冗余「人设」后缀（列头已是「人设」；避免换行的表格设计标准）：
     // 未绑（非 default）→「需设置」橙标 + 跳转人设页；已绑 → 绿标「已绑」；default 豁免 → 中性「默认」。
     render: (_, r) =>
@@ -99,7 +99,7 @@ const columns: ColumnsType<PanelAccount> = [
     // 列头即消歧（原「风控状态」→「风控」，徽标不再带「状态：」前缀；避免换行的表格设计标准）
     title: '风控',
     dataIndex: 'riskStatus',
-    width: 96,
+    width: 68,
     // 两个独立徽标之一：风控 STATUS（暖色实底）
     render: (v: RiskStatus | null) => (v ? <RiskStatusBadge status={v} /> : dash),
   },
@@ -107,11 +107,11 @@ const columns: ColumnsType<PanelAccount> = [
     // 列头即消歧（原「配额档位」→「档位」，徽标不再带「档位：」前缀；避免换行的表格设计标准）
     title: '档位',
     key: 'tier',
-    width: 88,
+    width: 68,
     // 两个独立徽标之二：风控 QUOTA-TIER 冷色描边（与 status 永不合并）
     render: (_, r) => (r.riskQuotaLevel ? <QuotaTierBadge tier={r.riskQuotaLevel} /> : dash),
   },
-  { title: '信号', dataIndex: 'signalCount', width: 76, render: (v: number | null) => v ?? dash },
+  { title: '信号', dataIndex: 'signalCount', width: 56, render: (v: number | null) => v ?? dash },
 ];
 
 export function AccountsTable({
@@ -269,7 +269,12 @@ export function AccountsTable({
 
   const withGroupChat: ColumnsType<PanelAccount> = groupChatColumn ? [...baseCols, groupChatColumn] : baseCols;
   const cols: ColumnsType<PanelAccount> = actionsColumn
-    ? [...withGroupChat, viewsColumn, { title: '操作', key: 'actions', render: (_, r) => actionsColumn(r) }]
+    ? [
+        ...withGroupChat,
+        viewsColumn,
+        // 固定宽度容下当前内容（暂停/恢复 + 风控▾ + 档位选择，Facebook 号另加「配置搜索词」入口，Space 不换行）；不再被挤出视口。
+        { title: '操作', key: 'actions', width: 312, render: (_, r) => actionsColumn(r) },
+      ]
     : [...withGroupChat, viewsColumn];
   return (
     <Table
@@ -280,6 +285,8 @@ export function AccountsTable({
       pagination={false}
       columns={cols}
       dataSource={rows}
+      // 列多于视口时整表横向滚动，操作列始终可达、绝不再被顶出视口。
+      scroll={{ x: 'max-content' }}
     />
   );
 }
