@@ -14,6 +14,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Switch,
@@ -209,7 +210,7 @@ function compactJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function queueStageFact(stageKey: string, snapshot: SnapshotRecord): string | null {
+function queueStageFact(stageKey: string, snapshot: SnapshotRecord, resolveAccountName?: (id: string) => string): string | null {
   const trigger = triggerRecord(snapshot);
   const referenceNote = referenceNoteRecord(snapshot);
   const faithfulDraft = objectField(snapshot, 'faithfulDraft');
@@ -225,8 +226,10 @@ function queueStageFact(stageKey: string, snapshot: SnapshotRecord): string | nu
   const publishResult = objectField(snapshot, 'publishResult');
 
   if (stageKey === 'source') {
+    const rawAccountId = stringField(trigger, 'accountId');
     const facts = [
-      stringField(trigger, 'accountId') ? `账号 ${stringField(trigger, 'accountId')}` : null,
+      // 账号显示昵称/标签、绝不裸 id（用户反馈 2026-07-09）。
+      rawAccountId ? `账号 ${resolveAccountName?.(rawAccountId) ?? rawAccountId}` : null,
       imageCountFrom(referenceNote?.images) != null ? `参考图 ${imageCountFrom(referenceNote?.images)} 张` : null,
       stringField(referenceNote, 'author') ? `作者 ${stringField(referenceNote, 'author')}` : null,
     ].filter(Boolean);
@@ -278,7 +281,7 @@ function queueStageFact(stageKey: string, snapshot: SnapshotRecord): string | nu
   return null;
 }
 
-function buildQueueStages(snapshot: SnapshotRecord): QueueStageView[] {
+function buildQueueStages(snapshot: SnapshotRecord, resolveAccountName?: (id: string) => string): QueueStageView[] {
   const doneFlags = QUEUE_STAGE_DEFINITIONS.map((stage) => stage.fields.some((field) => hasSnapshotValue(snapshot, field.key)));
   const firstPending = doneFlags.findIndex((done) => !done);
 
@@ -289,12 +292,12 @@ function buildQueueStages(snapshot: SnapshotRecord): QueueStageView[] {
       label: stage.label,
       state,
       presentLabels: stage.fields.filter((field) => hasSnapshotValue(snapshot, field.key)).map((field) => field.label),
-      fact: queueStageFact(stage.key, snapshot),
+      fact: queueStageFact(stage.key, snapshot, resolveAccountName),
     };
   });
 }
 
-function buildQueueDraftSummary(snapshot: SnapshotRecord): QueueDraftSummary {
+function buildQueueDraftSummary(snapshot: SnapshotRecord, resolveAccountName?: (id: string) => string): QueueDraftSummary {
   const trigger = triggerRecord(snapshot);
   const referenceNote = referenceNoteRecord(snapshot);
   const faithfulDraft = objectField(snapshot, 'faithfulDraft');
@@ -313,7 +316,8 @@ function buildQueueDraftSummary(snapshot: SnapshotRecord): QueueDraftSummary {
   const referenceImageCount = imageCountFrom(referenceNote?.images);
   const generatedImageCount = imageCountFrom(imageDirective?.imageUrls);
   const facts = [
-    accountId ? `账号 ${accountId}` : null,
+    // 账号一律显示昵称/标签（用户反馈 2026-07-09），解析不到才回落 id。
+    accountId ? `账号 ${resolveAccountName?.(accountId) ?? accountId}` : null,
     author ? `作者 ${author}` : null,
     referenceImageCount != null ? `参考图 ${referenceImageCount} 张` : null,
     generatedImageCount != null ? `生成图 ${generatedImageCount} 张` : null,
@@ -593,6 +597,8 @@ export function ContentPage() {
     setSearchParams(next);
   };
   const [pendingOnly, setPendingOnly] = useState(false); // #18：只看待审筛选
+  // 并行多轮切换（2026-07-09 用户反馈）：发布队列卡选中查看哪一轮的阶段详情；null=自动跟随最新启动。
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   // 浮层当前打开的记录（含快照 contentVersion）；编辑态本地字段。
   const [viewing, setViewing] = useState<PanelPublish | null>(null);
   const [sourceViewing, setSourceViewing] = useState<PanelPublishSourceReference | null>(null);
@@ -752,13 +758,27 @@ export function ContentPage() {
     })),
   ];
   const queueStatus = queue.data?.status ?? '—';
-  const queueSnapshot = isRecord(queue.data?.snapshot) ? queue.data.snapshot : null;
-  const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot) : [];
-  const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot) : null;
-  const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
-  // 并行多轮（change parallel-rewrite-drafts）：runs 可空缺（旧 cloud）——回落旧单快照渲染，绝不白屏。
+  // 并行多轮（change parallel-rewrite-drafts）：runs 可空缺（旧 cloud）——回落旧聚合单快照渲染，绝不白屏。
   const queueRuns = queue.data?.runs ?? [];
-  const multiRun = queueRuns.length > 1;
+  // 队列卡任何账号一律显示昵称/标签、绝不裸 id（用户反馈 2026-07-09）；解析不到才回落 id。
+  const resolveAccountName = (id: string) => {
+    const a = (accounts.data?.accounts ?? []).find((x) => x.accountId === id);
+    return a ? accountDisplayName(a.nickname, a.label, a.accountId) : id;
+  };
+  // 选中轮可切换：显式选择优先；选中轮已收敛消失则回落最新启动的一轮。
+  const latestRun = queueRuns.length > 0 ? queueRuns.reduce((a, b) => (b.startedAt >= a.startedAt ? b : a)) : null;
+  const selectedRun = queueRuns.find((r) => r.runId === selectedRunId) ?? latestRun;
+  // 详情区数据源：有 runs 用选中轮的快照；无 runs（旧 cloud）回落聚合单快照。
+  const queueSnapshot = selectedRun
+    ? isRecord(selectedRun.snapshot)
+      ? selectedRun.snapshot
+      : null
+    : isRecord(queue.data?.snapshot)
+      ? queue.data.snapshot
+      : null;
+  const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot, resolveAccountName) : [];
+  const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot, resolveAccountName) : null;
+  const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
   // 「进行中」判定：有在跑轮 / 有生成快照 / 状态正在生成。都没有 = 空闲，卡片主体收起、只留标题栏
   //（消除「标题写『进行中』、状态却『空闲』」的文案冲突）。
   const queueActive = queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
@@ -778,43 +798,41 @@ export function ContentPage() {
         {/* 空闲（无进行中任务）时收起卡片主体，只留标题栏；有进行中任务才展开状态/阶段/原始字段。 */}
         {queueActive ? (
           <>
-        {/* 并行多轮列表（change parallel-rewrite-drafts）：每轮账号/类型/参照稿/阶段进度；单轮时沿用下方聚合渲染。 */}
-        {multiRun ? (
-          <div className="publish-queue-runs">
-            {queueRuns.map((run) => {
-              const runSnapshot = isRecord(run.snapshot) ? run.snapshot : null;
-              const runStages = runSnapshot ? buildQueueStages(runSnapshot) : [];
-              const runDraft = runSnapshot ? buildQueueDraftSummary(runSnapshot) : null;
-              const doneStages = runStages.filter((s) => s.state === 'done').length;
-              const accountLabel =
-                accountOptions.find((o) => o.value === run.accountId)?.label ?? run.accountId;
-              return (
-                <div key={run.runId} className="publish-queue-run" style={{ marginBottom: 8 }}>
-                  <Space wrap size={[6, 6]}>
-                    <Tag color={run.kind === 'rewrite' ? 'blue' : 'purple'}>
-                      {run.kind === 'rewrite' ? '参照洗稿' : '自主创作'}
-                    </Tag>
-                    <Typography.Text strong>{accountLabel}</Typography.Text>
-                    {run.sourceId ? (
-                      <Typography.Text type="secondary" title={run.sourceId}>
-                        参照稿 {runDraft?.sourceTitle ?? run.sourceId}
-                      </Typography.Text>
-                    ) : null}
-                    <Typography.Text type="secondary">
-                      阶段 {doneStages}/{runStages.length || '—'}
-                    </Typography.Text>
-                    {runDraft?.title ? (
-                      <Typography.Text type="secondary" title={runDraft.title}>
-                        「{runDraft.title}」
-                      </Typography.Text>
-                    ) : null}
-                  </Space>
-                </div>
-              );
-            })}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              并行 {queueRuns.length} 轮生成中；下方阶段详情为最新启动的一轮。
-            </Typography.Text>
+        {/* 并行多轮切换（change parallel-rewrite-drafts；2026-07-09 用户反馈：每轮详情可切换，不只最新一轮）。 */}
+        {queueRuns.length > 0 ? (
+          <div className="publish-queue-runs" style={{ marginBottom: 8 }}>
+            {queueRuns.length > 1 ? (
+              <Segmented
+                size="small"
+                value={selectedRun?.runId}
+                onChange={(v) => setSelectedRunId(String(v))}
+                options={queueRuns.map((run) => {
+                  const runSnapshot = isRecord(run.snapshot) ? run.snapshot : null;
+                  const runStages = runSnapshot ? buildQueueStages(runSnapshot) : [];
+                  const done = runStages.filter((s) => s.state === 'done').length;
+                  return {
+                    value: run.runId,
+                    label: `${resolveAccountName(run.accountId)} · ${run.kind === 'rewrite' ? '洗稿' : '自主'} ${done}/${runStages.length || '—'}`,
+                  };
+                })}
+              />
+            ) : null}
+            {selectedRun ? (
+              <Space wrap size={[6, 6]} style={{ marginTop: queueRuns.length > 1 ? 8 : 0 }}>
+                <Tag color={selectedRun.kind === 'rewrite' ? 'blue' : 'purple'}>
+                  {selectedRun.kind === 'rewrite' ? '参照洗稿' : '自主创作'}
+                </Tag>
+                <Typography.Text strong>{resolveAccountName(selectedRun.accountId)}</Typography.Text>
+                {selectedRun.sourceId ? (
+                  <Typography.Text type="secondary" title={selectedRun.sourceId}>
+                    参照稿 {queueDraft?.sourceTitle ?? selectedRun.sourceId}
+                  </Typography.Text>
+                ) : null}
+                {queueRuns.length > 1 ? (
+                  <Typography.Text type="secondary">并行 {queueRuns.length} 轮生成中，点上方切换查看</Typography.Text>
+                ) : null}
+              </Space>
+            ) : null}
           </div>
         ) : null}
         {queueSnapshot ? (

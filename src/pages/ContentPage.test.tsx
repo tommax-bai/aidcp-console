@@ -40,7 +40,7 @@ if (typeof window.ResizeObserver !== 'function') {
 
 const state = vi.hoisted(() => ({
   published: { items: [] as unknown[] },
-  queue: { status: 'idle', snapshot: null } as { status: string; snapshot: unknown },
+  queue: { status: 'idle', snapshot: null } as { status: string; snapshot: unknown; runs?: unknown[] },
   accounts: { accounts: [] as unknown[] },
 }));
 
@@ -146,6 +146,41 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
 
     expect(await screen.findByText('customDebug')).toBeTruthy();
     expect(await screen.findByText(/keep-me/)).toBeTruthy();
+  });
+
+  it('并行多轮：可切换查看每一轮详情，账号显示昵称不裸 id（2026-07-09 用户反馈）', async () => {
+    state.published = { items: [] };
+    state.accounts = {
+      accounts: [{ accountId: 'acc-1', nickname: '小红薯甲', label: null } as unknown],
+    };
+    const runOf = (runId: string, sourceId: string, title: string, startedAt: number) => ({
+      runId,
+      accountId: 'acc-1',
+      kind: 'rewrite',
+      sourceId,
+      startedAt,
+      status: 'running',
+      snapshot: {
+        trigger: { accountId: 'acc-1', generateInput: { referenceNote: { title: `来稿-${sourceId}` } } },
+        faithfulDraft: { title },
+      },
+    });
+    state.queue = {
+      status: 'running',
+      snapshot: null, // 聚合字段可为空——有 runs 时详情完全由选中轮驱动
+      runs: [runOf('r1', 's1', '甲稿标题', 1), runOf('r2', 's2', '乙稿标题', 2)],
+    };
+
+    renderPage();
+
+    // 默认跟随最新启动的一轮（r2）。
+    expect(await screen.findByText('乙稿标题')).toBeTruthy();
+    // 账号显示昵称（草稿事实 + 阶段 fact 多处），绝不裸 id。
+    expect(screen.getAllByText('账号 小红薯甲').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/账号 acc-1/)).toBeNull();
+    // 切到第一轮（Segmented 首个选项）→ 详情换成甲稿。
+    fireEvent.click(screen.getAllByText(/小红薯甲 · 洗稿/)[0]);
+    expect(await screen.findByText('甲稿标题')).toBeTruthy();
   });
 
   it('保存草稿成功 → 「已保存」提示，抽屉保持打开', async () => {
