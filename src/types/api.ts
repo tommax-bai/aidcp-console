@@ -788,9 +788,18 @@ export interface PanelGroupRoute {
 /** 机器人当前所在的一个群（供路由目标下拉；杜绝手贴 raw chat_id）。 */
 export interface PanelBotChat {
   chatId: string;
-  chatName: string | null;
-  chatType: string | null;
+  /** 真实群名（change feishu-bot-chat-name-display，来自飞书 im/v1/chats）；取不到 → null，前端回落显示 chatId。 */
+  name: string | null;
   isDefault: boolean;
+}
+
+/** GET /api/bot-chats 响应（change feishu-bot-chat-name-display）。 */
+export interface PanelBotChatsResponse {
+  chats: PanelBotChat[];
+  /** 未映射账号的兜底默认群 chatId；无则 null。 */
+  defaultChatId: string | null;
+  /** 群名来源：`feishu`=实时真实群名；`store`=飞书取名失败降级回 bot_chats 表（群名可能空、需补 im:chat:readonly 权限）。 */
+  source: 'feishu' | 'store';
 }
 
 // ── 内容排期（change content-schedule-auto-publish，Phase 1 只做发帖）。手工镜像 cloud DTO，两处须同步防漂移。 ──

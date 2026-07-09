@@ -23,8 +23,14 @@ interface RouteRow {
 }
 
 function chatOptionLabel(c: PanelBotChat): string {
-  const name = c.chatName?.trim() || c.chatId;
+  const name = c.name?.trim() || c.chatId;
   return `${name}${c.isDefault ? '（默认群）' : ''}`;
+}
+
+/** 群的人类可读名（有真实群名用名，否则回落 chatId）。 */
+function chatDisplayName(chatId: string | null, chats: PanelBotChat[]): string {
+  if (!chatId) return '（未设置）';
+  return chats.find((c) => c.chatId === chatId)?.name?.trim() || chatId;
 }
 
 export function NotificationRoutesPage() {
@@ -94,21 +100,28 @@ export function NotificationRoutesPage() {
     {
       title: '目标飞书群',
       dataIndex: 'chatId',
-      width: 320,
+      width: 340,
       render: (chatId: string | null, row) => (
-        <Select
-          size="small"
-          allowClear
-          showSearch
-          style={{ width: '100%', minWidth: 260 }}
-          placeholder="未配置 · 落默认群"
-          value={chatId ?? undefined}
-          options={optionsFor(chatId)}
-          optionFilterProp="label"
-          loading={botChats.isLoading}
-          disabled={save.isPending}
-          onChange={(val) => save.mutate({ groupLabel: row.groupLabel, chatId: (val as string | undefined) ?? null })}
-        />
+        <div>
+          <Select
+            size="small"
+            allowClear
+            showSearch
+            style={{ width: '100%', minWidth: 260 }}
+            placeholder="未配置 · 落默认群"
+            value={chatId ?? undefined}
+            options={optionsFor(chatId)}
+            optionFilterProp="label"
+            loading={botChats.isLoading}
+            disabled={save.isPending}
+            onChange={(val) => save.mutate({ groupLabel: row.groupLabel, chatId: (val as string | undefined) ?? null })}
+          />
+          {chatId && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }} copyable={{ text: chatId }}>
+              {chatId}
+            </Typography.Text>
+          )}
+        </div>
       ),
     },
     {
@@ -120,6 +133,10 @@ export function NotificationRoutesPage() {
     },
   ];
 
+  const defaultChatId = botChats.data?.defaultChatId ?? null;
+  const defaultGroupName = chatDisplayName(defaultChatId, chats);
+  const namesUnavailable = botChats.data?.source === 'store';
+
   return (
     <Card
       title="通知路由：按团队分发飞书通知"
@@ -129,9 +146,22 @@ export function NotificationRoutesPage() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="每个团队的账号「评论 / @」通知投到对应群；未映射的落默认群、绝不丢。"
+        message={
+          <span>
+            每个团队的账号「评论 / @」通知投到对应群；未映射的落<strong>默认群：{defaultChatId ? defaultGroupName : '（未设置默认群）'}</strong>、绝不丢。
+          </span>
+        }
         description="团队键来自账号的「分组标签」（在账号页编辑）。目标只能从机器人当前所在群里选——请先把机器人拉进该群。审批卡 / 运维告警 / 命令回执仍走默认（管理）群，不受此页影响。"
       />
+      {namesUnavailable && chats.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="暂时无法获取真实群名，正显示群 ID"
+          description="请在飞书开发者后台为应用添加「获取群列表」权限 im:chat:readonly，群名即会自动显示（无需改配置）。"
+        />
+      )}
       {botChats.data && chats.length === 0 && (
         <Alert
           type="warning"

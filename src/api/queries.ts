@@ -24,7 +24,7 @@ import type {
   LlmBillingPriceRefreshPayload,
   PanelNotificationContact,
   PanelGroupRoute,
-  PanelBotChat,
+  PanelBotChatsResponse,
   CuratedContentList,
   CuratedFacets,
   ContentScheduleGlobalView,
@@ -153,11 +153,11 @@ export function useNotificationRoutes() {
   });
 }
 
-/** 机器人当前所在群（供路由目标下拉；杜绝手贴 raw chat_id 贴错群 → 跨客户 PII 泄漏）。 */
+/** 机器人当前所在群（真实群名 + 默认群标记；供路由目标下拉，杜绝手贴 raw chat_id 贴错群 → 跨客户 PII 泄漏）。 */
 export function useBotChats() {
   return useQuery({
     queryKey: ['bot-chats'],
-    queryFn: () => apiGet<{ chats: PanelBotChat[] }>('/api/bot-chats'),
+    queryFn: () => apiGet<PanelBotChatsResponse>('/api/bot-chats'),
   });
 }
 
