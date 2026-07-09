@@ -6,7 +6,7 @@ import type { FacebookCommentConfig, FacebookContainer, PanelAccount } from '../
 import { accountName } from '../types/accountDisplay';
 
 /**
- * Facebook 账号「配置搜索词」入口（change facebook-scheduled-comment 2.1 + facebook-container-display-name）。
+ * Facebook 账号「FB配置」入口（关键词 + 目标容器；change facebook-scheduled-comment 2.1 + facebook-container-display-name）。
  * 仅对 Facebook 账号展示（调用方按 platform 门控）。打开时拉当前配置回填、保存经面板 PUT。
  * 语义提示：关键词或容器任一为空 → 云端不生效（fail-closed）；系统随机选关键词、仅在配置的容器内搜索。
  * 容器：运营方粘贴群/主页**链接**（url），系统评论时自动从群页读出真实群名回填——**标签一律展示群名（缺则「待识别」），
@@ -64,10 +64,10 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
   return (
     <>
       <Button size="small" onClick={openModal}>
-        配置搜索词
+        FB配置
       </Button>
       <Modal
-        title={`配置搜索词 · ${accountName(account)}`}
+        title={`FB配置 · ${accountName(account)}`}
         open={open}
         confirmLoading={save.isPending}
         onOk={() => save.mutate({ keywords, containers })}

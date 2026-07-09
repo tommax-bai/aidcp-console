@@ -96,7 +96,7 @@ describe('FacebookSearchConfig', () => {
 
   it('点开时回填：容器标签展示群名（缺则「待识别」），绝不展示群 id', async () => {
     renderCmp();
-    fireEvent.click(screen.getByText('配置搜索词'));
+    fireEvent.click(screen.getByText('FB配置'));
     await waitFor(() =>
       expect(state.getCalls).toContain('/api/accounts/fb-1/facebook-comment-config'),
     );
@@ -111,7 +111,7 @@ describe('FacebookSearchConfig', () => {
 
   it('保存 → apiPut body 保留已识别群名（改关键词不丢名）', async () => {
     renderCmp();
-    fireEvent.click(screen.getByText('配置搜索词'));
+    fireEvent.click(screen.getByText('FB配置'));
     await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(state.putCalls.length).toBe(1));
