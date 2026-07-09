@@ -128,7 +128,10 @@ export function ContentSchedulePage() {
   // ── 每账号策略写入（乐观：点下去即翻，后台对账，失败回滚） ──
   const patchAccount = useMutation({
     mutationFn: ({ accountId, patch }: { accountId: string; patch: ContentSchedulePatch }) =>
-      apiPut<unknown>(`/api/content-schedule/${encodeURIComponent(accountId)}`, patch),
+      apiPut<{ sharedGroupCodeWarning?: boolean }>(
+        `/api/content-schedule/${encodeURIComponent(accountId)}`,
+        patch,
+      ),
     // 乐观：先取消在途重取、快照旧目录、就地把这一行的「改动字段」合并进缓存 → 开关同帧翻，与网络快慢/事件循环脱钩。
     // 铁律：只并 patch 字段（{...r, ...patch}）、绝不整行替换——JOIN 派生列（昵称/群码徽标/时段来源/configured）不在 patch 里，须原样保留，否则会把这几列刷空。
     onMutate: async ({ accountId, patch }) => {
@@ -143,10 +146,17 @@ export function ContentSchedulePage() {
     },
     onError: (e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(['config', 'content-schedule'], ctx.prev); // 失败弹回服务器真态
-      // 群评一码一号拒因（no_group_code / shared_group_code）随 body.reason 下发、error 恒为 'bad_request'；
-      // 统一走 errorText 按 reason 映射（旧代码读 e.message 恒等于 'bad_request'、msg.includes 永不命中，
-      // 一码一号 / 无码的真因被吞成「请求格式有误」）。
+      // 群评「无码」拒因 no_group_code 随 body.reason 下发、error 恒为 'bad_request'；统一走 errorText 按 reason
+      // 映射（旧代码读 e.message 恒等于 'bad_request'、msg.includes 永不命中，无码真因被吞成「请求格式有误」）。
+      // 群码「共用」不再是 error（loosen-group-comment-shared-code：放行 + onSuccess 警告）。
       message.error(`保存失败：${errorText(e)}`); // #31：兜底走中文映射，不上屏英文机器码
+    },
+    // 一码一号放松（loosen-group-comment-shared-code）：共用群码开群评已放行，但云端回带 sharedGroupCodeWarning——
+    // 如实弹一条防关联封号风险提示（非错误、非阻断），绝不静默把关联风险咽下去。
+    onSuccess: (data) => {
+      if (data?.sharedGroupCodeWarning) {
+        message.warning('已开启自动群评：该群码与其它账号共用，一码一号是防关联封号建议，建议尽快改用独立群码');
+      }
     },
     // 成/败都回后台对一次账（exact:true 只重取本目录、不误伤前缀子键 …/'global'）。开关已乐观翻好，此 GET 不在关键路径、用户无感。
     onSettled: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true }),
