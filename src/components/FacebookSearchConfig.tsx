@@ -3,6 +3,7 @@ import { App, Button, Form, Modal, Select, Skeleton, Tag, Typography } from 'ant
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
 import type { FacebookCommentConfig, FacebookContainer, PanelAccount } from '../types/api';
+import { accountName } from '../types/accountDisplay';
 
 /**
  * Facebook 账号「配置搜索词」入口（change facebook-scheduled-comment 2.1 + facebook-container-display-name）。
@@ -66,7 +67,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
         配置搜索词
       </Button>
       <Modal
-        title={`配置搜索词 · ${account.label ?? account.accountId}`}
+        title={`配置搜索词 · ${accountName(account)}`}
         open={open}
         confirmLoading={save.isPending}
         onOk={() => save.mutate({ keywords, containers })}
