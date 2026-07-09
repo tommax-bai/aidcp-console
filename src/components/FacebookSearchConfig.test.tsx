@@ -55,7 +55,7 @@ function fbAccount(): PanelAccount {
     platform: 'facebook',
     groupLabel: null,
     machineLabel: null,
-    groupChatInfo: null,
+    contactInfo: null,
     operatorStatus: 'active',
     pausedAt: null,
     riskStatus: null,

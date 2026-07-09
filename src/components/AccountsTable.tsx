@@ -120,7 +120,7 @@ export function AccountsTable({
   severitySorted = false,
   actionsColumn,
   onEditGroup,
-  onEditGroupChat,
+  onEditContact,
 }: {
   accounts: PanelAccount[];
   loading?: boolean;
@@ -134,36 +134,36 @@ export function AccountsTable({
    */
   onEditGroup?: (accountId: string, groupLabel: string | null) => void;
   /**
-   * 可选：关联群聊引流码就地编辑保存回调（change account-group-chat-injection）。
-   * 传入 →「群聊引流」列点击即变多行文本框、失焦保存（**verbatim，不 trim 内容**；全空白=清空，回 null）；
-   * 不传 → 该列只读（只读视图不受影响）。/comment group:on 时该码注入评论。
+   * 可选：关联联系方式就地编辑保存回调（change account-group-chat-injection）。
+   * 传入 →「联系方式」列点击即变多行文本框、失焦保存（**verbatim，不 trim 内容**；全空白=清空，回 null）；
+   * 不传 → 该列只读（只读视图不受影响）。带联系方式评论时该联系方式注入评论。
    */
-  onEditGroupChat?: (accountId: string, groupChatInfo: string | null) => void;
+  onEditContact?: (accountId: string, contactInfo: string | null) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  // 群聊引流码就地编辑：独立状态，绝不与分组编辑共用 editingId（否则同行两列会一起进编辑态）。
-  const [editingChatId, setEditingChatId] = useState<string | null>(null);
-  const [draftChat, setDraftChat] = useState('');
+  // 联系方式就地编辑：独立状态，绝不与分组编辑共用 editingId（否则同行两列会一起进编辑态）。
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [draftContact, setDraftContact] = useState('');
   const rows = severitySorted ? [...accounts].sort((a, b) => severityRank(a) - severityRank(b)) : accounts;
 
-  // 跨账号「同码」检测（change account-group-chat-injection）：同一串非空码配到多个账号 = 引流指纹，给告警提示。
-  const codeCounts = new Map<string, number>();
+  // 跨账号「同联系方式」检测（change account-group-chat-injection）：同一串非空联系方式配到多个账号 = 引流指纹，给告警提示。
+  const contactCounts = new Map<string, number>();
   for (const a of accounts) {
-    if (a.groupChatInfo) codeCounts.set(a.groupChatInfo, (codeCounts.get(a.groupChatInfo) ?? 0) + 1);
+    if (a.contactInfo) contactCounts.set(a.contactInfo, (contactCounts.get(a.contactInfo) ?? 0) + 1);
   }
-  const isDupCode = (c: string | null): boolean => !!c && (codeCounts.get(c) ?? 0) > 1;
+  const isDupContact = (c: string | null): boolean => !!c && (contactCounts.get(c) ?? 0) > 1;
 
-  const beginEditChat = (r: PanelAccount) => {
-    setEditingChatId(r.accountId);
-    setDraftChat(r.groupChatInfo ?? '');
+  const beginEditContact = (r: PanelAccount) => {
+    setEditingContactId(r.accountId);
+    setDraftContact(r.contactInfo ?? '');
   };
   // 非乐观 + verbatim：仅值变化才下发；全空白 → 清空（null），否则原样（不 trim 内容，保留 emoji/换行/首尾空白）。
-  const commitChat = (r: PanelAccount) => {
-    if (editingChatId !== r.accountId) return;
-    setEditingChatId(null);
-    const prev = r.groupChatInfo ?? '';
-    if (draftChat !== prev) onEditGroupChat?.(r.accountId, draftChat.trim() === '' ? null : draftChat);
+  const commitContact = (r: PanelAccount) => {
+    if (editingContactId !== r.accountId) return;
+    setEditingContactId(null);
+    const prev = r.contactInfo ?? '';
+    if (draftContact !== prev) onEditContact?.(r.accountId, draftContact.trim() === '' ? null : draftContact);
   };
 
   // 已有分组备选（去重 + 排序）：供就地编辑下拉「选已存在的分组」，同时仍可自由输入新名（AutoComplete）。
@@ -232,50 +232,50 @@ export function AccountsTable({
     (c as { dataIndex?: string }).dataIndex === 'groupLabel' ? groupColumn : c,
   );
 
-  // 「群聊引流」列：传 onEditGroupChat → 点击即编辑（多行文本框，verbatim）；否则只读（read-only 零回归，不加列）。
-  const groupChatColumn: ColumnsType<PanelAccount>[number] | null = onEditGroupChat
+  // 「联系方式」列：传 onEditContact → 点击即编辑（多行文本框，verbatim）；否则只读（read-only 零回归，不加列）。
+  const contactColumn: ColumnsType<PanelAccount>[number] | null = onEditContact
     ? {
-        title: '群聊引流',
-        key: 'groupChatInfo',
+        title: '联系方式',
+        key: 'contactInfo',
         width: 104,
         render: (_, r) =>
-          editingChatId === r.accountId ? (
+          editingContactId === r.accountId ? (
             <Input.TextArea
               size="small"
               autoFocus
               autoSize={{ minRows: 2, maxRows: 8 }}
-              value={draftChat}
-              onChange={(e) => setDraftChat(e.target.value)}
-              onBlur={() => commitChat(r)}
-              placeholder="粘贴群聊引流码（原样保存，含 emoji/换行）；留空清除"
+              value={draftContact}
+              onChange={(e) => setDraftContact(e.target.value)}
+              onBlur={() => commitContact(r)}
+              placeholder="粘贴联系方式（原样保存，含 emoji/换行）；留空清除"
               style={{ minWidth: 240 }}
             />
-          ) : r.groupChatInfo ? (
-            // 只展示标签、不展示群聊引流码正文（原文可能含 emoji/换行/长文，列宽收窄后不再内联预览）。
-            <div className="editable-cell" onClick={() => beginEditChat(r)} title="点击编辑群聊引流码">
+          ) : r.contactInfo ? (
+            // 只展示标签、不展示联系方式正文（原文可能含 emoji/换行/长文，列宽收窄后不再内联预览）。
+            <div className="editable-cell" onClick={() => beginEditContact(r)} title="点击编辑联系方式">
               <Space size={4} wrap>
                 <Tag color="green">已配</Tag>
-                {isDupCode(r.groupChatInfo) && <Tag color="warning">多账号同码</Tag>}
+                {isDupContact(r.contactInfo) && <Tag color="warning">多账号同联系方式</Tag>}
               </Space>
             </div>
           ) : (
             // 未配置：给一个可点的「点击配置」标签（替代裸破折号），点击即进编辑态。
-            <div className="editable-cell" onClick={() => beginEditChat(r)} title="点击设置群聊引流码">
+            <div className="editable-cell" onClick={() => beginEditContact(r)} title="点击设置联系方式">
               <Tag color="blue" style={{ cursor: 'pointer' }}>点击配置</Tag>
             </div>
           ),
       }
     : null;
 
-  const withGroupChat: ColumnsType<PanelAccount> = groupChatColumn ? [...baseCols, groupChatColumn] : baseCols;
+  const withContactColumn: ColumnsType<PanelAccount> = contactColumn ? [...baseCols, contactColumn] : baseCols;
   const cols: ColumnsType<PanelAccount> = actionsColumn
     ? [
-        ...withGroupChat,
+        ...withContactColumn,
         viewsColumn,
         // 固定宽度容下当前内容（暂停/恢复 + 风控▾ + 档位选择，Facebook 号另加「配置搜索词」入口，Space 不换行）；不再被挤出视口。
         { title: '操作', key: 'actions', width: 312, render: (_, r) => actionsColumn(r) },
       ]
-    : [...withGroupChat, viewsColumn];
+    : [...withContactColumn, viewsColumn];
   return (
     <Table
       size="small"

@@ -11,9 +11,9 @@ describe('errorText（#31 服务端错误码 → 中文）', () => {
     expect(errorText(new ApiError(409, 'version_stale'))).toBe('内容已更新，请刷新后重新审批');
   });
 
-  it('自动群评「必须先配群码」拒因按 reason 映射（error 恒为 bad_request，不得吞成「请求格式有误」）', () => {
-    expect(errorText(new ApiError(400, 'bad_request', 'no_group_code'))).toBe(
-      '该账号未配群码，请先到「账号」页录入关联群聊引流码',
+  it('自动带联系方式评论「必须先配联系方式」拒因按 reason 映射（error 恒为 bad_request，不得吞成「请求格式有误」）', () => {
+    expect(errorText(new ApiError(400, 'bad_request', 'no_contact_info'))).toBe(
+      '该账号未配联系方式，请先到「账号」页录入联系方式',
     );
   });
 

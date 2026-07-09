@@ -128,12 +128,12 @@ export function ContentSchedulePage() {
   // ── 每账号策略写入（乐观：点下去即翻，后台对账，失败回滚） ──
   const patchAccount = useMutation({
     mutationFn: ({ accountId, patch }: { accountId: string; patch: ContentSchedulePatch }) =>
-      apiPut<{ sharedGroupCodeWarning?: boolean }>(
+      apiPut<{ sharedContactInfoWarning?: boolean }>(
         `/api/content-schedule/${encodeURIComponent(accountId)}`,
         patch,
       ),
     // 乐观：先取消在途重取、快照旧目录、就地把这一行的「改动字段」合并进缓存 → 开关同帧翻，与网络快慢/事件循环脱钩。
-    // 铁律：只并 patch 字段（{...r, ...patch}）、绝不整行替换——JOIN 派生列（昵称/群码徽标/时段来源/configured）不在 patch 里，须原样保留，否则会把这几列刷空。
+    // 铁律：只并 patch 字段（{...r, ...patch}）、绝不整行替换——JOIN 派生列（昵称/联系方式徽标/时段来源/configured）不在 patch 里，须原样保留，否则会把这几列刷空。
     onMutate: async ({ accountId, patch }) => {
       await qc.cancelQueries({ queryKey: ['config', 'content-schedule'] });
       const prev = qc.getQueryData<ContentScheduleCatalog>(['config', 'content-schedule']);
@@ -146,16 +146,16 @@ export function ContentSchedulePage() {
     },
     onError: (e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(['config', 'content-schedule'], ctx.prev); // 失败弹回服务器真态
-      // 群评「无码」拒因 no_group_code 随 body.reason 下发、error 恒为 'bad_request'；统一走 errorText 按 reason
-      // 映射（旧代码读 e.message 恒等于 'bad_request'、msg.includes 永不命中，无码真因被吞成「请求格式有误」）。
-      // 群码「共用」不再是 error（loosen-group-comment-shared-code：放行 + onSuccess 警告）。
+      // 带联系方式评论「无联系方式」拒因 no_contact_info 随 body.reason 下发、error 恒为 'bad_request'；统一走 errorText 按 reason
+      // 映射（旧代码读 e.message 恒等于 'bad_request'、msg.includes 永不命中，无联系方式真因被吞成「请求格式有误」）。
+      // 联系方式「共用」不再是 error（loosen-group-comment-shared-code：放行 + onSuccess 警告）。
       message.error(`保存失败：${errorText(e)}`); // #31：兜底走中文映射，不上屏英文机器码
     },
-    // 一码一号放松（loosen-group-comment-shared-code）：共用群码开群评已放行，但云端回带 sharedGroupCodeWarning——
+    // 一码一号放松（loosen-group-comment-shared-code）：共用联系方式开带联系方式评论已放行，但云端回带 sharedContactInfoWarning——
     // 如实弹一条防关联封号风险提示（非错误、非阻断），绝不静默把关联风险咽下去。
     onSuccess: (data) => {
-      if (data?.sharedGroupCodeWarning) {
-        message.warning('已开启自动群评：该群码与其它账号共用，一码一号是防关联封号建议，建议尽快改用独立群码');
+      if (data?.sharedContactInfoWarning) {
+        message.warning('已开启自动带联系方式评论：该联系方式与其它账号共用，一码一号是防关联封号建议，建议尽快改用独立联系方式');
       }
     },
     // 成/败都回后台对一次账（exact:true 只重取本目录、不误伤前缀子键 …/'global'）。开关已乐观翻好，此 GET 不在关键路径、用户无感。
@@ -165,9 +165,9 @@ export function ContentSchedulePage() {
   // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${'post'|'comment'}`（两动作各自独立）。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
-  const commitCap = (r: ContentScheduleRow, kind: 'post' | 'comment' | 'group') => {
+  const commitCap = (r: ContentScheduleRow, kind: 'post' | 'comment' | 'contact') => {
     const key = `${r.accountId}:${kind}`;
-    const current = kind === 'post' ? r.postDailyCap : kind === 'comment' ? r.commentDailyCap : r.groupCommentDailyCap;
+    const current = kind === 'post' ? r.postDailyCap : kind === 'comment' ? r.commentDailyCap : r.contactCommentDailyCap;
     const draft = capDraft[key];
     if (draft == null || draft === current) {
       setCapDraft((d) => {
@@ -183,7 +183,7 @@ export function ContentSchedulePage() {
           ? { postDailyCap: draft }
           : kind === 'comment'
             ? { commentDailyCap: draft }
-            : { groupCommentDailyCap: draft },
+            : { contactCommentDailyCap: draft },
     });
     setCapDraft((d) => {
       const { [key]: _drop, ...rest } = d;
@@ -195,7 +195,7 @@ export function ContentSchedulePage() {
   const previewContent = clampContent(previewBrowse, contentMaskForEdit(global.data?.contentActiveMask));
   const loadingGrid = sl.isLoading || global.isLoading;
 
-  // 子开关（发帖/评论/群评）显示「有效态」= 总开关 && 本开关：总开关关时统一显示为关，与云端
+  // 子开关（发帖/评论/带联系方式评论）显示「有效态」= 总开关 && 本开关：总开关关时统一显示为关，与云端
   // 「总开关关=整账号不自动」（content-scheduler 账号级闸）一致；且不写库、保留各子开关记忆值，
   // 重开总开关即恢复。——消除「总开关关后子开关仍显示开却灰掉、关不掉」的假象（红线：不骗用户）。
   const columns: ColumnsType<ContentScheduleRow> = useMemo(
@@ -289,34 +289,34 @@ export function ContentSchedulePage() {
         ),
       },
       {
-        title: '自动群评',
-        key: 'group',
-        width: 112,
+        title: '自动带联系方式评论',
+        key: 'contact',
+        width: 132,
         render: (_: unknown, r) => (
           <Space size={6}>
             <Switch
-              checked={r.autoEnabled && r.groupCommentEnabled}
-              disabled={!r.autoEnabled || !r.hasGroupCode}
-              onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { groupCommentEnabled: v } })}
+              checked={r.autoEnabled && r.contactCommentEnabled}
+              disabled={!r.autoEnabled || !r.hasContactInfo}
+              onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { contactCommentEnabled: v } })}
             />
-            {!r.hasGroupCode ? <Tag color="red">未配群码</Tag> : null}
+            {!r.hasContactInfo ? <Tag color="red">未配联系方式</Tag> : null}
           </Space>
         ),
       },
       {
-        title: '群评日上限',
-        key: 'groupCap',
-        width: 96,
+        title: '带联系方式评论日上限',
+        key: 'contactCap',
+        width: 120,
         render: (_: unknown, r) => (
           <InputNumber
             min={0}
             max={10}
             precision={0}
-            disabled={!r.autoEnabled || !r.groupCommentEnabled}
-            value={capDraft[`${r.accountId}:group`] ?? r.groupCommentDailyCap}
-            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:group`]: v }))}
-            onBlur={() => commitCap(r, 'group')}
-            onPressEnter={() => commitCap(r, 'group')}
+            disabled={!r.autoEnabled || !r.contactCommentEnabled}
+            value={capDraft[`${r.accountId}:contact`] ?? r.contactCommentDailyCap}
+            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:contact`]: v }))}
+            onBlur={() => commitCap(r, 'contact')}
+            onPressEnter={() => commitCap(r, 'contact')}
             style={{ width: 60 }}
           />
         ),
@@ -400,7 +400,7 @@ export function ContentSchedulePage() {
 
       <Card size="small" title="账号内容自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          每账号：总开关（默认关）→ 自动发帖 / 自动评论各自开关 + 日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动群评都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）、每条需飞书人审；自动路径过风控配额（手动不受限）。群评额外规矩：开启须先配群码且**一码一号**（同码配多账号会被硬拒）；日上限=每日自动尝试数（被拒/无目标也占额度），硬上限 10、建议 ≤3；改码后请自查一码一号。
+          每账号：总开关（默认关）→ 自动发帖 / 自动评论各自开关 + 日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动带联系方式评论都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）、每条需飞书人审；自动路径过风控配额（手动不受限）。带联系方式评论额外规矩：开启须先配联系方式（未配硬拒）；建议**一码一号**——同一联系方式配多账号仍可开启，但会提示防关联封号风险；日上限=每日自动尝试数（被拒/无目标也占额度），硬上限 10、建议 ≤3；改联系方式后请自查一码一号。
         </Typography.Paragraph>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />

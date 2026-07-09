@@ -194,8 +194,8 @@ function actionReasonLabel(reason: string | undefined): string {
       return '发布触发器未就绪（云端依赖不可用）';
     case 'comment_unready':
       return '评论触发器未就绪（云端依赖不可用）';
-    case 'group_code_missing':
-      return '该账号未配置「关联群聊信息」——请先到账号页设置（不会降级为内容评论）';
+    case 'contact_info_missing':
+      return '该账号未配置「联系方式」——请先到账号页设置（不会降级为内容评论）';
     case 'running':
       return '该账号已有评论任务在跑，请等其结束';
     case 'already_commented':
@@ -265,9 +265,9 @@ export function CuratedContentPage() {
   const [createTarget, setCreateTarget] = useState<PanelCuratedContent | null>(null);
   const [createMode, setCreateMode] = useState<'image' | 'text'>('image');
   const [imagePreview, setImagePreview] = useState<{ images: CuratedReferenceImage[]; index: number } | null>(null);
-  // 评论弹窗：目标行 + 评论类型（内容评论 / 带群评论）。
+  // 评论弹窗：目标行 + 评论类型（内容评论 / 带联系方式评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
-  const [commentKind, setCommentKind] = useState<'content' | 'group'>('content');
+  const [commentKind, setCommentKind] = useState<'content' | 'contact'>('content');
 
   const effectiveAccountId = accountId === ALL_ACCOUNTS ? undefined : accountId;
   const allAccountsView = effectiveAccountId === undefined;
@@ -316,10 +316,10 @@ export function CuratedContentPage() {
     onError: () => message.error('洗稿触发失败'),
   });
 
-  // 评论（内容/带群）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
+  // 评论（内容/带联系方式）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
   const targetedComment = useMutation({
-    mutationFn: ({ row, withGroup }: { row: PanelCuratedContent; withGroup: boolean }) =>
-      apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withGroup }),
+    mutationFn: ({ row, withContact }: { row: PanelCuratedContent; withContact: boolean }) =>
+      apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withContact }),
     onSuccess: (res) => {
       if (res.triggered) {
         message.success('已触发评论：搜索定位目标源帖后撰写，评论文案将发飞书人审、通过才发出；结果以飞书卡片回报');
@@ -704,7 +704,7 @@ export function CuratedContentPage() {
         cancelText="取消"
         confirmLoading={targetedComment.isPending}
         onOk={() => {
-          if (commentTarget) targetedComment.mutate({ row: commentTarget, withGroup: commentKind === 'group' });
+          if (commentTarget) targetedComment.mutate({ row: commentTarget, withContact: commentKind === 'contact' });
         }}
         onCancel={() => setCommentTarget(null)}
         width={460}
@@ -725,7 +725,7 @@ export function CuratedContentPage() {
             <Radio.Group
               className="curated-comment-options"
               value={commentKind}
-              onChange={(e) => setCommentKind(e.target.value as 'content' | 'group')}
+              onChange={(e) => setCommentKind(e.target.value as 'content' | 'contact')}
             >
               <Radio
                 value="content"
@@ -737,12 +737,12 @@ export function CuratedContentPage() {
                 </span>
               </Radio>
               <Radio
-                value="group"
-                className={`curated-comment-option${commentKind === 'group' ? ' curated-comment-option--active' : ''}`}
+                value="contact"
+                className={`curated-comment-option${commentKind === 'contact' ? ' curated-comment-option--active' : ''}`}
               >
                 <span className="curated-comment-option__body">
-                  <span className="curated-comment-option__title">带群评论</span>
-                  <span className="curated-comment-option__desc">在自然评论后追加该账号的群聊信息；未配置会拒绝触发。</span>
+                  <span className="curated-comment-option__title">带联系方式评论</span>
+                  <span className="curated-comment-option__desc">在自然评论后追加该账号的联系方式；未配置会拒绝触发。</span>
                 </span>
               </Radio>
             </Radio.Group>

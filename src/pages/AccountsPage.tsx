@@ -40,17 +40,17 @@ export function AccountsPage() {
     onError: () => message.error('分组保存失败'),
   });
 
-  // 关联群聊引流码就地编辑（change account-group-chat-injection）：非乐观、verbatim（body 原样透传，不 trim）；诚实文案。
-  const groupChatCmd = useMutation({
-    mutationFn: (v: { accountId: string; groupChatInfo: string | null }) =>
-      apiPut<{ accountId: string; groupChatInfo: string | null }>(`/api/accounts/${v.accountId}/group-chat-info`, {
-        groupChatInfo: v.groupChatInfo,
+  // 关联联系方式就地编辑（change account-group-chat-injection）：非乐观、verbatim（body 原样透传，不 trim）；诚实文案。
+  const contactCmd = useMutation({
+    mutationFn: (v: { accountId: string; contactInfo: string | null }) =>
+      apiPut<{ accountId: string; contactInfo: string | null }>(`/api/accounts/${v.accountId}/contact-info`, {
+        contactInfo: v.contactInfo,
       }),
     onSuccess: (res) => {
-      message.success(res.groupChatInfo ? '已保存关联群聊引流码' : '已清除关联群聊引流码');
+      message.success(res.contactInfo ? '已保存关联联系方式' : '已清除关联联系方式');
       void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
-    onError: () => message.error('群聊引流码保存失败'),
+    onError: () => message.error('联系方式保存失败'),
   });
 
   const actions = (a: PanelAccount) => (
@@ -89,7 +89,7 @@ export function AccountsPage() {
           loading={isLoading}
           actionsColumn={actions}
           onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
-          onEditGroupChat={(accountId, groupChatInfo) => groupChatCmd.mutate({ accountId, groupChatInfo })}
+          onEditContact={(accountId, contactInfo) => contactCmd.mutate({ accountId, contactInfo })}
         />
       </Card>
     </div>
