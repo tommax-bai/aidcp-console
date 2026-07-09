@@ -27,6 +27,10 @@ const CODE_TEXT: Record<string, string> = {
   invalid_request_id: '请求标识不合法',
   invalid_group_label: '分组标签格式不合法',
   invalid_group_chat_info: '群聊引流码格式不合法',
+  // 自动群评「一码一号」拒因（content-schedule-group-comments）：云端随 bad_request 的 body.reason 下发，
+  // error 恒为 'bad_request'，故必须按 reason 映射（否则只会显「请求格式有误」看不出真因）。
+  no_group_code: '该账号未配群码，请先到「账号」页录入关联群聊引流码',
+  shared_group_code: '该群码已配到其它账号——一码一号是防关联封号的硬要求，请改用独立群码',
   account_not_found: '账号不存在',
   account_lookup_failed: '账号列表查询失败，请稍后重试',
   unknown_command: '未知操作',

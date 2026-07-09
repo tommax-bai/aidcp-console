@@ -11,6 +11,15 @@ describe('errorText（#31 服务端错误码 → 中文）', () => {
     expect(errorText(new ApiError(409, 'version_stale'))).toBe('内容已更新，请刷新后重新审批');
   });
 
+  it('自动群评一码一号拒因按 reason 映射（error 恒为 bad_request，不得吞成「请求格式有误」）', () => {
+    expect(errorText(new ApiError(400, 'bad_request', 'no_group_code'))).toBe(
+      '该账号未配群码，请先到「账号」页录入关联群聊引流码',
+    );
+    expect(errorText(new ApiError(400, 'bad_request', 'shared_group_code'))).toBe(
+      '该群码已配到其它账号——一码一号是防关联封号的硬要求，请改用独立群码',
+    );
+  });
+
   it('未知码回落 fallback（绝不把英文机器码当中文上屏）', () => {
     expect(errorText(new ApiError(500, 'wat_is_this'), '保存失败')).toBe('保存失败');
     expect(errorText(new ApiError(500, 'unmapped'))).toBe('操作失败');

@@ -143,10 +143,10 @@ export function ContentSchedulePage() {
     },
     onError: (e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(['config', 'content-schedule'], ctx.prev); // 失败弹回服务器真态
-      const msg = (e as Error).message;
-      if (msg.includes('no_group_code')) message.error('该账号未配群码，请先到「账号」页录入关联群聊引流码');
-      else if (msg.includes('shared_group_code')) message.error('该群码已配到其它账号——一码一号是防关联封号的硬要求，请改用独立群码');
-      else message.error(`保存失败：${errorText(e)}`); // #31：兜底走中文映射，不上屏英文机器码
+      // 群评一码一号拒因（no_group_code / shared_group_code）随 body.reason 下发、error 恒为 'bad_request'；
+      // 统一走 errorText 按 reason 映射（旧代码读 e.message 恒等于 'bad_request'、msg.includes 永不命中，
+      // 一码一号 / 无码的真因被吞成「请求格式有误」）。
+      message.error(`保存失败：${errorText(e)}`); // #31：兜底走中文映射，不上屏英文机器码
     },
     // 成/败都回后台对一次账（exact:true 只重取本目录、不误伤前缀子键 …/'global'）。开关已乐观翻好，此 GET 不在关键路径、用户无感。
     onSettled: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true }),
