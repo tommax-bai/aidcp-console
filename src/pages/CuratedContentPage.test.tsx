@@ -242,13 +242,13 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(await screen.findByText('参考图 1/2')).toBeTruthy();
   });
 
-  it('评论：弹窗选「带联系方式评论」→ POST comment 带 withContact:true；未配联系方式拒绝呈现中文', async () => {
+  it('评论：弹窗选「联系评论」→ POST comment 带 withContact:true；未配联系方式拒绝呈现中文', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'contact_info_missing' });
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /评\s*论/ })[0]);
     await screen.findByText('目标源帖');
-    fireEvent.click(screen.getByText('带联系方式评论'));
+    fireEvent.click(screen.getByText('联系评论'));
     fireEvent.click(screen.getByRole('button', { name: /触\s*发\s*评\s*论|触发评论/ }));
     expect(await screen.findByText(/未配置「联系方式」/)).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/comment', {

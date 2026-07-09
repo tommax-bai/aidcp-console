@@ -269,7 +269,7 @@ export function CuratedContentPage() {
   const [createTarget, setCreateTarget] = useState<PanelCuratedContent | null>(null);
   const [createMode, setCreateMode] = useState<'image' | 'text'>('image');
   const [imagePreview, setImagePreview] = useState<{ images: CuratedReferenceImage[]; index: number } | null>(null);
-  // 评论弹窗：目标行 + 评论类型（内容评论 / 带联系方式评论）。
+  // 评论弹窗：目标行 + 评论类型（内容评论 / 联系评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
   const [commentKind, setCommentKind] = useState<'content' | 'contact'>('content');
 
@@ -745,7 +745,7 @@ export function CuratedContentPage() {
                 className={`curated-comment-option${commentKind === 'contact' ? ' curated-comment-option--active' : ''}`}
               >
                 <span className="curated-comment-option__body">
-                  <span className="curated-comment-option__title">带联系方式评论</span>
+                  <span className="curated-comment-option__title">联系评论</span>
                   <span className="curated-comment-option__desc">在自然评论后追加该账号的联系方式；未配置会拒绝触发。</span>
                 </span>
               </Radio>

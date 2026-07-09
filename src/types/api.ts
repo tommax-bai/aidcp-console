@@ -854,11 +854,11 @@ export interface ContentScheduleRow {
   commentEnabled: boolean;
   /** 评论日上限；0=不自动。该时段「尝试」评论：自行搜索目标、可能 0 产出、每条需飞书人审。 */
   commentDailyCap: number;
-  /** 自动带联系方式评论开关（change content-schedule-group-comments；开启须过一码一号硬校验）。 */
+  /** 自动联系评论开关（change content-schedule-group-comments；开启须过一码一号硬校验）。 */
   contactCommentEnabled: boolean;
-  /** 带联系方式评论每日自动尝试上限（硬 ≤10、建议 ≤3；被拒/无目标也占额度）。 */
+  /** 联系评论每日自动尝试上限（硬 ≤10、建议 ≤3；被拒/无目标也占额度）。 */
   contactCommentDailyCap: number;
-  /** 该账号是否已配联系方式（带联系方式评论开关前置徽标）。 */
+  /** 该账号是否已配联系方式（联系评论开关前置徽标）。 */
   hasContactInfo: boolean;
   maskSource: 'override' | 'global';
   hasOverrideMask: boolean;

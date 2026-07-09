@@ -84,7 +84,7 @@ function renderPage(): void {
   );
 }
 
-/** 渲染并按 DOM（=列顺序）返回单行表格的开关：0=总开关 1=自动发帖 2=自动评论 3=自动带联系方式评论。 */
+/** 渲染并按 DOM（=列顺序）返回单行表格的开关：0=总开关 1=自动发帖 2=自动评论 3=自动联系评论。 */
 async function switches(): Promise<HTMLElement[]> {
   renderPage();
   return screen.findAllByRole('switch'); // 等表格渲染出开关（catalog 从 loading→data）

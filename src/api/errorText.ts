@@ -27,7 +27,7 @@ const CODE_TEXT: Record<string, string> = {
   invalid_request_id: '请求标识不合法',
   invalid_group_label: '分组标签格式不合法',
   invalid_contact_info: '联系方式格式不合法',
-  // 自动带联系方式评论「必须先配联系方式」拒因（content-schedule-group-comments）：云端随 bad_request 的 body.reason 下发，
+  // 自动联系评论「必须先配联系方式」拒因（content-schedule-group-comments）：云端随 bad_request 的 body.reason 下发，
   // error 恒为 'bad_request'，故必须按 reason 映射（否则只会显「请求格式有误」看不出真因）。
   // 注：联系方式「共用」自 loosen-group-comment-shared-code 起不再是 error（已放行 + 前端警告），故此处无共用拒因映射。
   no_contact_info: '该账号未配联系方式，请先到「账号」页录入联系方式',

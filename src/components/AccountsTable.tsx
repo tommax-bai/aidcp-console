@@ -136,7 +136,7 @@ export function AccountsTable({
   /**
    * 可选：关联联系方式就地编辑保存回调（change account-group-chat-injection）。
    * 传入 →「联系方式」列点击即变多行文本框、失焦保存（**verbatim，不 trim 内容**；全空白=清空，回 null）；
-   * 不传 → 该列只读（只读视图不受影响）。带联系方式评论时该联系方式注入评论。
+   * 不传 → 该列只读（只读视图不受影响）。联系评论时该联系方式注入评论。
    */
   onEditContact?: (accountId: string, contactInfo: string | null) => void;
 }) {
