@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Input, Space, Table, Tag, Typography } from 'antd';
+import { AutoComplete, Input, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
@@ -55,13 +55,18 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '账号',
     key: 'account',
+    // 账号名是主标识、原为无宽度弹性列被右侧诸列挤到折行；给固定宽度 + 省略号截断（避免换行的表格设计标准），过长悬停看全名。
+    width: 200,
+    ellipsis: { showTitle: false },
     // 账号名可点：仅小红书账号跳其站外主页（accountId = 登录派生的 xhs userid）；其它平台回落纯文本，绝不出死链。
-    render: (_, r) =>
-      r.platform === 'xiaohongshu' ? (
-        <ProfileLink userId={r.accountId}>{accountDisplayName(r.nickname, r.label, r.accountId)}</ProfileLink>
+    render: (_, r) => {
+      const name = accountDisplayName(r.nickname, r.label, r.accountId);
+      return r.platform === 'xiaohongshu' ? (
+        <ProfileLink userId={r.accountId}>{name}</ProfileLink>
       ) : (
-        <span>{accountDisplayName(r.nickname, r.label, r.accountId)}</span>
-      ),
+        <span title={name}>{name}</span>
+      );
+    },
   },
   {
     title: '人设',
@@ -85,7 +90,7 @@ const columns: ColumnsType<PanelAccount> = [
     // 列头「状态」= 运营开关（运行中 / 运营已暂停），与验证码暂停、风控态相互独立。
     title: '状态',
     dataIndex: 'operatorStatus',
-    width: 112,
+    width: 90,
     // 运营暂停态，区别于验证码暂停（不共用一个含糊 paused 徽标）
     render: (v: 'active' | 'paused') =>
       v === 'paused' ? <Tag>{OPERATOR_STATUS_LABEL.paused}</Tag> : <Tag color="green">{OPERATOR_STATUS_LABEL.active}</Tag>,
@@ -161,37 +166,55 @@ export function AccountsTable({
     if (draftChat !== prev) onEditGroupChat?.(r.accountId, draftChat.trim() === '' ? null : draftChat);
   };
 
+  // 已有分组备选（去重 + 排序）：供就地编辑下拉「选已存在的分组」，同时仍可自由输入新名（AutoComplete）。
+  const groupOptions = Array.from(
+    new Set(accounts.map((a) => a.groupLabel?.trim()).filter((g): g is string => !!g)),
+  )
+    .sort((a, b) => a.localeCompare(b, 'zh'))
+    .map((g) => ({ value: g }));
+
   const beginEdit = (r: PanelAccount) => {
     setEditingId(r.accountId);
     setDraft(r.groupLabel ?? '');
   };
-  // 非乐观：仅当值变化才下发（trim 后空 = 清空 → null）；提交即退出编辑，回车+失焦的 double-commit 由 editingId 守卫幂等。
-  const commit = (r: PanelAccount) => {
+  // 非乐观：仅当值变化才下发（trim 后空 = 清空 → null）；提交即退出编辑，回车+失焦+选项点击的 double-commit 由 editingId 守卫幂等。
+  const commitGroup = (r: PanelAccount, raw: string) => {
     if (editingId !== r.accountId) return;
     setEditingId(null);
-    const next = draft.trim();
+    const next = raw.trim();
     const prev = r.groupLabel ?? '';
     if (next !== prev) onEditGroup?.(r.accountId, next === '' ? null : next);
   };
+  const commit = (r: PanelAccount) => commitGroup(r, draft);
 
   // 「分组」列：传 onEditGroup → 点击即编辑（复用通知联系人页 .editable-cell 模式）；否则纯文本（read-only 零回归）。
   const groupColumn: ColumnsType<PanelAccount>[number] = onEditGroup
     ? {
         title: '分组',
         key: 'groupLabel',
-        width: 100,
+        width: 80,
         render: (_, r) =>
           editingId === r.accountId ? (
-            <Input
+            // 点击即下拉选「已存在分组」，也可直接键入新名；选项点击→即刻提交，回车/失焦兜底提交。
+            <AutoComplete
               size="small"
               autoFocus
               value={draft}
-              maxLength={64}
-              onChange={(e) => setDraft(e.target.value)}
+              options={groupOptions}
+              // 输入即过滤备选（大小写不敏感 contains）；无匹配则只保留自由输入。
+              filterOption={(input, option) =>
+                (option?.value ?? '').toLowerCase().includes(input.trim().toLowerCase())
+              }
+              // 下拉不强制与窄列同宽，保证分组名可读（列已收窄到 80）。
+              popupMatchSelectWidth={false}
+              onChange={(v) => setDraft(v.slice(0, 64))}
+              onSelect={(v: string) => commitGroup(r, v)}
               onBlur={() => commit(r)}
-              onPressEnter={() => commit(r)}
-              placeholder="分组名，留空清除"
-              style={{ fontSize: 12 }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit(r);
+              }}
+              placeholder="选择或输入分组名，留空清除"
+              style={{ width: '100%', fontSize: 12 }}
             />
           ) : (
             <div className="editable-cell" onClick={() => beginEdit(r)} title="点击编辑">
@@ -203,7 +226,7 @@ export function AccountsTable({
             </div>
           ),
       }
-    : { title: '分组', dataIndex: 'groupLabel', width: 100, render: (v: string | null) => v ?? dash };
+    : { title: '分组', dataIndex: 'groupLabel', width: 80, render: (v: string | null) => v ?? dash };
 
   const baseCols: ColumnsType<PanelAccount> = columns.map((c) =>
     (c as { dataIndex?: string }).dataIndex === 'groupLabel' ? groupColumn : c,
