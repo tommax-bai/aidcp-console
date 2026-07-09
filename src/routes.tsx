@@ -7,6 +7,7 @@ import {
   DashboardOutlined,
   FileTextOutlined,
   FundOutlined,
+  ApartmentOutlined,
   IdcardOutlined,
   NotificationOutlined,
   RobotOutlined,
@@ -18,6 +19,7 @@ import { ContentPage } from './pages/ContentPage';
 import { ContentSchedulePage } from './pages/ContentSchedulePage';
 import { CuratedContentPage } from './pages/CuratedContentPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { FacebookGroupsPage } from './pages/FacebookGroupsPage';
 import { NotificationContactsPage } from './pages/NotificationContactsPage';
 import { NotificationRoutesPage } from './pages/NotificationRoutesPage';
 import { PersonaPage } from './pages/PersonaPage';
@@ -53,6 +55,7 @@ export interface AppRoute {
 export const APP_ROUTES: AppRoute[] = [
   { path: '/', element: <DashboardPage />, navLabel: '数据', navIcon: <DashboardOutlined />, showInNav: true },
   { path: '/accounts', element: <AccountsPage />, navLabel: '账号', navIcon: <TeamOutlined />, showInNav: true },
+  { path: '/facebook-groups', element: <FacebookGroupsPage />, navLabel: '群组', navIcon: <ApartmentOutlined />, showInNav: true },
   { path: '/content-schedule', element: <ContentSchedulePage />, navLabel: '排期', navIcon: <ClockCircleOutlined />, showInNav: true },
   { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, showInNav: true },
   { path: '/curated', element: <CuratedContentPage />, navLabel: '精选', navIcon: <BulbOutlined />, showInNav: true },

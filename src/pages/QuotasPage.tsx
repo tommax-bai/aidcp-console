@@ -27,7 +27,7 @@ const QUOTA_MAX = 100_000;
 // 那会与「全站绿=正常状态」语义冲突）。公用枚举无展示排序，故本页仅保留 order 附加。
 const TIER_ORDER: Record<QuotaTier, number> = { conservative: 1, normal: 2, aggressive: 3 };
 const ACTION_ORDER: Record<QuotaAction, number> = {
-  view: 1, like: 2, collect: 3, comment: 4, comment_like: 5, follow: 6, publish: 7,
+  view: 1, like: 2, collect: 3, comment: 4, comment_like: 5, join_group: 6, follow: 7, publish: 8,
 };
 
 const rowKey = (r: { tier: string; action: string }) => `${r.tier}:${r.action}`;

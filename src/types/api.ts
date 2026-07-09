@@ -583,7 +583,7 @@ export interface PersonaDetailView {
 /** 限额档位（三档）。 */
 export type QuotaTier = 'conservative' | 'normal' | 'aggressive';
 /** 受限动作（与 cloud RISK_ACTIONS 一致）。 */
-export type QuotaAction = 'view' | 'like' | 'collect' | 'comment' | 'follow' | 'publish' | 'comment_like';
+export type QuotaAction = 'view' | 'like' | 'collect' | 'comment' | 'follow' | 'publish' | 'comment_like' | 'join_group';
 
 /** 单 (tier,action) 三窗口生效数字 + 来源/审计（GET /api/quotas 形状）。 */
 export interface QuotaConfigRow {
@@ -601,6 +601,79 @@ export interface QuotaConfigRow {
 /** GET /api/quotas 形状。 */
 export interface QuotaConfigCatalog {
   quotas: QuotaConfigRow[];
+}
+
+export type FacebookGroupJoinGating = 'unknown' | 'instant' | 'gated';
+export type FacebookGroupMembershipStatus =
+  | 'assigned'
+  | 'joining'
+  | 'joined'
+  | 'pending'
+  | 'gated'
+  | 'no_button'
+  | 'checkpoint'
+  | 'failed'
+  | 'left';
+
+export interface FacebookGroupTargetRow {
+  groupUrl: string;
+  groupName: string | null;
+  joinGating: FacebookGroupJoinGating;
+  priority: number;
+  enabled: boolean;
+  importBatch: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FacebookGroupTargetListRow extends FacebookGroupTargetRow {
+  accountId: string | null;
+  membershipStatus: FacebookGroupMembershipStatus | null;
+  joinedAt: string | null;
+  lastAttemptAt: string | null;
+  lastReason: string | null;
+  lastCommentedAt: string | null;
+  commentsTotal: number;
+}
+
+export interface FacebookGroupTargetList {
+  items: FacebookGroupTargetListRow[];
+  total: number;
+}
+
+export interface FacebookGroupImportResult {
+  imported: number;
+  duplicate: number;
+  invalid: number;
+  rows: FacebookGroupTargetRow[];
+}
+
+export interface FacebookGroupAccountProgress {
+  accountId: string;
+  assigned: number;
+  joining: number;
+  joined: number;
+  pending: number;
+  gated: number;
+  failed: number;
+  lastJoinedAt: string | null;
+  lastCommentedAt: string | null;
+}
+
+export interface FacebookGroupMembershipRow {
+  accountId: string;
+  groupUrl: string;
+  status: FacebookGroupMembershipStatus;
+  assignedAt: string | null;
+  joinedAt: string | null;
+  lastAttemptAt: string | null;
+  attempts: number;
+  lastReason: string | null;
+  lastCommentedAt: string | null;
+  cooldownUntil: string | null;
+  commentsTotal: number;
+  leftConfirmations: number;
+  updatedAt: string;
 }
 
 // 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。与 cloud SessionLimitView 手动对齐。

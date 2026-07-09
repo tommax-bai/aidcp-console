@@ -124,6 +124,14 @@ export function apiPut<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 /** DELETE（精选内容后台管理 change curated-content-admin-page）：账号等约束走 query string。 */
 export function apiDelete<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' });
