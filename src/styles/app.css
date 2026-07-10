@@ -102,6 +102,72 @@ body {
   gap: var(--aidcp-space-4);
 }
 
+/* Facebook group add/import is one framed operational tool inside the target list. */
+.facebook-group-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-3);
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: #fafafa;
+}
+.facebook-group-import__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aidcp-space-3);
+}
+.facebook-group-import__single {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) minmax(150px, 1fr) minmax(170px, 1.1fr) minmax(150px, 1fr) auto;
+  gap: var(--aidcp-space-2);
+  align-items: center;
+}
+.facebook-group-import__csv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-2);
+}
+.facebook-group-import__csv .ant-upload-wrapper .ant-upload-drag {
+  min-height: 116px;
+  padding: var(--aidcp-space-3);
+  background: var(--aidcp-background);
+}
+.facebook-group-import__csv .ant-upload-drag-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--aidcp-space-1);
+}
+.facebook-group-import__upload-icon {
+  font-size: 24px;
+  color: var(--aidcp-muted-foreground);
+}
+.facebook-group-import__csv-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .facebook-group-import__single {
+    grid-template-columns: minmax(260px, 2fr) minmax(150px, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .facebook-group-import__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .facebook-group-import__single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .facebook-group-import__single .ant-btn {
+    width: 100%;
+  }
+}
+
 /* ======================================================================
  * 外壳：顶部导航 + 居中内容（移植 isales DefaultLayout / TopNav）
  * ====================================================================== */

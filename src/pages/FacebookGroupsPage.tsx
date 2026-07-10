@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Card, Empty, Input, Select, Space, Switch, Table, Tag, Typography } from 'antd';
+import { App, Button, Card, Empty, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { LinkOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { LinkOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { apiGet, apiPatch, apiPost } from '../api/client';
@@ -17,7 +17,8 @@ import type {
   FacebookGroupTargetListRow,
   FacebookGroupTargetRow,
 } from '../types/api';
-import { parseFacebookGroupImportText } from './facebookGroupImportParser';
+import { FacebookGroupImportPanel, type FacebookGroupImportMode } from './FacebookGroupImportPanel';
+import type { FacebookGroupImportItem } from './facebookGroupImportParser';
 import { facebookGroupListPath } from './facebookGroupsQuery';
 
 type StatusFilter = 'all' | 'unassigned' | FacebookGroupMembershipStatus;
@@ -86,7 +87,6 @@ export function FacebookGroupsPage() {
   const [park, setPark] = useState<string | undefined>();
   const [direction, setDirection] = useState<string | undefined>();
   const [page, setPage] = useState(1);
-  const [importText, setImportText] = useState('');
 
   const groups = useQuery({
     queryKey: ['facebook', 'groups', status, enabled, region, park, direction, page],
@@ -115,14 +115,13 @@ export function FacebookGroupsPage() {
   };
 
   const importGroups = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: { items: FacebookGroupImportItem[]; mode: FacebookGroupImportMode }) =>
       apiPost<FacebookGroupImportResult>('/api/facebook/groups/import', {
-        items: parseFacebookGroupImportText(importText),
-        importBatch: `console-${dayjs().format('YYYYMMDD-HHmmss')}`,
+        items: input.items,
+        importBatch: `console-${input.mode}-${dayjs().format('YYYYMMDD-HHmmss')}`,
       }),
     onSuccess: (res) => {
       message.success(`已导入 ${res.imported} 个，更新 ${res.updated ?? 0} 个，重复 ${res.duplicate} 个，无效 ${res.invalid} 个`);
-      setImportText('');
       setPage(1);
       invalidateGroups();
     },
@@ -272,23 +271,12 @@ export function FacebookGroupsPage() {
         }
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Space.Compact style={{ width: '100%' }}>
-            <Input.TextArea
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              autoSize={{ minRows: 3, maxRows: 6 }}
-              placeholder="粘贴 Facebook 群组 URL，或从表格复制区域/园区/方向宽表"
-            />
-            <Button
-              type="primary"
-              icon={<UploadOutlined />}
-              loading={importGroups.isPending}
-              disabled={!importText.trim()}
-              onClick={() => importGroups.mutate()}
-            >
-              导入
-            </Button>
-          </Space.Compact>
+          <FacebookGroupImportPanel
+            facets={facets.data}
+            facetsLoading={facets.isLoading}
+            importing={importGroups.isPending}
+            onImport={(items, mode) => importGroups.mutateAsync({ items, mode }).then(() => undefined)}
+          />
 
           <Space wrap>
             <Select<StatusFilter> value={status} options={statusOptions} style={{ width: 150 }} onChange={(v) => { setStatus(v); setPage(1); }} />
