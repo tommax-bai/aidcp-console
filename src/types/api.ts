@@ -235,6 +235,8 @@ export interface CaptchaAssistIncident {
     sent: number;
     actor: string;
   };
+  /** 实时抓帧窗口截止（change captcha-assist-live-snapshot）：`Date.now() < liveUntil` 视为实时中，用于亮「实时」指示。 */
+  liveUntil?: number;
 }
 
 export interface DashboardSummary {
