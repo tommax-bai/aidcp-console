@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { App as AntApp, Alert, Button, Empty, Result, Space, Spin, Tag, Typography } from 'antd';
 import { ClearOutlined, ExportOutlined, ReloadOutlined, SendOutlined } from '@ant-design/icons';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -58,6 +58,30 @@ export function CaptchaAssistPage() {
   // 显示画面、不冲掉已选点；提交/清空/看最新才解冻。落点坐标始终映射到这张被 pin 的帧。
   const [pinned, setPinned] = useState<CaptchaAssistIncident['snapshot'] | null>(null);
 
+  // 运营真实鼠标轨迹采集（change captcha-assist-trajectory-replay）：与落点同一 stage rect 基准，
+  // 归一化 {x,y}+相对首样本毫秒 t；pointerdown 时把点击位置也入样本并记 clicks 下标（保证每点有对应样本、
+  // 下标合法）。节流 + 上限有界，随 /click 一并上送；边缘无/无效轨迹时回落合成路径。
+  const samplesRef = useRef<{ x: number; y: number; t: number }[]>([]);
+  const clicksRef = useRef<number[]>([]);
+  const startRef = useRef<number | null>(null);
+  const lastSampleAtRef = useRef(0);
+  const MOVE_SAMPLE_CAP = 200; // + 至多 2 个点击样本 < 边缘 250 上限
+  const MOVE_SAMPLE_THROTTLE_MS = 40;
+  // 太短的轨迹（秒点无移动）不上送——回放会近瞬移、反而不如合成路径拟人。边缘无轨迹即走合成。
+  const MIN_TRAJECTORY_SAMPLES = 5;
+
+  const resetTrajectory = () => {
+    samplesRef.current = [];
+    clicksRef.current = [];
+    startRef.current = null;
+    lastSampleAtRef.current = 0;
+  };
+  const relTime = (): number => {
+    const now = performance.now();
+    if (startRef.current == null) startRef.current = now;
+    return Math.max(0, Math.round(now - startRef.current));
+  };
+
   const endpoint = useMemo(
     () => `/api/captcha-assist/${encodeURIComponent(incidentId)}`,
     [incidentId],
@@ -102,10 +126,17 @@ export function CaptchaAssistPage() {
   const newerFrameAvailable = Boolean(frozen && liveSnapshot && pinned && liveSnapshot.snapshotId !== pinned.snapshotId);
   const liveActive = Boolean(incident?.liveUntil && Date.now() < incident.liveUntil);
 
-  // 解冻并采纳最新帧：清点 + 取消 pin（不发服务端请求，直接用已轮询到的最新帧）。
+  // 未冻结时换帧 → 重置轨迹采集（对新帧重新开始）。冻结期 displaySnapshot 恒定、不触发。
+  useEffect(() => {
+    if (points.length === 0) resetTrajectory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displaySnapshot?.snapshotId]);
+
+  // 解冻并采纳最新帧：清点 + 取消 pin + 重置轨迹（不发服务端请求，直接用已轮询到的最新帧）。
   const adoptLatest = () => {
     setPoints([]);
     setPinned(null);
+    resetTrajectory();
   };
 
   const onImageClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -117,7 +148,24 @@ export function CaptchaAssistPage() {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return;
     // 放下第 1 个点即冻结当前显示帧（此后落点都映射到这张帧）。
     if (points.length === 0 && liveSnapshot) setPinned(liveSnapshot);
+    // 点击位置入样本，并记该点的 clicks 下标（每点必有对应样本、下标恒合法）。
+    samplesRef.current.push({ x, y, t: relTime() });
+    clicksRef.current.push(samplesRef.current.length - 1);
     setPoints((prev) => (prev.length >= 2 ? prev : [...prev, { x, y }]));
+  };
+
+  // 采集鼠标移动轨迹（节流 + 上限）：仅在可点态、同一 stage rect 基准。
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!canClick) return;
+    if (samplesRef.current.length >= MOVE_SAMPLE_CAP) return;
+    const now = performance.now();
+    if (now - lastSampleAtRef.current < MOVE_SAMPLE_THROTTLE_MS) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return;
+    lastSampleAtRef.current = now;
+    samplesRef.current.push({ x, y, t: relTime() });
   };
 
   const refresh = async () => {
@@ -140,17 +188,25 @@ export function CaptchaAssistPage() {
     if (!displaySnapshot || points.length === 0) return;
     setBusy(true);
     setError(null);
+    // 轨迹随 click 上送：仅当每个点都有对应样本（clicks 长度===点数）且有样本时才带；否则不带、边缘走合成。
+    const samples = samplesRef.current;
+    const clicks = clicksRef.current;
+    const trajectory =
+      samples.length >= MIN_TRAJECTORY_SAMPLES && clicks.length === points.length
+        ? { v: 1 as const, samples, clicks }
+        : undefined;
     try {
       const res = await fetch(withToken(`${endpoint}/click`, token), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ snapshotId: displaySnapshot.snapshotId, points }),
+        body: JSON.stringify({ snapshotId: displaySnapshot.snapshotId, points, ...(trajectory ? { trajectory } : {}) }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const body = (await res.json()) as { incident: CaptchaAssistIncident };
       setIncident(body.incident);
       setPoints([]);
       setPinned(null);
+      resetTrajectory();
       message.success('已提交');
       window.setTimeout(() => void load(), 1200);
     } catch (err) {
@@ -228,7 +284,7 @@ export function CaptchaAssistPage() {
 
       <section className="captcha-assist-workbench">
         {displaySnapshot ? (
-          <div className="captcha-assist-stage" onClick={onImageClick}>
+          <div className="captcha-assist-stage" onClick={onImageClick} onPointerMove={onPointerMove}>
             <img src={imageSrc} alt="captcha challenge" draggable={false} />
             {points.map((point, index) => (
               <span

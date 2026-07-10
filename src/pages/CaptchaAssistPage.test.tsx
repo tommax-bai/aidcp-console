@@ -152,4 +152,53 @@ describe('CaptchaAssistPage', () => {
     await waitFor(() => expect(screen.queryByText('画面已更新，挑战可能已变')).toBeNull());
     expect(screen.getByText('点位 0/2')).toBeTruthy();
   });
+
+  // change captcha-assist-trajectory-replay：移动+点击的轨迹随 /click 上送。
+  it('采集鼠标移动轨迹并随 click 上送（clicks 对齐落点）', async () => {
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 50)); // 每次前进 50ms > 节流 40ms
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/click')) {
+        return new Response(JSON.stringify({ ok: true, sent: 1, incident: { ...incident, status: 'click_pending' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ incident }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = renderPage();
+    await screen.findByText('待处理');
+    const stage = view.container.querySelector('.captcha-assist-stage') as HTMLDivElement;
+    stage.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100, x: 0, y: 0, toJSON: () => {} }) as DOMRect;
+
+    // 6 次移动（各不同坐标）+ 1 次点击。jsdom 的 fireEvent.pointerMove 不带 clientX，
+    // 用真实 MouseEvent('pointermove') 派发以携带坐标。
+    for (let i = 0; i < 6; i++) {
+      fireEvent(stage, new MouseEvent('pointermove', { clientX: 20 + i * 10, clientY: 30 + i * 5, bubbles: true }));
+    }
+    fireEvent.click(stage, { clientX: 50, clientY: 75 });
+    fireEvent.click(screen.getByRole('button', { name: /提交/ }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/click'))).toBe(true));
+    const clickCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/click'))!;
+    const body = JSON.parse(String((clickCall[1] as RequestInit).body)) as {
+      snapshotId: string;
+      points: unknown[];
+      trajectory?: { v: number; samples: { x: number; y: number; t: number }[]; clicks: number[] };
+    };
+    expect(body.trajectory).toBeTruthy();
+    expect(body.trajectory!.v).toBe(1);
+    expect(body.trajectory!.samples.length).toBeGreaterThanOrEqual(5);
+    // clicks 长度 === 落点数，且下标指向真实样本（点击样本在末尾）。
+    expect(body.trajectory!.clicks.length).toBe(1);
+    expect(body.trajectory!.clicks[0]).toBe(body.trajectory!.samples.length - 1);
+    // t 单调非降、归一坐标在 [0,1]。
+    const ts = body.trajectory!.samples.map((s) => s.t);
+    expect(ts.every((t, i) => i === 0 || t >= ts[i - 1])).toBe(true);
+    expect(body.trajectory!.samples.every((s) => s.x >= 0 && s.x <= 1 && s.y >= 0 && s.y <= 1)).toBe(true);
+  });
 });
