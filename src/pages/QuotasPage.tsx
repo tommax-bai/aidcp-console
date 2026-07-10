@@ -32,7 +32,7 @@ const ACTION_ORDER: Record<QuotaAction, number> = {
 
 const rowKey = (r: { tier: string; action: string }) => `${r.tier}:${r.action}`;
 
-/** 单场互动预算六项 + 中文标签（顺序即展示顺序，与 cloud SessionInteractionBudget 对齐）。 */
+/** 单场互动预算七项 + 中文标签（顺序即展示顺序，与 cloud SessionInteractionBudget 对齐）。 */
 const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: string }> = [
   { key: 'likes', label: '点赞' },
   { key: 'collects', label: '收藏' },
@@ -40,6 +40,7 @@ const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: stri
   { key: 'searches', label: '搜索' },
   { key: 'comments', label: '评论' },
   { key: 'comment_likes', label: '评论赞' },
+  { key: 'join_groups', label: '加群' },
 ];
 
 /** 单行全局表的稳定 key（全局配置只有一行）。 */
@@ -184,6 +185,7 @@ export function QuotasPage() {
     searches: null,
     comments: null,
     comment_likes: null,
+    join_groups: null,
   });
 
   const openEditSL = (row: SessionLimitView) => {
@@ -522,7 +524,7 @@ export function QuotasPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="配置对所有账号生效的全局单场会话时长（分钟）与单场互动预算（点赞/收藏/关注/搜索/评论/评论赞）。改完下场会话即生效（热加载、无需重启）。未配置时用系统内置默认（= 当前真生效）。此项原按账号，现已收敛为全局通用单例。"
+          message="配置对所有账号生效的全局单场会话时长（分钟）与单场互动预算（点赞/收藏/关注/搜索/评论/评论赞/加群）。改完下场会话即生效（热加载、无需重启）。未配置时用系统内置默认（= 当前真生效）。此项原按账号，现已收敛为全局通用单例。"
         />
         {sl.isLoading || !sl.data ? (
           <Skeleton active />
@@ -691,6 +693,7 @@ export function QuotasPage() {
             searches: slBudget.searches as number,
             comments: slBudget.comments as number,
             comment_likes: slBudget.comment_likes as number,
+            join_groups: slBudget.join_groups as number,
           })
         }
         okText="保存"

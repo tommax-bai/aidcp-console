@@ -79,7 +79,7 @@ export function usePacingConfig() {
   });
 }
 
-/** 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。时长 + 六项互动预算 + 审计；对所有账号生效。 */
+/** 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。时长 + 七项互动预算 + 审计；对所有账号生效。 */
 export function useSessionLimits() {
   return useQuery({
     queryKey: ['config', 'session-limits'],

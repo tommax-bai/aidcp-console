@@ -678,7 +678,7 @@ export interface FacebookGroupMembershipRow {
 
 // 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。与 cloud SessionLimitView 手动对齐。
 
-/** 单场互动预算（六项，与 cloud SessionInteractionBudget 一致）。 */
+/** 单场互动预算（七项，与 cloud SessionInteractionBudget 一致）。 */
 export interface SessionInteractionBudget {
   likes: number;
   collects: number;
@@ -686,6 +686,7 @@ export interface SessionInteractionBudget {
   searches: number;
   comments: number;
   comment_likes: number;
+  join_groups: number;
 }
 
 /** 全局单场上限生效值 + 来源/审计（GET /api/session-limits 形状）。对所有账号生效。 */

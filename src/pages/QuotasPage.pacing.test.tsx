@@ -47,7 +47,7 @@ const PACING_ROWS: PacingConfigRow[] = [
 
 const SESSION_LIMITS = {
   maxDurationMin: 30,
-  budget: { likes: 5, collects: 3, follows: 2, searches: 4, comments: 2, comment_likes: 2 },
+  budget: { likes: 5, collects: 3, follows: 2, searches: 4, comments: 2, comment_likes: 2, join_groups: 1 },
   collectSaveLikeDenom: 3,
   followFansDenom: 8,
   activeWeekMask: null,
@@ -133,6 +133,8 @@ describe('QuotasPage 节奏兜底块', () => {
 
   it('渲染每 op 生效值 + 已覆盖/系统默认 Tag', async () => {
     renderPage();
+
+    expect(await screen.findByText('加群')).toBeTruthy();
 
     const actionTr = await pacingRow('互动动作');
     expect(within(actionTr).getByText('1500')).toBeTruthy();
