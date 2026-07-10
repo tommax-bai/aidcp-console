@@ -125,7 +125,8 @@ describe('RolesPage 枚举漂移', () => {
     state.roles = [baseRole, visionRole];
     renderPage();
 
-    const tr = await roleRow('封面形态感知');
+    // CoverFormSensor 经 console 侧 ROLE_NAME_OVERRIDE 归一为「封面·形态感知」（删原括号内实现细节）。
+    const tr = await roleRow('封面·形态感知');
     // 类型列 = KIND_LABEL['vision']；当前生效模型列内 = SOURCE_TAG['vision']。二者旧代码都会 throw。
     expect(within(tr).getByText('视觉模型')).toBeTruthy();
     expect(within(tr).getByText('视觉全局')).toBeTruthy();
@@ -167,11 +168,12 @@ describe('RolesPage 使用阶段 tab 分组', () => {
     ];
     renderPage();
 
-    // 四个 tab 表头带计数；撰写含 comment_composer + 兜底的未来发布角色 = 2。
-    expect(await screen.findByText('初始化（1）')).toBeTruthy();
-    expect(screen.getByText('浏览（1）')).toBeTruthy();
-    expect(screen.getByText('互动（1）')).toBeTruthy();
-    expect(screen.getByText('撰写（2）')).toBeTruthy();
+    // 四个 tab 表头带计数（计数徽标化后，全角括号计数移到 label 的 title 供无障碍/测试定位）；
+    // 撰写含 comment_composer + 兜底的未来发布角色 = 2。
+    expect(await screen.findByTitle('初始化（1）')).toBeTruthy();
+    expect(screen.getByTitle('浏览（1）')).toBeTruthy();
+    expect(screen.getByTitle('互动（1）')).toBeTruthy();
+    expect(screen.getByTitle('撰写（2）')).toBeTruthy();
     // forceRender 下所有 tab 行都在 DOM：兜底的未知 publish 角色不被静默丢弃。
     expect(await screen.findByText('未来发布角色')).toBeTruthy();
   });

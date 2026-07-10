@@ -19,22 +19,52 @@ import type {
   RolePromptView,
 } from '../types/api';
 
-const GROUP_LABEL: Record<RoleConfigRow['group'], string> = { browse: '浏览', publish: '发布' };
 const KIND_LABEL: Record<RoleConfigRow['llmKind'], { text: string; color: string }> = {
   text: { text: '文本模型', color: 'blue' },
   image: { text: '图像模型', color: 'purple' },
   vision: { text: '视觉模型', color: 'geekblue' },
   none: { text: '不调模型', color: 'default' },
 };
-// 分类 key → 展示名/排序（UI 标签，与 cloud role-catalog CATEGORY_CATALOG 一致；可编辑分类默认仍以 API 为准）。
+// 分类 key → 展示名/排序（console 侧短名）。
+// 刻意与 cloud CATEGORY_CATALOG 的长名（「浏览 · 判定类」…）分道：本页把「生命周期阶段」交给上方 tab
+// （初始化/浏览/互动/撰写），分类只表达「模型任务类型」这条正交轴，故剥掉会与 tab 撞词的「浏览/发布」域前缀，
+// 只留纯任务类型词。全站分类叫法以此为准（顶部「分类默认模型」表 + 行内分类均走这里），云端返回的
+// displayName 仅作未知分类的兜底。
 const CATEGORY_META: Record<string, { label: string; order: number }> = {
-  browse_judge: { label: '浏览 · 判定类', order: 1 },
-  browse_compose: { label: '浏览 · 撰写改写类', order: 2 },
-  publish_create: { label: '发布 · 生成规划类', order: 3 },
-  publish_gate: { label: '发布 · 分析评审类', order: 4 },
+  browse_judge: { label: '判定类', order: 1 },
+  browse_compose: { label: '文案类', order: 2 },
+  publish_create: { label: '创作类', order: 3 },
+  publish_gate: { label: '评审类', order: 4 },
   image: { label: '图像类', order: 5 },
 };
 const categoryLabel = (key: string) => CATEGORY_META[key]?.label ?? key;
+
+// 角色显示名 console 侧归一（唯一权威 = 本页；云端 role-config-facade 仅透传 displayName、别处不消费）：
+// 只登记「名字需改」的 roleId，未列出的优雅回落 API displayName（新角色不漏不崩）。
+// 归一规则：① 分隔符统一为无空格中点「·」，只给「有名的多步管线 / 平台域」前缀（建号·/精选准入·/保真洗稿·/
+// 配图·/封面·/评论·/Facebook·），单一用途角色不加；② 显示名禁塞实现细节（删「（模型经 env 配置）」「（张数+主题）」
+// 「（主题→万相prompt）」「（依定稿）」）；③ 二元 go/no-go 结论统一「…判定」、删口语「是否/值得」前缀。
+const ROLE_NAME_OVERRIDE: Record<string, string> = {
+  'browse:concept_extractor': '笔记概念抽取',
+  'browse:comment_reviewer': '评论区展开判定',
+  'browse:author_evaluator': '作者主页访问判定',
+  'browse:comment_target_picker': '评论·目标笔记甄选',
+  'browse:comment_appraiser': '评论价值判定',
+  'browse:facebook_group_join_judge': 'Facebook·加群判定',
+  'browse:comment_de_ai_flavor': '评论去AI味改写',
+  'publish:ContentScout': '选题侦察',
+  'publish:CategoryClassifier': '配图·品类判定',
+  'publish:CoverFormSensor': '封面·形态感知',
+  'publish:CoverCardWriter': '封面·文字卡文案',
+  'publish:ImageSetPlanner': '配图·选题规划',
+  'publish:ImagePromptComposer': '配图·指令生成',
+  'publish:ContentCleaner': '正文去AI味改写',
+  'publish:ImageGenerator': '配图·生成执行',
+  'publish:TopicGenerator': '话题生成',
+  'publish:TopicEvaluator': '话题相关性评估',
+};
+const roleDisplayName = (row: Pick<RoleConfigRow, 'roleId' | 'displayName'>) =>
+  ROLE_NAME_OVERRIDE[row.roleId] ?? row.displayName;
 
 // 角色「使用阶段」tab（纯前端展示分组，与云端 category 分类正交、只在此维护）：
 // 初始化=建号/任务起点，浏览=读与判，互动=点赞/评论/关注决策，撰写=评论撰写 + 整条发布管线。
@@ -289,7 +319,11 @@ export function RolesPage() {
   const sortedRoles = data?.roles ?? [];
 
   const catColumns: ColumnsType<CategoryConfigRow> = [
-    { title: '分类', dataIndex: 'displayName', render: (n: string) => <strong>{n}</strong> },
+    {
+      title: '分类',
+      dataIndex: 'categoryId',
+      render: (_id: string, row) => <strong>{CATEGORY_META[row.categoryId]?.label ?? row.displayName}</strong>,
+    },
     {
       title: '分类默认模型',
       dataIndex: 'effectiveModel',
@@ -322,27 +356,27 @@ export function RolesPage() {
 
   const columns: ColumnsType<RoleConfigRow> = [
     {
-      title: '分类',
-      dataIndex: 'category',
-      width: 150,
-      render: (cat: string) => <Tag>{categoryLabel(cat)}</Tag>,
-    },
-    {
       title: '角色',
       dataIndex: 'displayName',
-      render: (name: string, row) => (
-        <span>
-          {name} <Tag>{GROUP_LABEL[row.group]}</Tag>
-        </span>
+      render: (_name: string, row) => (
+        <div className="roles-role-cell">
+          <div className="roles-role-cell__name">{roleDisplayName(row)}</div>
+          <div className="roles-role-cell__cat">{categoryLabel(row.category)}</div>
+        </div>
       ),
     },
     {
       title: '类型',
       dataIndex: 'llmKind',
       width: 110,
+      // 文本模型是绝大多数，逐行一枚蓝 Tag 是纯噪声 → 文本降为 muted 文字，仅图像/视觉/不调/未知才出彩色 Tag。
       render: (kind: RoleConfigRow['llmKind']) => {
         const t = tagOf(KIND_LABEL, kind);
-        return <Tag color={t.color}>{t.text}</Tag>;
+        return kind === 'text' ? (
+          <Typography.Text type="secondary">{t.text}</Typography.Text>
+        ) : (
+          <Tag color={t.color}>{t.text}</Tag>
+        );
       },
     },
     {
@@ -466,12 +500,19 @@ export function RolesPage() {
           message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。"
         />
         <Tabs
+          className="roles-stage-tabs"
           defaultActiveKey="browse"
           items={ROLE_TAB_META.map((t) => {
             const rows = sortedRoles.filter((r) => tabOfRole(r) === t.key);
             return {
               key: t.key,
-              label: `${t.label}（${rows.length}）`,
+              // 视觉：阶段名 + 计数徽标（不再把「（N）」塞进标题文案）；title 保留全角括号计数供 hover/无障碍/测试定位。
+              label: (
+                <span className="roles-tab-label" title={`${t.label}（${rows.length}）`}>
+                  {t.label}
+                  <span className="roles-tab-label__count">{rows.length}</span>
+                </span>
+              ),
               // 全 tab 强制挂载：4 张表总计仅数十行，避免切换闪烁，也让「当前生效模型」一览无需逐 tab 点。
               forceRender: true,
               children: (
@@ -481,7 +522,7 @@ export function RolesPage() {
                   columns={columns}
                   dataSource={rows}
                   pagination={false}
-                  locale={{ emptyText: '该分类下暂无角色' }}
+                  locale={{ emptyText: '该阶段下暂无角色' }}
                 />
               ),
             };
@@ -490,7 +531,7 @@ export function RolesPage() {
       </Card>
 
       <Modal
-        title={editing ? `编辑：${editing.displayName}` : ''}
+        title={editing ? `编辑：${roleDisplayName(editing)}` : ''}
         open={!!editing}
         onCancel={() => setEditing(null)}
         confirmLoading={save.isPending}
@@ -596,7 +637,7 @@ export function RolesPage() {
       </Modal>
 
       <Modal
-        title={editingCat ? `分类默认：${editingCat.displayName}` : ''}
+        title={editingCat ? `分类默认：${CATEGORY_META[editingCat.categoryId]?.label ?? editingCat.displayName}` : ''}
         open={!!editingCat}
         onCancel={() => setEditingCat(null)}
         confirmLoading={saveCat.isPending}
@@ -690,7 +731,7 @@ export function RolesPage() {
       </Modal>
 
       <Modal
-        title={promptRole ? `Prompt：${promptRole.displayName}` : ''}
+        title={promptRole ? `Prompt：${roleDisplayName(promptRole)}` : ''}
         open={!!promptRole}
         onCancel={() => setPromptRole(null)}
         footer={<Button onClick={() => setPromptRole(null)}>关闭</Button>}

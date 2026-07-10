@@ -921,3 +921,93 @@ body {
 .ext-link:hover::after {
   color: var(--aidcp-primary);
 }
+
+/* ======================================================================
+ * 角色配置：使用阶段 tab 胶囊化 + 行内降噪
+ * ----------------------------------------------------------------------
+ * AntD 默认「下划线线条 tab」与整站近黑胶囊气质不搭。这里在 .roles-stage-tabs
+ * 作用域内把 Tabs 导航条重塑成顶栏 .pill 同款胶囊分段（灰底槽 + 白底 active +
+ * 极淡阴影），并抹掉 ink-bar / 底边框。计数从「初始化（3）」文案抽成阶段名右侧
+ * 小徽标（非选中白底 muted、选中近黑底白字）。仅覆盖 AntD 内部类（:where 零特异性，
+ * 双类 .roles-stage-tabs .ant-tabs-* 稳赢）；不引新色/新依赖。
+ * ====================================================================== */
+.roles-stage-tabs .ant-tabs-nav {
+  margin: 0 0 var(--aidcp-space-4);
+}
+/* 抹掉线条 tab 的下边框与滑动下划线 */
+.roles-stage-tabs .ant-tabs-nav::before {
+  border-bottom: 0;
+}
+.roles-stage-tabs .ant-tabs-ink-bar {
+  display: none;
+}
+/* 导航条 = 圆角灰底槽（胶囊容器）；nav-list 自适应内容宽度、左对齐 */
+.roles-stage-tabs .ant-tabs-nav-list {
+  gap: 2px;
+  padding: 3px;
+  background: var(--aidcp-muted);
+  border-radius: 9999px;
+}
+/* 每个 tab = 一枚胶囊；清零 AntD 默认的 tab 间距与内距 */
+.roles-stage-tabs .ant-tabs-tab,
+.roles-stage-tabs .ant-tabs-tab + .ant-tabs-tab {
+  margin: 0;
+  padding: 5px 16px;
+  border-radius: 9999px;
+  transition: background 0.15s, color 0.15s;
+}
+.roles-stage-tabs .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-sm);
+  font-weight: var(--aidcp-font-weight-medium);
+}
+.roles-stage-tabs .ant-tabs-tab:hover .ant-tabs-tab-btn {
+  color: var(--aidcp-foreground);
+}
+/* active：白底胶囊 + 极淡阴影 + 近黑加粗，完全复刻 .pill__btn--active */
+.roles-stage-tabs .ant-tabs-tab-active {
+  background: var(--aidcp-background);
+  box-shadow: var(--aidcp-shadow-sm);
+}
+.roles-stage-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--aidcp-foreground);
+  font-weight: var(--aidcp-font-weight-semibold);
+}
+
+/* 计数徽标：非选中白底（自灰槽上抬起）muted 数字，选中翻近黑底白字 */
+.roles-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.roles-tab-label__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: var(--aidcp-background);
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-2xs);
+  font-weight: var(--aidcp-font-weight-medium);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.roles-stage-tabs .ant-tabs-tab-active .roles-tab-label__count {
+  background: var(--aidcp-primary);
+  color: var(--aidcp-primary-foreground);
+}
+
+/* 角色列：名字 + 其下一行 muted 分类小字（「模型任务类型」轴，不喧宾夺主但可查） */
+.roles-role-cell__name {
+  color: var(--aidcp-foreground);
+  line-height: var(--aidcp-line-height-tight);
+}
+.roles-role-cell__cat {
+  margin-top: 2px;
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  line-height: 1.3;
+}
