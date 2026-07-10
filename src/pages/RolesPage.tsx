@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { App, Button, Card, Form, Input, InputNumber, Modal, Segmented, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
+import { App, Button, Card, Form, Input, InputNumber, Modal, Segmented, Select, Skeleton, Table, Tabs, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
@@ -35,6 +35,43 @@ const CATEGORY_META: Record<string, { label: string; order: number }> = {
   image: { label: '图像类', order: 5 },
 };
 const categoryLabel = (key: string) => CATEGORY_META[key]?.label ?? key;
+
+// 角色「使用阶段」tab（纯前端展示分组，与云端 category 分类正交、只在此维护）：
+// 初始化=建号/任务起点，浏览=读与判，互动=点赞/评论/关注决策，撰写=评论撰写 + 整条发布管线。
+// 显式 roleId→tab 优先；未列出的按 group 兜底（browse→浏览、publish→撰写），保证任何新角色都不会漏出 tab。
+type RoleTabKey = 'init' | 'browse' | 'interact' | 'compose';
+const ROLE_TAB_META: { key: RoleTabKey; label: string }[] = [
+  { key: 'init', label: '初始化' },
+  { key: 'browse', label: '浏览' },
+  { key: 'interact', label: '互动' },
+  { key: 'compose', label: '撰写' },
+];
+const ROLE_TAB_BY_ID: Record<string, RoleTabKey> = {
+  // 初始化：建号人设 + 起一次浏览/评论任务的入口决策。
+  'browse:persona_generator': 'init',
+  'browse:search_evaluator': 'init',
+  'browse:comment_search_term_generator': 'init',
+  // 浏览：读正文 / 判定 / 甄选（含精选准入评估、概念抽取、进主页评估、搜索目标甄选）。
+  'browse:content_evaluator': 'browse',
+  'browse:content_curator': 'browse',
+  'browse:concept_extractor': 'browse',
+  'browse:curated_note_evaluator': 'browse',
+  'browse:comment_reviewer': 'browse',
+  'browse:curated_comment_evaluator': 'browse',
+  'browse:author_evaluator': 'browse',
+  'browse:comment_target_picker': 'browse',
+  // 互动：点赞 / 收藏 / 评论与否 / 关注 / 加群 的决策。
+  'browse:interaction_appraiser': 'interact',
+  'browse:comment_appraiser': 'interact',
+  'browse:comment_like_appraiser': 'interact',
+  'browse:follow_agent': 'interact',
+  'browse:facebook_group_join_judge': 'interact',
+  // 撰写：浏览侧评论撰写/去 AI 味 + 所有 publish:* 发布管线（由 group 兜底，无需逐一列）。
+  'browse:comment_composer': 'compose',
+  'browse:comment_de_ai_flavor': 'compose',
+};
+const tabOfRole = (row: RoleConfigRow): RoleTabKey =>
+  ROLE_TAB_BY_ID[row.roleId] ?? (row.group === 'publish' ? 'compose' : 'browse');
 // 生效来源标注（覆盖 / 继承分类 / 继承默认 / 图像全局）。
 const SOURCE_TAG: Record<ModelEffectiveSource, { text: string; color: string }> = {
   override: { text: '已覆盖', color: 'green' },
@@ -428,12 +465,27 @@ export function RolesPage() {
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
           message="模型按四层回落生效：按角色覆盖 → 分类默认 → 默认模型 → 代码默认。模型名留空=取消该角色覆盖；温度仅生成/改写类可调；图像角色用全局图片模型，请到「设置」页改。"
         />
-        <Table<RoleConfigRow>
-          size="small"
-          rowKey="roleId"
-          columns={columns}
-          dataSource={sortedRoles}
-          pagination={false}
+        <Tabs
+          defaultActiveKey="browse"
+          items={ROLE_TAB_META.map((t) => {
+            const rows = sortedRoles.filter((r) => tabOfRole(r) === t.key);
+            return {
+              key: t.key,
+              label: `${t.label}（${rows.length}）`,
+              // 全 tab 强制挂载：4 张表总计仅数十行，避免切换闪烁，也让「当前生效模型」一览无需逐 tab 点。
+              forceRender: true,
+              children: (
+                <Table<RoleConfigRow>
+                  size="small"
+                  rowKey="roleId"
+                  columns={columns}
+                  dataSource={rows}
+                  pagination={false}
+                  locale={{ emptyText: '该分类下暂无角色' }}
+                />
+              ),
+            };
+          })}
         />
       </Card>
 

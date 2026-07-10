@@ -144,3 +144,35 @@ describe('RolesPage 枚举漂移', () => {
     expect(await screen.findByText('列表页卡片择选')).toBeTruthy();
   });
 });
+
+describe('RolesPage 使用阶段 tab 分组', () => {
+  beforeEach(() => {
+    state.roles = [];
+  });
+
+  const mk = (roleId: string, displayName: string, group: RoleConfigRow['group']): RoleConfigRow => ({
+    ...baseRole,
+    roleId,
+    displayName,
+    group,
+  });
+
+  it('按 初始化/浏览/互动/撰写 归 tab，表头计数正确，未知 roleId 按 group 兜底进撰写', async () => {
+    state.roles = [
+      mk('browse:persona_generator', '建号人设生成', 'browse'), // 初始化
+      mk('browse:content_evaluator', '列表页卡片择选', 'browse'), // 浏览
+      mk('browse:interaction_appraiser', '点赞收藏判定', 'browse'), // 互动
+      mk('browse:comment_composer', '评论文案撰写', 'browse'), // 撰写
+      mk('publish:FutureUnmappedRole', '未来发布角色', 'publish'), // 撰写（group 兜底，不漏 tab）
+    ];
+    renderPage();
+
+    // 四个 tab 表头带计数；撰写含 comment_composer + 兜底的未来发布角色 = 2。
+    expect(await screen.findByText('初始化（1）')).toBeTruthy();
+    expect(screen.getByText('浏览（1）')).toBeTruthy();
+    expect(screen.getByText('互动（1）')).toBeTruthy();
+    expect(screen.getByText('撰写（2）')).toBeTruthy();
+    // forceRender 下所有 tab 行都在 DOM：兜底的未知 publish 角色不被静默丢弃。
+    expect(await screen.findByText('未来发布角色')).toBeTruthy();
+  });
+});

@@ -255,7 +255,7 @@ export function AccountsTable({
             <div className="editable-cell" onClick={() => beginEditContact(r)} title="点击编辑联系方式">
               <Space size={4} wrap>
                 <Tag color="green">已配</Tag>
-                {isDupContact(r.contactInfo) && <Tag color="warning">多账号同联系方式</Tag>}
+                {isDupContact(r.contactInfo) && <Tag color="warning">复用</Tag>}
               </Space>
             </div>
           ) : (
