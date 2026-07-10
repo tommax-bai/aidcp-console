@@ -12,10 +12,13 @@ import type {
   FacebookGroupImportResult,
   FacebookGroupMembershipRow,
   FacebookGroupMembershipStatus,
+  FacebookGroupTargetFacets,
   FacebookGroupTargetList,
   FacebookGroupTargetListRow,
   FacebookGroupTargetRow,
 } from '../types/api';
+import { parseFacebookGroupImportText } from './facebookGroupImportParser';
+import { facebookGroupListPath } from './facebookGroupsQuery';
 
 type StatusFilter = 'all' | 'unassigned' | FacebookGroupMembershipStatus;
 type EnabledFilter = 'all' | 'true' | 'false';
@@ -79,19 +82,22 @@ export function FacebookGroupsPage() {
   const nameOf = useMemo(() => makeAccountNamer(summary.data?.accounts ?? []), [summary.data?.accounts]);
   const [status, setStatus] = useState<StatusFilter>('all');
   const [enabled, setEnabled] = useState<EnabledFilter>('all');
+  const [region, setRegion] = useState<string | undefined>();
+  const [park, setPark] = useState<string | undefined>();
+  const [direction, setDirection] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [importText, setImportText] = useState('');
 
   const groups = useQuery({
-    queryKey: ['facebook', 'groups', status, enabled, page],
+    queryKey: ['facebook', 'groups', status, enabled, region, park, direction, page],
     queryFn: () => {
-      const q = new URLSearchParams();
-      q.set('limit', '100');
-      q.set('offset', String((page - 1) * 100));
-      if (status !== 'all') q.set('status', status);
-      if (enabled !== 'all') q.set('enabled', enabled);
-      return apiGet<FacebookGroupTargetList>(`/api/facebook/groups?${q.toString()}`);
+      return apiGet<FacebookGroupTargetList>(facebookGroupListPath({ status, enabled, region, park, direction, page }));
     },
+  });
+
+  const facets = useQuery({
+    queryKey: ['facebook', 'groups', 'facets'],
+    queryFn: () => apiGet<FacebookGroupTargetFacets>('/api/facebook/groups/facets'),
   });
 
   const progress = useQuery({
@@ -111,11 +117,11 @@ export function FacebookGroupsPage() {
   const importGroups = useMutation({
     mutationFn: () =>
       apiPost<FacebookGroupImportResult>('/api/facebook/groups/import', {
-        text: importText,
+        items: parseFacebookGroupImportText(importText),
         importBatch: `console-${dayjs().format('YYYYMMDD-HHmmss')}`,
       }),
     onSuccess: (res) => {
-      message.success(`已导入 ${res.imported} 个，重复 ${res.duplicate} 个，无效 ${res.invalid} 个`);
+      message.success(`已导入 ${res.imported} 个，更新 ${res.updated ?? 0} 个，重复 ${res.duplicate} 个，无效 ${res.invalid} 个`);
       setImportText('');
       setPage(1);
       invalidateGroups();
@@ -139,6 +145,12 @@ export function FacebookGroupsPage() {
     onError: () => message.error('释放失败'),
   });
 
+  const regionOptions = (facets.data?.regions ?? []).map((item) => ({ value: item.region, label: item.region }));
+  const directionOptions = (facets.data?.directions ?? []).map((item) => ({ value: item, label: item }));
+  const parkOptions = region
+    ? (facets.data?.regions.find((item) => item.region === region)?.parks ?? []).map((item) => ({ value: item, label: item }))
+    : [];
+
   const columns: ColumnsType<FacebookGroupTargetListRow> = [
     {
       title: '群组',
@@ -152,6 +164,19 @@ export function FacebookGroupsPage() {
           <Typography.Text type="secondary" copyable={{ text: row.groupUrl }}>
             {groupPath(row.groupUrl)}
           </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: '分类',
+      dataIndex: 'region',
+      minWidth: 220,
+      render: (_: unknown, row) => (
+        <Space size={[0, 4]} wrap>
+          {row.region ? <Tag>{row.region}</Tag> : null}
+          {row.park ? <Tag color="blue">{row.park}</Tag> : null}
+          {row.direction ? <Tag color="purple">{row.direction}</Tag> : null}
+          {!row.region && !row.park && !row.direction ? '—' : null}
         </Space>
       ),
     },
@@ -252,7 +277,7 @@ export function FacebookGroupsPage() {
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
               autoSize={{ minRows: 3, maxRows: 6 }}
-              placeholder="粘贴 Facebook 群组 URL，每行一个"
+              placeholder="粘贴 Facebook 群组 URL，或从表格复制区域/园区/方向宽表"
             />
             <Button
               type="primary"
@@ -277,6 +302,41 @@ export function FacebookGroupsPage() {
                 { value: 'false', label: '仅停用' },
               ]}
             />
+            <Select
+              allowClear
+              showSearch
+              value={region}
+              options={regionOptions}
+              placeholder="全部区域"
+              style={{ width: 160 }}
+              loading={facets.isLoading}
+              onChange={(v) => {
+                setRegion(v);
+                setPark(undefined);
+                setPage(1);
+              }}
+            />
+            <Select
+              allowClear
+              showSearch
+              value={park}
+              options={parkOptions}
+              placeholder="全部园区"
+              style={{ width: 190 }}
+              disabled={!region}
+              loading={facets.isLoading}
+              onChange={(v) => { setPark(v); setPage(1); }}
+            />
+            <Select
+              allowClear
+              showSearch
+              value={direction}
+              options={directionOptions}
+              placeholder="全部方向"
+              style={{ width: 160 }}
+              loading={facets.isLoading}
+              onChange={(v) => { setDirection(v); setPage(1); }}
+            />
           </Space>
 
           <Table<FacebookGroupTargetListRow>
@@ -286,7 +346,7 @@ export function FacebookGroupsPage() {
             dataSource={groups.data?.items ?? []}
             loading={groups.isLoading}
             locale={{ emptyText: <Empty description="暂无群组" /> }}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 1320 }}
             pagination={{
               current: page,
               pageSize: 100,

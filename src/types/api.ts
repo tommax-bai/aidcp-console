@@ -618,6 +618,9 @@ export type FacebookGroupMembershipStatus =
 export interface FacebookGroupTargetRow {
   groupUrl: string;
   groupName: string | null;
+  region: string | null;
+  park: string | null;
+  direction: string | null;
   joinGating: FacebookGroupJoinGating;
   priority: number;
   enabled: boolean;
@@ -643,9 +646,20 @@ export interface FacebookGroupTargetList {
 
 export interface FacebookGroupImportResult {
   imported: number;
+  updated: number;
   duplicate: number;
   invalid: number;
   rows: FacebookGroupTargetRow[];
+}
+
+export interface FacebookGroupRegionFacet {
+  region: string;
+  parks: string[];
+}
+
+export interface FacebookGroupTargetFacets {
+  regions: FacebookGroupRegionFacet[];
+  directions: string[];
 }
 
 export interface FacebookGroupAccountProgress {
