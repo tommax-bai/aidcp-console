@@ -109,6 +109,9 @@ describe('FacebookSearchConfig', () => {
     expect(screen.queryByText('https://www.facebook.com/groups/123')).toBeNull();
   });
 
+  // 注：「关键词含空格不被拆词」是 AntD tags 输入 tokenSeparators 去掉空格后的行为——其 CJK 分词依赖
+  //   composition/输入事件序列，jsdom 下靠 fireEvent 无法稳定复现（会误判未创建标签）。该行为转真机验收（簇 49）。
+
   it('保存 → apiPut body 保留已识别群名（改关键词不丢名）', async () => {
     renderCmp();
     fireEvent.click(screen.getByText('FB配置'));

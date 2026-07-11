@@ -81,14 +81,15 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
           <Skeleton active />
         ) : (
           <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="搜索关键词" extra="系统每次随机选一个关键词。输入后回车 / 逗号 / 空格添加。">
+            <Form.Item label="搜索关键词" extra="系统每次随机选一个关键词。输入后回车 / 逗号添加；关键词内可含空格（如「手冲 咖啡」为一个词，不会被拆开）。">
               <Select
                 mode="tags"
                 style={{ width: '100%' }}
                 value={keywords}
                 onChange={setKeywords}
-                tokenSeparators={[',', ' ']}
-                placeholder="如：手冲咖啡、烘焙"
+                // 只用逗号分隔关键词——空格保留在词内（多词短语算一个搜索词，绝不按空格拆词）。
+                tokenSeparators={[',']}
+                placeholder="如：手冲 咖啡、烘焙"
               />
             </Form.Item>
             <Form.Item
