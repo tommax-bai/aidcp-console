@@ -5,11 +5,14 @@
  * 包托管在与后台同机的 Nginx 静态目录 `/downloads/`（见 `deploy/aidcp-console.conf`，
  * 物理目录约定 `/opt/aidcp/downloads/`，与 isales 隔离）。
  *
- * 发布新包步骤：
- *   1) 在 aidcp-edge 跑 `npm run electron:build:mac` / `:win` 出包；
- *   2) rsync 安装包到 ECS `/opt/aidcp/downloads/`（dmg / exe，按需 zip）；
- *   3) 改下面 `VERSION` + 各 `file` 文件名；
- *   4) 重新构建部署 console（前端静态）。
+ * 发布新包步骤（mac 分发包走 CI 签名+公证，交付走中控仓脚本；本文件由脚本自动改）：
+ *   1) 定版本号：改 aidcp-edge/package.json version → 推 master；
+ *   2) CI 出包：`gh workflow run build-desktop.yml --ref master -f cloud_default_env=ol`
+ *      （Developer ID 签名 + Apple 公证，装完不被 Gatekeeper 拦；本机无证书打的是 unsigned 自测包）；
+ *   3) 交付：中控仓 `scripts/release-desktop-macos <版本> [--yes]` —— 自动下载 dmg + 静态校验
+ *      + 改本文件的 version/file + scp 到 ECS `/opt/aidcp/downloads/` + 构建部署 console + 验活。
+ *   Windows 仍走本机 `npm run electron:build:win`（自包含打包尚未接 CI）。
+ *   手动逐步与红线见 aidcp-edge/docs/release-desktop.md。
  */
 
 export const EDGE_DOWNLOAD = {
