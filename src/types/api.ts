@@ -975,3 +975,42 @@ export interface ContentSchedulePatch {
   /** 每账号时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。v1 前端不写此字段（留缝）。 */
   contentActiveMask?: string | null;
 }
+
+// ── 客户端用户（对外客户鉴权后台，change edge-client-customer-auth）────────────
+// 内部运营在后台管理「对外客户」：客户用 name+key 登录 edge 客户端、只看归属自己的环境。
+// 契约与 cloud 内部面板端点严格对齐；列表/管理视图**绝不**含 key 明文或 hash（key 仅创建/轮换时一次性回）。
+
+/** 客户账户启停态（cloud 联合类型，镜像；未知值按灰底兜底防白屏）。 */
+export type ClientUserStatus = 'enabled' | 'disabled';
+
+/** 客户账户后台管理视图行（GET /api/client-users）。绝不含 key/hash。时间均为 epoch ms。 */
+export interface ClientUserView {
+  userId: string;
+  name: string;
+  status: ClientUserStatus;
+  /** 已归属该客户的可见环境数。 */
+  envCount: number;
+  /** 上次密钥轮换时间（从未轮换为 null）。 */
+  rotatedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 环境归属来源（cloud 联合类型，镜像）：admin=后台分配 / client=客户端登录态自建自动归属。 */
+export type ClientEnvScopeSource = 'admin' | 'client';
+
+/** 客户可见环境归属行（GET /api/client-users/:id/scope）。envKey = 环境的 AdsPower profileId。 */
+export interface ClientEnvScopeRow {
+  envKey: string;
+  label: string | null;
+  platform: string | null;
+  source: ClientEnvScopeSource;
+  assignedAt: number;
+}
+
+/** PUT /api/client-users/:id/scope 请求体的单条环境（整批替换；source 由服务端派生、不由前端传）。 */
+export interface ClientEnvScopeInput {
+  envKey: string;
+  label?: string | null;
+  platform?: string | null;
+}

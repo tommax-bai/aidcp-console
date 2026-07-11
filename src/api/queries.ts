@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
-import { apiGet, apiPost } from './client';
+import { apiGet, apiPost, apiPatch, apiPut } from './client';
 import type {
   VersionPayload,
   DashboardSummary,
@@ -29,6 +29,10 @@ import type {
   CuratedFacets,
   ContentScheduleGlobalView,
   ContentScheduleCatalog,
+  ClientUserView,
+  ClientUserStatus,
+  ClientEnvScopeRow,
+  ClientEnvScopeInput,
 } from '../types/api';
 
 export function useVersion() {
@@ -316,5 +320,80 @@ export function useCuratedFacets(accountId: string | undefined) {
     queryKey: ['curated', 'facets', accountId ?? 'all'],
     queryFn: () =>
       apiGet<CuratedFacets>(`/api/curated/facets${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`),
+  });
+}
+
+// ── 客户端用户（对外客户鉴权后台，change edge-client-customer-auth）────────────
+// 内部面板端点（受内部 JWT）。key 明文只在创建/轮换响应里一次性回，绝不进 query 缓存 / localStorage：
+// 页面把它捧在一次性展示 Modal 的组件 state 里、关闭即丢（并 reset 掉 mutation 状态）。
+
+/** 客户端用户列表（GET /api/client-users）。绝不含 key/hash。 */
+export function useClientUsers() {
+  return useQuery({
+    queryKey: ['client-users'],
+    queryFn: () => apiGet<{ users: ClientUserView[] }>('/api/client-users'),
+  });
+}
+
+/** 某客户的环境归属清单（Drawer 打开、userId 非空时才拉；query key 含 userId、不跨客户串数据）。 */
+export function useClientUserScope(userId: string | null) {
+  return useQuery({
+    queryKey: ['client-users', userId, 'scope'],
+    queryFn: () =>
+      apiGet<{ scope: ClientEnvScopeRow[] }>(`/api/client-users/${encodeURIComponent(userId as string)}/scope`),
+    enabled: !!userId,
+  });
+}
+
+/** 新建客户（POST /api/client-users）：响应带一次性明文 key（页面 onSuccess 捧到展示 Modal，勿落持久处）。 */
+export function useCreateClientUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string }) =>
+      apiPost<{ user: ClientUserView; key: string }>('/api/client-users', { name: v.name }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['client-users'] });
+    },
+  });
+}
+
+/** 改名 / 启停（PATCH /api/client-users/:id）。 */
+export function useUpdateClientUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { userId: string; name?: string; status?: ClientUserStatus }) => {
+      const { userId, ...patch } = v;
+      return apiPatch<{ user: ClientUserView }>(`/api/client-users/${encodeURIComponent(userId)}`, patch);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['client-users'] });
+    },
+  });
+}
+
+/** 轮换密钥（POST /api/client-users/:id/rotate-key）：旧 key 立即失效，响应带一次性明文新 key。 */
+export function useRotateClientUserKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { userId: string }) =>
+      apiPost<{ key: string }>(`/api/client-users/${encodeURIComponent(v.userId)}/rotate-key`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['client-users'] });
+    },
+  });
+}
+
+/** 整批替换某客户的可见环境归属（PUT /api/client-users/:id/scope）。 */
+export function useSetClientUserScope() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { userId: string; environments: ClientEnvScopeInput[] }) =>
+      apiPut<{ scope: ClientEnvScopeRow[] }>(`/api/client-users/${encodeURIComponent(v.userId)}/scope`, {
+        environments: v.environments,
+      }),
+    // 列表键是 scope 键的前缀：失效列表同时刷新 envCount 与打开中的 scope（TanStack 前缀匹配）。
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['client-users'] });
+    },
   });
 }
