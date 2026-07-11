@@ -14,17 +14,18 @@
 
 export const EDGE_DOWNLOAD = {
   /** 当前发布版本（显示用；改包时一并改）。 */
-  version: '0.3.5',
+  version: '0.3.18',
   /** 同机 Nginx 静态目录前缀（相对路径=同源，无需写域名/端口）。 */
   base: '/downloads',
   /**
    * 各平台安装包（文件名须与 `/opt/aidcp/downloads/` 下实际文件一致）。
-   * 三平台均 0.3.5（2026-07-10：本机构建；GitHub Actions artifact
-   * 上传仍受仓库配额阻断，改走本地构建后上传 ECS）。
+   * mac 0.3.18（2026-07-11）：GitHub Actions CI **签名 + 公证**（Developer ID + notarytool），
+   * 用户下载安装不再被 Gatekeeper 拦成「非法软件」；该包默认连 ol（线上），界面可切。
+   * win 仍 0.3.5（未随此次重打；Windows 自包含打包尚未接 CI）。
    */
   items: [
-    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.3.5-arm64.dmg' },
-    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.3.5.dmg' },
+    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.3.18-arm64.dmg' },
+    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.3.18.dmg' },
     { key: 'win-x64', label: 'Windows · x64', file: 'AIDCP Setup 0.3.5.exe' },
   ],
 } as const;
