@@ -7,10 +7,12 @@ export interface FacebookGroupListQuery {
   direction?: string;
 }
 
+export const GROUP_PAGE_SIZE = 30;
+
 export function facebookGroupListPath(input: FacebookGroupListQuery): string {
   const q = new URLSearchParams();
-  q.set('limit', '100');
-  q.set('offset', String((input.page - 1) * 100));
+  q.set('limit', String(GROUP_PAGE_SIZE));
+  q.set('offset', String((input.page - 1) * GROUP_PAGE_SIZE));
   if (input.status !== 'all') q.set('status', input.status);
   if (input.enabled !== 'all') q.set('enabled', input.enabled);
   if (input.region) q.set('region', input.region);

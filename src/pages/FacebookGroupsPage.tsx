@@ -19,7 +19,7 @@ import type {
 } from '../types/api';
 import { FacebookGroupImportPanel, type FacebookGroupImportMode } from './FacebookGroupImportPanel';
 import type { FacebookGroupImportItem } from './facebookGroupImportParser';
-import { facebookGroupListPath } from './facebookGroupsQuery';
+import { facebookGroupListPath, GROUP_PAGE_SIZE } from './facebookGroupsQuery';
 
 type StatusFilter = 'all' | 'unassigned' | FacebookGroupMembershipStatus;
 type EnabledFilter = 'all' | 'true' | 'false';
@@ -158,15 +158,15 @@ export function FacebookGroupsPage() {
       render: (_: unknown, row) => {
         const name = row.groupName ?? '待识别群组';
         return (
-          <Space direction="vertical" size={0} style={{ width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
             <a
               href={row.groupUrl}
               target="_blank"
               rel="noreferrer"
               title={name}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}
             >
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {name}
               </span>
               <LinkOutlined style={{ flexShrink: 0 }} />
@@ -174,12 +174,11 @@ export function FacebookGroupsPage() {
             <Typography.Text
               type="secondary"
               copyable={{ text: row.groupUrl }}
-              ellipsis={{ tooltip: groupPath(row.groupUrl) }}
-              style={{ width: '100%' }}
+              style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
             >
               {groupPath(row.groupUrl)}
             </Typography.Text>
-          </Space>
+          </div>
         );
       },
     },
@@ -354,7 +353,7 @@ export function FacebookGroupsPage() {
             scroll={{ x: 1440 }}
             pagination={{
               current: page,
-              pageSize: 100,
+              pageSize: GROUP_PAGE_SIZE,
               total: groups.data?.total ?? 0,
               showSizeChanger: false,
               onChange: setPage,
