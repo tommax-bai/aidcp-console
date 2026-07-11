@@ -154,17 +154,34 @@ export function FacebookGroupsPage() {
     {
       title: '群组',
       dataIndex: 'groupName',
-      minWidth: 240,
-      render: (_: unknown, row) => (
-        <Space direction="vertical" size={0}>
-          <a href={row.groupUrl} target="_blank" rel="noreferrer">
-            {row.groupName ?? '待识别群组'} <LinkOutlined />
-          </a>
-          <Typography.Text type="secondary" copyable={{ text: row.groupUrl }}>
-            {groupPath(row.groupUrl)}
-          </Typography.Text>
-        </Space>
-      ),
+      minWidth: 320,
+      render: (_: unknown, row) => {
+        const name = row.groupName ?? '待识别群组';
+        return (
+          <Space direction="vertical" size={0} style={{ width: '100%' }}>
+            <a
+              href={row.groupUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={name}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%' }}
+            >
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </span>
+              <LinkOutlined style={{ flexShrink: 0 }} />
+            </a>
+            <Typography.Text
+              type="secondary"
+              copyable={{ text: row.groupUrl }}
+              ellipsis={{ tooltip: groupPath(row.groupUrl) }}
+              style={{ width: '100%' }}
+            >
+              {groupPath(row.groupUrl)}
+            </Typography.Text>
+          </Space>
+        );
+      },
     },
     {
       title: '分类',
@@ -334,7 +351,7 @@ export function FacebookGroupsPage() {
             dataSource={groups.data?.items ?? []}
             loading={groups.isLoading}
             locale={{ emptyText: <Empty description="暂无群组" /> }}
-            scroll={{ x: 1320 }}
+            scroll={{ x: 1440 }}
             pagination={{
               current: page,
               pageSize: 100,
