@@ -164,9 +164,9 @@ export function FacebookGroupsPage() {
               target="_blank"
               rel="noreferrer"
               title={name}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: '100%' }}
             >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ maxWidth: '6em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {name}
               </span>
               <LinkOutlined style={{ flexShrink: 0 }} />
@@ -174,7 +174,8 @@ export function FacebookGroupsPage() {
             <Typography.Text
               type="secondary"
               copyable={{ text: row.groupUrl }}
-              style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+              ellipsis={{ tooltip: groupPath(row.groupUrl) }}
+              style={{ flex: 1, minWidth: 0 }}
             >
               {groupPath(row.groupUrl)}
             </Typography.Text>
