@@ -97,6 +97,53 @@ export interface FacebookCommentConfig {
   updatedBy: string | null;
 }
 
+export type FacebookPublishMediaStatus =
+  | 'available'
+  | 'reserved'
+  | 'used'
+  | 'disabled'
+  | 'deleted'
+  | 'quarantine';
+
+export interface FacebookPublishMediaImage {
+  id: number;
+  setId: number;
+  url: string;
+  objectKey: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  sortOrder: number;
+  duplicateOfImageId: number | null;
+  createdAt: string;
+}
+
+export interface FacebookPublishMediaSet {
+  id: number;
+  accountId: string;
+  status: FacebookPublishMediaStatus;
+  captionHint: string | null;
+  sortOrder: number;
+  reservedBy: string | null;
+  reservedAt: string | null;
+  usedByPublishLogId: number | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  images: FacebookPublishMediaImage[];
+}
+
+export interface FacebookPublishMediaList {
+  accountId: string;
+  sets: FacebookPublishMediaSet[];
+  statusCounts: Record<FacebookPublishMediaStatus, number>;
+}
+
+export type FacebookPublishUploadResult =
+  | { ok: true; filename: string; set: FacebookPublishMediaSet; duplicate: boolean }
+  | { ok: false; filename: string; reason: string; message?: string };
+
 export interface LikeRate {
   likes: number;
   views: number;

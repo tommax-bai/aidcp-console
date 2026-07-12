@@ -168,6 +168,51 @@ body {
   }
 }
 
+.facebook-publish-media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-3);
+}
+.facebook-publish-media__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aidcp-space-2);
+}
+.facebook-publish-media .ant-upload-wrapper .ant-upload-drag {
+  min-height: 118px;
+  padding: var(--aidcp-space-3);
+  background: var(--aidcp-background);
+}
+.facebook-publish-media .ant-upload-drag-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--aidcp-space-1);
+}
+.facebook-publish-media__upload-icon {
+  font-size: 24px;
+  color: var(--aidcp-muted-foreground);
+}
+.facebook-publish-media__pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aidcp-space-2);
+}
+
+@media (max-width: 700px) {
+  .facebook-publish-media__summary,
+  .facebook-publish-media__pending {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .facebook-publish-media__pending .ant-btn {
+    width: 100%;
+  }
+}
+
 /* ======================================================================
  * 外壳：顶部导航 + 居中内容（移植 isales DefaultLayout / TopNav）
  * ====================================================================== */

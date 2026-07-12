@@ -45,6 +45,16 @@ const CODE_TEXT: Record<string, string> = {
   model_invalid: '模型名无效（保存前探活未通过）',
   cred_key_missing: '服务端未配置主加密密钥，无法保存密钥',
   unavailable: '该功能暂不可用（依赖未就绪）',
+  facebook_publish_media_unavailable: 'Facebook 发帖图片池暂不可用',
+  non_facebook_account: '该账号不是 Facebook 账号',
+  object_store_unavailable: '图片存储暂不可用，请稍后重试',
+  invalid_file: '图片格式不合法',
+  body_too_large: '文件过大，请压缩后重试',
+  status_locked: '该图片正在使用或等待确认，暂不能修改',
+  invalid_value: '提交的图片配置不合法',
+  no_files: '请选择至少一张图片',
+  bad_order: '图片排序数据不合法',
+  bad_caption_hint: '图片备注格式不合法',
 };
 
 /** 把 API 错误映射为说人话中文；未知码回落 fallback。reason（细分）优先于 error（粗）。 */
