@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import { App, Button, Form, Modal, Select, Skeleton, Tag, Typography } from 'antd';
+import { App, Button, Form, Input, Modal, Radio, Select, Skeleton, Typography } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
-import type { FacebookCommentConfig, FacebookContainer, PanelAccount } from '../types/api';
+import type { FacebookCommentConfig, FacebookCommentMode, PanelAccount } from '../types/api';
 import { accountName } from '../types/accountDisplay';
 
 /**
- * Facebook 账号「FB配置」入口（关键词 + 目标容器；change facebook-scheduled-comment 2.1 + facebook-container-display-name）。
+ * Facebook 账号「FB配置」入口（关键词 + 评论方式 / 模板）。
  * 仅对 Facebook 账号展示（调用方按 platform 门控）。打开时拉当前配置回填、保存经面板 PUT。
- * 语义提示：关键词或容器任一为空 → 云端不生效（fail-closed）；系统随机选关键词、仅在配置的容器内搜索。
- * 容器：运营方粘贴群/主页**链接**（url），系统评论时自动从群页读出真实群名回填——**标签一律展示群名（缺则「待识别」），
- * 绝不展示群 id**（id 对人无辨识度）。保存时保留已识别的群名（按 url 匹配），不因改关键词而丢名。
+ * 目标群由账号已加入群组账本选择；本弹窗不再编辑 legacy containers。
  */
 export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
   const { message } = App.useApp();
@@ -18,7 +16,8 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [keywords, setKeywords] = useState<string[]>([]);
-  const [containers, setContainers] = useState<FacebookContainer[]>([]);
+  const [commentMode, setCommentMode] = useState<FacebookCommentMode>('generated');
+  const [templateText, setTemplateText] = useState('');
 
   const path = `/api/accounts/${encodeURIComponent(account.accountId)}/facebook-comment-config`;
 
@@ -28,18 +27,20 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
     try {
       const cfg = await apiGet<FacebookCommentConfig>(path);
       setKeywords(cfg.keywords ?? []);
-      setContainers(cfg.containers ?? []);
+      setCommentMode(cfg.commentMode ?? 'generated');
+      setTemplateText((cfg.commentTemplates ?? []).join('\n'));
     } catch {
       message.error('读取搜索词配置失败');
       setKeywords([]);
-      setContainers([]);
+      setCommentMode('generated');
+      setTemplateText('');
     } finally {
       setLoading(false);
     }
   };
 
   const save = useMutation({
-    mutationFn: (v: { keywords: string[]; containers: FacebookContainer[] }) =>
+    mutationFn: (v: { keywords: string[]; commentMode: FacebookCommentMode; commentTemplates: string[] }) =>
       apiPut<FacebookCommentConfig>(path, v),
     onSuccess: () => {
       message.success('搜索词配置已保存');
@@ -49,17 +50,19 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
     onError: () => message.error('搜索词配置保存失败'),
   });
 
-  // Select 值 = 容器 url 列表（运营方粘 url）；增删时保留已识别群名（按 url 匹配），新 url 名待识别。
-  const containerUrls = containers.map((c) => c.url);
-  const onContainersChange = (urls: string[]) => {
-    setContainers(urls.map((u) => containers.find((c) => c.url === u) ?? { url: u }));
-  };
-  const displayName = (url: string): string => {
-    const name = containers.find((c) => c.url === url)?.name;
-    return name && name.trim() ? name : '待识别';
+  const commentTemplates = (): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of templateText.split(/\r?\n/)) {
+      const v = raw.trim();
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+    return out;
   };
 
-  const effectiveOff = keywords.length === 0 || containers.length === 0;
+  const effectiveOff = keywords.length === 0 || (commentMode === 'template' && commentTemplates().length === 0);
 
   return (
     <>
@@ -70,12 +73,11 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
         title={`FB配置 · ${accountName(account)}`}
         open={open}
         confirmLoading={save.isPending}
-        onOk={() => save.mutate({ keywords, containers })}
-        // containers 已是 {url,name}[]，保存时保留已识别群名。
+        onOk={() => save.mutate({ keywords, commentMode, commentTemplates: commentTemplates() })}
         onCancel={() => setOpen(false)}
         okText="保存"
         cancelText="取消"
-        width={560}
+        width={640}
       >
         {loading ? (
           <Skeleton active />
@@ -92,28 +94,31 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                 placeholder="如：手冲 咖啡、烘焙"
               />
             </Form.Item>
-            <Form.Item
-              label="目标容器（主页 / 群）"
-              extra="粘贴你运营 / 已加入的 Facebook 主页或群链接（url），仅在其内部搜索、绝不全站。系统评论时自动识别并显示真实群名（标签显示群名，「待识别」表示尚未识别）。"
-            >
-              <Select
-                mode="tags"
-                style={{ width: '100%' }}
-                value={containerUrls}
-                onChange={onContainersChange}
-                tokenSeparators={[',', ' ']}
-                placeholder="粘贴群 / 主页链接，如 https://www.facebook.com/groups/…"
-                // 标签显示真实群名（缺则「待识别」），绝不展示 url 里的 id。
-                tagRender={({ value, closable, onClose }) => (
-                  <Tag closable={closable} onClose={onClose} style={{ marginInlineEnd: 4 }}>
-                    {displayName(String(value))}
-                  </Tag>
-                )}
+            <Form.Item label="评论方式">
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                value={commentMode}
+                onChange={(e) => setCommentMode(e.target.value as FacebookCommentMode)}
+                options={[
+                  { label: '生成评论', value: 'generated' },
+                  { label: '模板评论', value: 'template' },
+                ]}
               />
             </Form.Item>
+            {commentMode === 'template' ? (
+              <Form.Item label="评论模板" extra="每行一个模板。模板正文不应包含联系方式；带联系方式评论会自动拼接账号联系方式。">
+                <Input.TextArea
+                  rows={5}
+                  value={templateText}
+                  onChange={(e) => setTemplateText(e.target.value)}
+                  placeholder="这家手冲咖啡很不错"
+                />
+              </Form.Item>
+            ) : null}
             {effectiveOff ? (
               <Typography.Text type="warning">
-                关键词与容器都非空时才会生效；当前配置不生效（不会评论）。
+                {keywords.length === 0 ? '至少需要 1 个搜索关键词。' : '模板评论至少需要 1 条模板。'}
               </Typography.Text>
             ) : null}
           </Form>

@@ -1,7 +1,8 @@
 /**
  * FacebookSearchConfig（change facebook-scheduled-comment 2.1）核心交互回归：
- *  - 点开「配置搜索词」→ apiGet 拉当前配置（正确 path）并回填。
- *  - 保存 → apiPut 到同一 path，body = { keywords, containers }（回填值原样提交）。
+ *  - 点开「FB配置」→ apiGet 拉当前配置（正确 path）并回填。
+ *  - 保存 → apiPut 到同一 path，body = { keywords, commentMode, commentTemplates }。
+ *  - legacy containers 不再展示 / 不再提交。
  * 只 mock HTTP 客户端层，组件 + react-query 走真实路径。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -87,6 +88,8 @@ describe('FacebookSearchConfig', () => {
         { url: 'https://www.facebook.com/groups/123', name: 'Puerto Rico Y Sus Encantos e Historia' },
         { url: 'https://www.facebook.com/groups/456' },
       ],
+      commentMode: 'generated',
+      commentTemplates: [],
       updatedAt: null,
       updatedBy: null,
     };
@@ -94,25 +97,25 @@ describe('FacebookSearchConfig', () => {
     state.putCalls = [];
   });
 
-  it('点开时回填：容器标签展示群名（缺则「待识别」），绝不展示群 id', async () => {
+  it('点开时回填关键词和评论方式；legacy 群组不再展示', async () => {
     renderCmp();
     fireEvent.click(screen.getByText('FB配置'));
     await waitFor(() =>
       expect(state.getCalls).toContain('/api/accounts/fb-1/facebook-comment-config'),
     );
     await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
-    // 展示真实群名，未识别的显示「待识别」。
-    expect(screen.getByText('Puerto Rico Y Sus Encantos e Historia')).toBeTruthy();
-    expect(screen.getByText('待识别')).toBeTruthy();
-    // 绝不把群 id / url 直接展示给人（标签里不出现裸群号）。
-    expect(screen.queryByText('123')).toBeNull();
+    expect(screen.getByText('生成评论')).toBeTruthy();
+    expect(screen.getByText('模板评论')).toBeTruthy();
+    // 群组已从账号 FB 配置中移除，即使接口仍返回 legacy containers，也不展示给运营。
+    expect(screen.queryByText('Puerto Rico Y Sus Encantos e Historia')).toBeNull();
+    expect(screen.queryByText('待识别')).toBeNull();
     expect(screen.queryByText('https://www.facebook.com/groups/123')).toBeNull();
   });
 
   // 注：「关键词含空格不被拆词」是 AntD tags 输入 tokenSeparators 去掉空格后的行为——其 CJK 分词依赖
   //   composition/输入事件序列，jsdom 下靠 fireEvent 无法稳定复现（会误判未创建标签）。该行为转真机验收（簇 49）。
 
-  it('保存 → apiPut body 保留已识别群名（改关键词不丢名）', async () => {
+  it('保存生成评论配置 → apiPut body 不再提交 containers', async () => {
     renderCmp();
     fireEvent.click(screen.getByText('FB配置'));
     await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
@@ -121,10 +124,32 @@ describe('FacebookSearchConfig', () => {
     expect(state.putCalls[0].path).toBe('/api/accounts/fb-1/facebook-comment-config');
     expect(state.putCalls[0].body).toEqual({
       keywords: ['手冲咖啡'],
-      containers: [
-        { url: 'https://www.facebook.com/groups/123', name: 'Puerto Rico Y Sus Encantos e Historia' },
-        { url: 'https://www.facebook.com/groups/456' },
-      ],
+      commentMode: 'generated',
+      commentTemplates: [],
+    });
+  });
+
+  it('模板评论：回填模板，保存时按行 sanitize/去重', async () => {
+    state.cfg = {
+      ...state.cfg,
+      commentMode: 'template',
+      commentTemplates: ['这家手冲咖啡很不错', '这家烘焙咖啡很不错'],
+    };
+    renderCmp();
+    fireEvent.click(screen.getByText('FB配置'));
+    await waitFor(() => expect(screen.getByDisplayValue(/这家手冲咖啡很不错/)).toBeTruthy());
+    const textarea = screen.getByDisplayValue(/这家手冲咖啡很不错/) as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: {
+        value: ' 这家手冲咖啡很不错 \n\n这家手冲咖啡很不错\n这家拉花咖啡很不错 ',
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(state.putCalls.length).toBe(1));
+    expect(state.putCalls[0].body).toEqual({
+      keywords: ['手冲咖啡'],
+      commentMode: 'template',
+      commentTemplates: ['这家手冲咖啡很不错', '这家拉花咖啡很不错'],
     });
   });
 });
