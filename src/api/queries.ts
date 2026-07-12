@@ -33,6 +33,7 @@ import type {
   ClientUserStatus,
   ClientEnvScopeRow,
   ClientEnvScopeInput,
+  ClientEnvironmentView,
 } from '../types/api';
 
 export function useVersion() {
@@ -345,6 +346,19 @@ export function useClientUserScope(userId: string | null) {
   });
 }
 
+/**
+ * 管理侧全局环境注册表（GET /api/client-environments；change client-user-env-picker）。
+ * 系统已知的全部环境 + 各自被分配的端用户清单，供归属抽屉「勾选加入 / 待分配已分配筛选 / 多人标识」。
+ * 受内部 JWT，仅后台可读（客户令牌到不了）。Drawer 打开时才拉。
+ */
+export function useClientEnvironments(enabled: boolean) {
+  return useQuery({
+    queryKey: ['client-environments'],
+    queryFn: () => apiGet<{ environments: ClientEnvironmentView[] }>('/api/client-environments'),
+    enabled,
+  });
+}
+
 /** 新建客户（POST /api/client-users）：响应带一次性明文 key（页面 onSuccess 捧到展示 Modal，勿落持久处）。 */
 export function useCreateClientUser() {
   const qc = useQueryClient();
@@ -392,8 +406,10 @@ export function useSetClientUserScope() {
         environments: v.environments,
       }),
     // 列表键是 scope 键的前缀：失效列表同时刷新 envCount 与打开中的 scope（TanStack 前缀匹配）。
+    // 归属变更会改变全局注册表的分配情况（多人/待分配）→ 一并失效 client-environments。
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['client-users'] });
+      void qc.invalidateQueries({ queryKey: ['client-environments'] });
     },
   });
 }

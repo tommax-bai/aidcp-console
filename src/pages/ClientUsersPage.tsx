@@ -9,10 +9,12 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -20,6 +22,7 @@ import { KeyOutlined } from '@ant-design/icons';
 import {
   useClientUsers,
   useClientUserScope,
+  useClientEnvironments,
   useCreateClientUser,
   useUpdateClientUser,
   useRotateClientUserKey,
@@ -27,7 +30,7 @@ import {
 } from '../api/queries';
 import { errorText } from '../api/errorText';
 import { QueryError } from '../components/QueryGate';
-import type { ClientEnvScopeRow, ClientUserView } from '../types/api';
+import type { ClientEnvScopeRow, ClientEnvironmentView, ClientUserView } from '../types/api';
 
 /**
  * 客户端用户管理页（change edge-client-customer-auth）。
@@ -322,13 +325,13 @@ export function ClientUsersPage() {
     },
   ];
 
-  if (users.isError) return <QueryError title="加载客户端用户失败" onRetry={() => users.refetch()} />;
+  if (users.isError) return <QueryError title="加载端用户失败" onRetry={() => users.refetch()} />;
 
   return (
     <div className="page-stack">
       <Card
         size="small"
-        title="客户端用户"
+        title="端用户"
         extra={
           <Button type="primary" size="small" icon={<KeyOutlined />} onClick={openCreate}>
             新建客户
@@ -349,7 +352,7 @@ export function ClientUsersPage() {
           dataSource={users.data?.users ?? []}
           loading={users.isLoading}
           pagination={{ pageSize: 20, showSizeChanger: true }}
-          locale={{ emptyText: <Empty description="暂无客户端用户，点击右上「新建客户」创建" /> }}
+          locale={{ emptyText: <Empty description="暂无端用户，点击右上「新建客户」创建" /> }}
         />
       </Card>
 
@@ -471,6 +474,9 @@ export function ClientUsersPage() {
 /** 环境归属编辑草稿行（source 仅供显示；保存时不回传，服务端派生）。 */
 type DraftRow = ClientEnvScopeRow;
 
+/** 归属抽屉的筛选分区：待分配（未归属当前端用户）/ 已分配（已归属当前端用户）。 */
+type ScopeFilter = 'unassigned' | 'assigned';
+
 interface ScopeDrawerProps {
   user: ClientUserView | null;
   open: boolean;
@@ -479,48 +485,108 @@ interface ScopeDrawerProps {
   saving: boolean;
 }
 
+/**
+ * 「已分配给谁」单元格：assigneeCount≥2 → 蓝底「多人」Tag（Tooltip 列具体客户名）；===1 → 该客户名；
+ * 0 / 未在注册表 → —。计数取全局注册表（保存态真值），新加未保存的行计数会在保存回读后并入。
+ */
+export function assigneeCell(env: ClientEnvironmentView | undefined) {
+  if (!env || env.assigneeCount === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+  if (env.assigneeCount >= 2) {
+    return (
+      <Tooltip title={env.assignees.map((a) => a.name).join('、')}>
+        <Tag color="blue">多人（{env.assigneeCount}）</Tag>
+      </Tooltip>
+    );
+  }
+  return <Typography.Text type="secondary">{env.assignees[0]?.name ?? '—'}</Typography.Text>;
+}
+
 function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) {
   const { message } = App.useApp();
   const scope = useClientUserScope(open ? (user?.userId ?? null) : null);
+  const registry = useClientEnvironments(open);
 
   const [rows, setRows] = useState<DraftRow[]>([]);
-  // 添加环境表单
+  const [filter, setFilter] = useState<ScopeFilter>('unassigned');
+  const [selectedAddKeys, setSelectedAddKeys] = useState<string[]>([]);
+  // 手填兜底表单（云端尚未见过的环境）
   const [newEnvKey, setNewEnvKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newPlatform, setNewPlatform] = useState<string | undefined>(undefined);
 
-  // 服务端 scope 到达即以其为准 seed 草稿（server 是权威；保存后 invalidate 回读也走这里对账）。
+  // 草稿 rows **只由 scope.data 单一驱动**（seed 或清空）。绝不能再有第二个 effect 也 setRows：
+  // 否则暖缓存下关闭再重开同一客户时，scope.data(undefined→object) 与 user?.userId(null→id) 同一次
+  // commit 变更、两个 setRows effect 按声明序先后跑、后者清空已 seed 的草稿 → 已分配显示 0、已归属环境
+  // 全落「待分配」、保存即整批清空该客户全部归属（静默数据丢失）。故 reset effect 不再碰 rows。
+  // scope.data 为 undefined（drawer 关 / 新客户加载中）时清空，避免闪现上一个客户的行；query 按 userId 键，
+  // scope.data 永不是上一个客户的数据。
   useEffect(() => {
-    if (scope.data) setRows(scope.data.scope.map((r) => ({ ...r })));
+    setRows(scope.data ? scope.data.scope.map((r) => ({ ...r })) : []);
   }, [scope.data]);
 
-  // 打开 / 切换客户时先清空草稿与表单，避免上一个客户的行闪现。
+  // 切换客户时复位筛选 / 选择 / 手填表单（**不含 rows**，rows 归上面的 scope.data effect 独管）。
   useEffect(() => {
-    setRows([]);
+    setFilter('unassigned');
+    setSelectedAddKeys([]);
     setNewEnvKey('');
     setNewLabel('');
     setNewPlatform(undefined);
   }, [user?.userId]);
 
-  const addRow = () => {
+  const assignedKeys = useMemo(() => new Set(rows.map((r) => r.envKey)), [rows]);
+  /** 全局注册表按 envKey 索引（O(1) 查 assignees / 多人）。 */
+  const envMeta = useMemo(() => {
+    const m = new Map<string, ClientEnvironmentView>();
+    for (const e of registry.data?.environments ?? []) m.set(e.envKey, e);
+    return m;
+  }, [registry.data]);
+  /** 待分配 = 注册表里尚未归属当前端用户的环境。 */
+  const unassignedRows = useMemo(
+    () => (registry.data?.environments ?? []).filter((e) => !assignedKeys.has(e.envKey)),
+    [registry.data, assignedKeys],
+  );
+  /**
+   * 有效勾选 = selectedAddKeys ∩ 当前待分配集。手动登记 / 加入后某 env 离开待分配时，其残留勾选自动作废，
+   * 「加入选中（N）」计数与实际可加入项一致（不残留空点）。
+   */
+  const effectiveSelected = useMemo(() => {
+    const keys = new Set(unassignedRows.map((e) => e.envKey));
+    return selectedAddKeys.filter((k) => keys.has(k));
+  }, [selectedAddKeys, unassignedRows]);
+
+  const addSelected = () => {
+    const toAdd = unassignedRows.filter((e) => effectiveSelected.includes(e.envKey));
+    if (!toAdd.length) {
+      message.warning('请先勾选要加入的环境');
+      return;
+    }
+    setRows((prev) => [
+      ...prev,
+      ...toAdd.map((e) => ({
+        envKey: e.envKey,
+        label: e.label,
+        platform: e.platform,
+        source: 'admin' as const,
+        assignedAt: Date.now(),
+      })),
+    ]);
+    setSelectedAddKeys([]);
+    message.success(`已加入 ${toAdd.length} 个环境（保存后生效）`);
+  };
+
+  const addManual = () => {
     const envKey = newEnvKey.trim();
     if (!envKey) {
       message.warning('请填写环境 ID（envKey）');
       return;
     }
-    if (rows.some((r) => r.envKey === envKey)) {
-      message.warning('该环境已在列表中');
+    if (assignedKeys.has(envKey)) {
+      message.warning('该环境已在归属列表中');
       return;
     }
     setRows((prev) => [
       ...prev,
-      {
-        envKey,
-        label: newLabel.trim() || null,
-        platform: newPlatform ?? null,
-        source: 'admin',
-        assignedAt: Date.now(),
-      },
+      { envKey, label: newLabel.trim() || null, platform: newPlatform ?? null, source: 'admin', assignedAt: Date.now() },
     ]);
     setNewEnvKey('');
     setNewLabel('');
@@ -529,28 +595,44 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
 
   const removeRow = (envKey: string) => setRows((prev) => prev.filter((r) => r.envKey !== envKey));
 
-  const columns: ColumnsType<DraftRow> = [
-    {
-      title: '环境 ID（envKey）',
-      dataIndex: 'envKey',
-      render: (k: string) => (
-        <Typography.Text className="tabular-nums" copyable={{ text: k }}>
-          {k}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: '备注名',
-      dataIndex: 'label',
-      width: 140,
-      render: (l: string | null) => (l ? l : <Typography.Text type="secondary">—</Typography.Text>),
-    },
-    { title: '平台', dataIndex: 'platform', width: 100, render: (p: string | null) => platformTag(p) },
-    { title: '来源', dataIndex: 'source', width: 110, render: (s: string) => sourceTag(s) },
+  const envKeyCol = {
+    title: '环境 ID（envKey）',
+    dataIndex: 'envKey' as const,
+    render: (k: string) => (
+      <Typography.Text className="tabular-nums" copyable={{ text: k }}>
+        {k}
+      </Typography.Text>
+    ),
+  };
+  const labelCol = {
+    title: '备注名',
+    dataIndex: 'label' as const,
+    width: 120,
+    render: (l: string | null) => (l ? l : <Typography.Text type="secondary">—</Typography.Text>),
+  };
+  const platformCol = {
+    title: '平台',
+    dataIndex: 'platform' as const,
+    width: 90,
+    render: (p: string | null) => platformTag(p),
+  };
+
+  const unassignedColumns: ColumnsType<ClientEnvironmentView> = [
+    envKeyCol,
+    labelCol,
+    platformCol,
+    { title: '已分配给', key: 'assignees', width: 130, render: (_: unknown, e) => assigneeCell(envMeta.get(e.envKey)) },
+  ];
+  const assignedColumns: ColumnsType<DraftRow> = [
+    envKeyCol,
+    labelCol,
+    platformCol,
+    { title: '来源', dataIndex: 'source', width: 100, render: (s: string) => sourceTag(s) },
+    { title: '共享', key: 'assignees', width: 120, render: (_: unknown, r) => assigneeCell(envMeta.get(r.envKey)) },
     {
       title: '操作',
       key: 'op',
-      width: 72,
+      width: 64,
       render: (_: unknown, row) => (
         <Button size="small" danger type="link" onClick={() => removeRow(row.envKey)}>
           移除
@@ -564,19 +646,17 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
       title={user ? `环境归属 · ${user.name}` : '环境归属'}
       open={open}
       onClose={onClose}
-      width={640}
+      width={680}
       destroyOnClose
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Button onClick={onClose}>取消</Button>
           <Popconfirm
-            title="整批替换该客户的可见环境？"
-            description="保存将用当前列表整批替换该客户当前的可见环境（新增 / 移除均以此列表为准）。"
+            title="整批替换该端用户的可见环境？"
+            description="保存将用「已分配」列表整批替换该端用户当前的可见环境（加入 / 移除均以此为准）。只影响该端用户，不动其他人的归属。"
             okText="保存"
             cancelText="再看看"
-            onConfirm={() =>
-              onSave(rows.map((r) => ({ envKey: r.envKey, label: r.label, platform: r.platform })))
-            }
+            onConfirm={() => onSave(rows.map((r) => ({ envKey: r.envKey, label: r.label, platform: r.platform })))}
           >
             <Button type="primary" loading={saving}>
               保存
@@ -592,45 +672,78 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
           <Alert
             type="info"
             showIcon
-            message="维护该客户可见的环境范围。保存时整批替换——列表里的即可见、移除的即不可见。"
-            description="envKey = 环境的 AdsPower profileId（从 AdsPower 后台可查）。来源为「客户端自建」的行也可在此调整或移除。"
+            message="从环境列表勾选加入该端用户的可见范围。同一个环境可分配给多个端用户；被多个端用户共享的显示「多人」。"
+            description="envKey = 环境的 AdsPower profileId。「待分配」= 尚未归属该端用户；「已分配」= 已归属该端用户。保存时按「已分配」列表整批替换，只影响该端用户。"
           />
-          <Card size="small" title="添加环境">
-            <Space wrap align="start">
-              <Input
-                placeholder="环境 ID（envKey / profileId）"
-                value={newEnvKey}
-                style={{ width: 240 }}
-                onChange={(e) => setNewEnvKey(e.target.value)}
-                onPressEnter={addRow}
-              />
-              <Input
-                placeholder="备注名（可选）"
-                value={newLabel}
-                style={{ width: 160 }}
-                onChange={(e) => setNewLabel(e.target.value)}
-                onPressEnter={addRow}
-              />
-              <Select
-                placeholder="平台（可选）"
-                allowClear
-                style={{ width: 140 }}
-                value={newPlatform}
-                onChange={(v) => setNewPlatform(v)}
-                options={PLATFORM_OPTIONS}
-              />
-              <Button onClick={addRow}>添加</Button>
-            </Space>
-          </Card>
-          <Table<DraftRow>
-            size="small"
-            rowKey="envKey"
-            columns={columns}
-            dataSource={rows}
-            loading={scope.isLoading}
-            pagination={false}
-            locale={{ emptyText: <Empty description="尚未归属任何环境" /> }}
+          <Segmented
+            value={filter}
+            onChange={(v) => setFilter(v as ScopeFilter)}
+            options={[
+              { label: `待分配（${unassignedRows.length}）`, value: 'unassigned' },
+              { label: `已分配（${rows.length}）`, value: 'assigned' },
+            ]}
           />
+          {filter === 'unassigned' ? (
+            <>
+              <Table<ClientEnvironmentView>
+                size="small"
+                rowKey="envKey"
+                columns={unassignedColumns}
+                dataSource={unassignedRows}
+                loading={registry.isLoading}
+                rowSelection={{
+                  selectedRowKeys: effectiveSelected,
+                  onChange: (keys) => setSelectedAddKeys(keys as string[]),
+                }}
+                pagination={{ pageSize: 8, size: 'small', hideOnSinglePage: true }}
+                locale={{
+                  emptyText: (
+                    <Empty description={registry.isError ? '加载环境列表失败' : '没有待分配的环境（可用下方手动登记）'} />
+                  ),
+                }}
+              />
+              <Button type="primary" ghost disabled={!effectiveSelected.length} onClick={addSelected}>
+                加入选中（{effectiveSelected.length}）
+              </Button>
+              <Card size="small" title="手动登记环境（云端尚未见过的环境用此兜底）">
+                <Space wrap align="start">
+                  <Input
+                    placeholder="环境 ID（envKey / profileId）"
+                    value={newEnvKey}
+                    style={{ width: 240 }}
+                    onChange={(e) => setNewEnvKey(e.target.value)}
+                    onPressEnter={addManual}
+                  />
+                  <Input
+                    placeholder="备注名（可选）"
+                    value={newLabel}
+                    style={{ width: 150 }}
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    onPressEnter={addManual}
+                  />
+                  <Select
+                    placeholder="平台（可选）"
+                    allowClear
+                    style={{ width: 130 }}
+                    value={newPlatform}
+                    onChange={(v) => setNewPlatform(v)}
+                    options={PLATFORM_OPTIONS}
+                  />
+                  <Button onClick={addManual}>登记并加入</Button>
+                </Space>
+              </Card>
+            </>
+          ) : (
+            <Table<DraftRow>
+              size="small"
+              rowKey="envKey"
+              columns={assignedColumns}
+              dataSource={rows}
+              loading={scope.isLoading}
+              pagination={false}
+              locale={{ emptyText: <Empty description="尚未归属任何环境，切到「待分配」勾选加入" /> }}
+            />
+          )}
         </Space>
       )}
     </Drawer>

@@ -71,7 +71,7 @@ export const APP_ROUTES: AppRoute[] = [
   // 监控页已并入首页（merge-monitor-into-dashboard）：旧路径重定向护住书签与「登录后回原页」的来源路径。
   { path: '/monitor', element: <Navigate to="/" replace />, showInNav: false },
   { path: '/usage', element: <TokenUsagePage />, navLabel: '用量', navIcon: <FundOutlined />, showInNav: true },
-  { path: '/client-users', element: <ClientUsersPage />, navLabel: '客户端用户', navIcon: <KeyOutlined />, showInNav: true },
+  { path: '/client-users', element: <ClientUsersPage />, navLabel: '端用户', navIcon: <KeyOutlined />, showInNav: true },
   // 设置：右上独立圆按钮呈现（AppShell），不入业务胶囊，故 showInNav=false；仍需在此登记以派生路由表。
   { path: '/settings', element: <SettingsPage />, showInNav: false },
 ];

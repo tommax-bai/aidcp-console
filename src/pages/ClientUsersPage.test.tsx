@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { statusTag, sourceTag, platformTag, copyToClipboard } from './ClientUsersPage';
+import { statusTag, sourceTag, platformTag, copyToClipboard, assigneeCell } from './ClientUsersPage';
+import type { ClientEnvironmentView } from '../types/api';
 
 /**
  * 只锁「枚举漂移不白屏」这一关键不变量（memory: console↔cloud 枚举漂移会 white-screen）：
@@ -75,5 +76,37 @@ describe('copyToClipboard — non-secure-context fallback', () => {
     setClipboard(undefined);
     stubExec(false);
     await expect(copyToClipboard('ck_secret')).resolves.toBe(false);
+  });
+});
+
+/**
+ * 锁「多人」标识逻辑（change client-user-env-picker）：≥2 客户 → 「多人（N）」；===1 → 单客户名；
+ * 0 / 未在注册表 → 破折号。纯渲染、无 portal，不 flaky。抽屉勾选加入 / 待分配已分配筛选交互属 portal
+ * 重、桩 flaky（memory: console-antd-popconfirm-test-gotcha）→ 真机核。
+ */
+describe('assigneeCell — 多人 / 单客户 / 空 标识', () => {
+  const mk = (n: number): ClientEnvironmentView => ({
+    envKey: 'p1',
+    label: null,
+    platform: null,
+    assignees: Array.from({ length: n }, (_, i) => ({ userId: `u${i}`, name: `客户${i}` })),
+    assigneeCount: n,
+  });
+
+  it('assigneeCount >= 2 renders 多人 badge with count', () => {
+    const txt = render(assigneeCell(mk(3))).container.textContent ?? '';
+    expect(txt).toContain('多人');
+    expect(txt).toContain('3');
+  });
+
+  it('assigneeCount === 1 renders the single customer name (no 多人)', () => {
+    const txt = render(assigneeCell(mk(1))).container.textContent ?? '';
+    expect(txt).toContain('客户0');
+    expect(txt).not.toContain('多人');
+  });
+
+  it('undefined or zero assignees renders an em dash', () => {
+    expect(render(assigneeCell(undefined)).container.textContent).toContain('—');
+    expect(render(assigneeCell(mk(0))).container.textContent).toContain('—');
   });
 });

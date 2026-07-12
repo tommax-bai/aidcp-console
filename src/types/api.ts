@@ -1014,3 +1014,21 @@ export interface ClientEnvScopeInput {
   label?: string | null;
   platform?: string | null;
 }
+
+/** 某环境被归属到的一个端用户（管理侧全局注册表；仅 userId + name，绝不含 key）。 */
+export interface ClientEnvAssignee {
+  userId: string;
+  name: string;
+}
+
+/**
+ * 管理侧全局环境注册表行（GET /api/client-environments；change client-user-env-picker）：
+ * 系统已知的一个环境 + 它被分配给哪些端用户。跨用户聚合，受内部 JWT，仅后台可读。
+ */
+export interface ClientEnvironmentView {
+  envKey: string;
+  label: string | null;
+  platform: string | null;
+  assignees: ClientEnvAssignee[];
+  assigneeCount: number;
+}
