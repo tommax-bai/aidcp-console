@@ -85,6 +85,42 @@ function fmtTime(ms: number | null): string {
   return new Date(ms).toLocaleString('zh-CN');
 }
 
+/**
+ * 复制文本到剪贴板，带非安全上下文兜底。
+ *
+ * `navigator.clipboard` 只在安全上下文（HTTPS 或 localhost）存在。dev/内网 console 常经明文 HTTP
+ * 访问（如 http://<ip>:8088），此时 `navigator.clipboard` 为 undefined，异步 API 直接失败——这正是
+ * 一次性密钥「复制失败，请手动选中复制」的根因。故先试异步 API，不可用 / 失败再退回传统 execCommand
+ * 选区复制（同步、http 下可用）。两条都不成才算真失败。
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // 落到 execCommand 兜底
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    // 移出视口但保留可选中，避免触发页面滚动 / 布局跳动
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /** 一次性密钥展示态：key 明文只活在这里，关闭即丢。 */
 interface RevealState {
   key: string;
@@ -197,10 +233,9 @@ export function ClientUsersPage() {
   };
 
   const copyKey = async (key: string) => {
-    try {
-      await navigator.clipboard.writeText(key);
+    if (await copyToClipboard(key)) {
       message.success('已复制到剪贴板');
-    } catch {
+    } else {
       message.warning('复制失败，请手动选中复制');
     }
   };
