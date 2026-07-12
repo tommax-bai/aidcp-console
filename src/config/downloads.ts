@@ -17,7 +17,7 @@
 
 export const EDGE_DOWNLOAD = {
   /** 当前发布版本（显示用；改包时一并改）。 */
-  version: '0.3.18',
+  version: '0.3.19',
   /** 同机 Nginx 静态目录前缀（相对路径=同源，无需写域名/端口）。 */
   base: '/downloads',
   /**
@@ -27,8 +27,8 @@ export const EDGE_DOWNLOAD = {
    * win 仍 0.3.5（未随此次重打；Windows 自包含打包尚未接 CI）。
    */
   items: [
-    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.3.18-arm64.dmg' },
-    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.3.18.dmg' },
+    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.3.19-arm64.dmg' },
+    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.3.19.dmg' },
     { key: 'win-x64', label: 'Windows · x64', file: 'AIDCP Setup 0.3.5.exe' },
   ],
 } as const;
