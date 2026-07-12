@@ -6,7 +6,7 @@
  * 只 mock HTTP 客户端层，页面 + react-query 走真实渲染 / mutation 路径。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContentSchedulePage } from './ContentSchedulePage';
@@ -56,10 +56,13 @@ function makeRow(overrides: Partial<ContentScheduleRow> = {}): ContentScheduleRo
     nickname: '昵称A',
     autoEnabled: true,
     postEnabled: true,
+    postMode: 'review',
     postDailyCap: 3,
     commentEnabled: false,
+    commentMode: 'off',
     commentDailyCap: 0,
     contactCommentEnabled: false,
+    contactCommentMode: 'off',
     contactCommentDailyCap: 0,
     hasContactInfo: true,
     maskSource: 'global',
@@ -84,10 +87,21 @@ function renderPage(): void {
   );
 }
 
-/** 渲染并按 DOM（=列顺序）返回单行表格的开关：0=总开关 1=自动发帖 2=自动评论 3=自动联系评论。 */
-async function switches(): Promise<HTMLElement[]> {
+async function renderSchedule(): Promise<void> {
   renderPage();
-  return screen.findAllByRole('switch'); // 等表格渲染出开关（catalog 从 loading→data）
+  await screen.findByText('昵称A'); // 等表格渲染出数据（catalog 从 loading→data）
+}
+
+function totalSwitch(): HTMLElement {
+  return screen.getByRole('switch');
+}
+
+function modeControl(label: string): HTMLElement {
+  return screen.getByLabelText(label);
+}
+
+function selectedMode(label: string): string | null {
+  return modeControl(label).querySelector('.ant-segmented-item-selected')?.textContent ?? null;
 }
 
 describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
@@ -98,9 +112,9 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
   });
 
   it('初始：总开关开 → 自动发帖显示有效态开（勾选）', async () => {
-    const sw = await switches();
-    expect(sw[0].getAttribute('aria-checked')).toBe('true'); // 总开关
-    expect(sw[1].getAttribute('aria-checked')).toBe('true'); // 自动发帖（有效态 true && true）
+    await renderSchedule();
+    expect(totalSwitch().getAttribute('aria-checked')).toBe('true'); // 总开关
+    expect(selectedMode('自动发帖 acc-1')).toBe('开'); // 自动发帖（有效态 true && review）
   });
 
   it('乐观：拨关总开关，在服务器回执之前开关就翻，且子开关同帧灭（有效态联动）', async () => {
@@ -111,13 +125,13 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
         resolvePut = () => resolve({});
       });
 
-    const sw = await switches();
-    fireEvent.click(sw[0]); // 拨关总开关
+    await renderSchedule();
+    fireEvent.click(totalSwitch()); // 拨关总开关
 
     // 服务器尚未回执（putImpl 仍挂起），但开关必须已经翻到「关」：
-    await waitFor(() => expect(sw[0].getAttribute('aria-checked')).toBe('false'));
+    await waitFor(() => expect(totalSwitch().getAttribute('aria-checked')).toBe('false'));
     // 子开关有效态联动：总开关关 → 自动发帖同帧显示关（尽管其存储值 postEnabled 仍为 true）。
-    expect(sw[1].getAttribute('aria-checked')).toBe('false');
+    expect(selectedMode('自动发帖 acc-1')).toBe('关');
     // 确已发出写请求，但请求还没回来（乐观，不等网络）。
     expect(state.putCalls).toEqual([{ path: '/api/content-schedule/acc-1', body: { autoEnabled: false } }]);
     expect(resolvePut).not.toBeNull();
@@ -126,19 +140,31 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
   it('失败回滚：apiPut 拒绝 → 开关弹回真态（开）', async () => {
     state.putImpl = () => Promise.reject(new Error('boom'));
 
-    const sw = await switches();
-    fireEvent.click(sw[0]); // 拨关总开关
+    await renderSchedule();
+    fireEvent.click(totalSwitch()); // 拨关总开关
 
     // 乐观先翻关，onError 回滚后弹回开；onSettled invalidate 重取仍是 autoEnabled=true。
-    await waitFor(() => expect(sw[0].getAttribute('aria-checked')).toBe('true'));
-    expect(sw[1].getAttribute('aria-checked')).toBe('true');
+    await waitFor(() => expect(totalSwitch().getAttribute('aria-checked')).toBe('true'));
+    expect(selectedMode('自动发帖 acc-1')).toBe('开');
   });
 
   it('假象消除：总开关关但 postEnabled 记忆为 true → 子开关显示关且禁用（不显示「开着却关不掉」）', async () => {
-    state.rows = [makeRow({ autoEnabled: false, postEnabled: true })];
-    const sw = await switches();
-    expect(sw[0].getAttribute('aria-checked')).toBe('false'); // 总开关关
-    expect(sw[1].getAttribute('aria-checked')).toBe('false'); // 自动发帖：有效态关（记忆值 true 被隐藏、不写库）
-    expect((sw[1] as HTMLButtonElement).disabled).toBe(true); // 且禁用——不给「想关却关不掉」的操作面
+    state.rows = [makeRow({ autoEnabled: false, postEnabled: true, postMode: 'review' })];
+    await renderSchedule();
+    expect(totalSwitch().getAttribute('aria-checked')).toBe('false'); // 总开关关
+    expect(selectedMode('自动发帖 acc-1')).toBe('关'); // 自动发帖：有效态关（记忆值 review 被隐藏、不写库）
+    expect(modeControl('自动发帖 acc-1').className).toContain('ant-segmented-disabled'); // 且禁用——不给「想关却关不掉」的操作面
+  });
+
+  it('三档：自动评论选免审 → PUT commentMode=auto_approve，非旧 boolean', async () => {
+    state.putImpl = () => new Promise(() => {});
+    await renderSchedule();
+    fireEvent.click(within(modeControl('自动评论 acc-1')).getByText('免审'));
+    await waitFor(() =>
+      expect(state.putCalls).toEqual([
+        { path: '/api/content-schedule/acc-1', body: { commentMode: 'auto_approve' } },
+      ]),
+    );
+    expect(selectedMode('自动评论 acc-1')).toBe('免审');
   });
 });

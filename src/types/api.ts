@@ -914,6 +914,8 @@ export interface PanelBotChatsResponse {
 
 // ── 内容排期（change content-schedule-auto-publish，Phase 1 只做发帖）。手工镜像 cloud DTO，两处须同步防漂移。 ──
 
+export type ContentScheduleActionMode = 'off' | 'review' | 'auto_approve';
+
 /**
  * 全局「内容可自动时段」周历格（GET/PUT /api/content-schedule/global）。
  * 与浏览掩码（SessionLimitView.activeWeekMask）物理分开、语义不同：本格治「何时允许自动发帖」。
@@ -939,14 +941,17 @@ export interface ContentScheduleRow {
   autoEnabled: boolean;
   /** 发帖开关。 */
   postEnabled: boolean;
+  postMode: ContentScheduleActionMode;
   /** 发帖日上限；0=该动作不自动（与开关双保险）。 */
   postDailyCap: number;
   /** 自动评论开关（change content-schedule-comments）。 */
   commentEnabled: boolean;
+  commentMode: ContentScheduleActionMode;
   /** 评论日上限；0=不自动。该时段「尝试」评论：自行搜索目标、可能 0 产出、每条需飞书人审。 */
   commentDailyCap: number;
   /** 自动联系评论开关（change content-schedule-group-comments；开启须过一码一号硬校验）。 */
   contactCommentEnabled: boolean;
+  contactCommentMode: ContentScheduleActionMode;
   /** 联系评论每日自动尝试上限（硬 ≤10、建议 ≤3；被拒/无目标也占额度）。 */
   contactCommentDailyCap: number;
   /** 该账号是否已配联系方式（联系评论开关前置徽标）。 */
@@ -968,10 +973,13 @@ export interface ContentScheduleCatalog {
 export interface ContentSchedulePatch {
   autoEnabled?: boolean;
   postEnabled?: boolean;
+  postMode?: ContentScheduleActionMode;
   postDailyCap?: number;
   commentEnabled?: boolean;
+  commentMode?: ContentScheduleActionMode;
   commentDailyCap?: number;
   contactCommentEnabled?: boolean;
+  contactCommentMode?: ContentScheduleActionMode;
   contactCommentDailyCap?: number;
   /** 每账号时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。v1 前端不写此字段（留缝）。 */
   contentActiveMask?: string | null;

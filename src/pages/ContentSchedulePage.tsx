@@ -6,6 +6,7 @@ import {
   Card,
   InputNumber,
   Modal,
+  Segmented,
   Skeleton,
   Space,
   Switch,
@@ -19,7 +20,7 @@ import { apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
 import { useContentSchedule, useContentScheduleGlobal, useSessionLimits } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
-import type { ContentScheduleRow, ContentSchedulePatch, ContentScheduleCatalog } from '../types/api';
+import type { ContentScheduleRow, ContentSchedulePatch, ContentScheduleCatalog, ContentScheduleActionMode } from '../types/api';
 import {
   WeekActiveGrid,
   EMPTY_MASK,
@@ -44,12 +45,59 @@ const clampContent = (browse: string, content: string) =>
 /** 展示名回落：nickname → label → accountId。 */
 const displayName = (r: ContentScheduleRow) => r.nickname || r.label || r.accountId;
 
+const ACTION_MODE_OPTIONS: Array<{ label: string; value: ContentScheduleActionMode }> = [
+  { label: '关', value: 'off' },
+  { label: '开', value: 'review' },
+  { label: '免审', value: 'auto_approve' },
+];
+
+const isActionModeOn = (mode: ContentScheduleActionMode) => mode !== 'off';
+
+function modePatch(kind: 'post' | 'comment' | 'contact', mode: ContentScheduleActionMode): ContentSchedulePatch {
+  if (kind === 'post') return { postMode: mode };
+  if (kind === 'comment') return { commentMode: mode };
+  return { contactCommentMode: mode };
+}
+
+function applySchedulePatch(row: ContentScheduleRow, patch: ContentSchedulePatch): ContentScheduleRow {
+  const next: ContentScheduleRow = { ...row, ...patch };
+  if (patch.postMode !== undefined) next.postEnabled = isActionModeOn(patch.postMode);
+  if (patch.commentMode !== undefined) next.commentEnabled = isActionModeOn(patch.commentMode);
+  if (patch.contactCommentMode !== undefined) next.contactCommentEnabled = isActionModeOn(patch.contactCommentMode);
+  // 兼容旧 boolean patch：旧调用面仍映射到 review/off。
+  if (patch.postEnabled !== undefined && patch.postMode === undefined) next.postMode = patch.postEnabled ? 'review' : 'off';
+  if (patch.commentEnabled !== undefined && patch.commentMode === undefined) next.commentMode = patch.commentEnabled ? 'review' : 'off';
+  if (patch.contactCommentEnabled !== undefined && patch.contactCommentMode === undefined)
+    next.contactCommentMode = patch.contactCommentEnabled ? 'review' : 'off';
+  return next;
+}
+
+function ActionModeControl(props: {
+  label: string;
+  value: ContentScheduleActionMode;
+  disabled?: boolean;
+  onChange: (mode: ContentScheduleActionMode) => void;
+}) {
+  return (
+    <Segmented<ContentScheduleActionMode>
+      aria-label={props.label}
+      className="content-schedule-mode"
+      size="small"
+      options={ACTION_MODE_OPTIONS}
+      value={props.value}
+      disabled={props.disabled}
+      onChange={props.onChange}
+      style={{ minWidth: 112 }}
+    />
+  );
+}
+
 /**
  * 内容排期页（change content-schedule-auto-publish，Phase 1 只做发帖）。
  * 三态合一网格（用户拍板形态）：一张周历、点格循环 休眠 → 活跃 → 活跃+可自动 → 休眠；
  * 底层仍是两个独立字段（浏览掩码 fail-open / 内容掩码 fail-closed），一次保存串行写两端点、诚实非乐观。
  * 活跃层与「安全」页的「可活跃时间」是同一份数据——在这里改活跃格 = 改浏览会话时段（安全页已只读化）。
- * 铁律：自动 ⊆ 活跃（休眠格绝不自动，云端另有强制闸）；到点只产草稿→飞书人审→通过才发；手动不受时段限制。
+ * 铁律：自动 ⊆ 活跃（休眠格绝不自动，云端另有强制闸）；开=飞书审批，免审=通知后提交；手动不受时段限制。
  */
 export function ContentSchedulePage() {
   const { message } = App.useApp();
@@ -139,7 +187,7 @@ export function ContentSchedulePage() {
       const prev = qc.getQueryData<ContentScheduleCatalog>(['config', 'content-schedule']);
       qc.setQueryData<ContentScheduleCatalog>(['config', 'content-schedule'], (old) =>
         old
-          ? { ...old, rows: old.rows.map((r) => (r.accountId === accountId ? { ...r, ...patch } : r)) }
+          ? { ...old, rows: old.rows.map((r) => (r.accountId === accountId ? applySchedulePatch(r, patch) : r)) }
           : old,
       );
       return { prev };
@@ -231,12 +279,13 @@ export function ContentSchedulePage() {
       {
         title: '自动发帖',
         key: 'post',
-        width: 90,
+        width: 132,
         render: (_: unknown, r) => (
-          <Switch
-            checked={r.autoEnabled && r.postEnabled}
+          <ActionModeControl
+            label={`自动发帖 ${r.accountId}`}
+            value={r.autoEnabled ? r.postMode : 'off'}
             disabled={!r.autoEnabled}
-            onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { postEnabled: v } })}
+            onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('post', mode) })}
           />
         ),
       },
@@ -249,7 +298,7 @@ export function ContentSchedulePage() {
             min={0}
             max={CAP_MAX}
             precision={0}
-            disabled={!r.autoEnabled || !r.postEnabled}
+            disabled={!r.autoEnabled || !isActionModeOn(r.postMode)}
             value={capDraft[`${r.accountId}:post`] ?? r.postDailyCap}
             onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:post`]: v }))}
             onBlur={() => commitCap(r, 'post')}
@@ -261,12 +310,13 @@ export function ContentSchedulePage() {
       {
         title: '自动评论',
         key: 'comment',
-        width: 90,
+        width: 132,
         render: (_: unknown, r) => (
-          <Switch
-            checked={r.autoEnabled && r.commentEnabled}
+          <ActionModeControl
+            label={`自动评论 ${r.accountId}`}
+            value={r.autoEnabled ? r.commentMode : 'off'}
             disabled={!r.autoEnabled}
-            onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { commentEnabled: v } })}
+            onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('comment', mode) })}
           />
         ),
       },
@@ -279,7 +329,7 @@ export function ContentSchedulePage() {
             min={0}
             max={CAP_MAX}
             precision={0}
-            disabled={!r.autoEnabled || !r.commentEnabled}
+            disabled={!r.autoEnabled || !isActionModeOn(r.commentMode)}
             value={capDraft[`${r.accountId}:comment`] ?? r.commentDailyCap}
             onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:comment`]: v }))}
             onBlur={() => commitCap(r, 'comment')}
@@ -291,13 +341,14 @@ export function ContentSchedulePage() {
       {
         title: '自动联系评论',
         key: 'contact',
-        width: 132,
+        width: 176,
         render: (_: unknown, r) => (
           <Space size={6}>
-            <Switch
-              checked={r.autoEnabled && r.contactCommentEnabled}
+            <ActionModeControl
+              label={`自动联系评论 ${r.accountId}`}
+              value={r.autoEnabled && r.hasContactInfo ? r.contactCommentMode : 'off'}
               disabled={!r.autoEnabled || !r.hasContactInfo}
-              onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { contactCommentEnabled: v } })}
+              onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('contact', mode) })}
             />
             {!r.hasContactInfo ? <Tag color="red">未配联系方式</Tag> : null}
           </Space>
@@ -312,7 +363,7 @@ export function ContentSchedulePage() {
             min={0}
             max={10}
             precision={0}
-            disabled={!r.autoEnabled || !r.contactCommentEnabled}
+            disabled={!r.autoEnabled || !r.hasContactInfo || !isActionModeOn(r.contactCommentMode)}
             value={capDraft[`${r.accountId}:contact`] ?? r.contactCommentDailyCap}
             onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:contact`]: v }))}
             onBlur={() => commitCap(r, 'contact')}
@@ -367,8 +418,8 @@ export function ContentSchedulePage() {
       <Alert
         type="info"
         showIcon
-        message="活跃时段与定时自动发帖（仍走人审）"
-        description="一张周历管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容——到点由云端生成草稿→飞书人审→通过才真发，绝不自动发送。休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（无新素材会诚实空槽、日上限与人审仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
+        message="活跃时段与内容自动化"
+        description="一张周历管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容。每个动作可选「关 / 开 / 免审」：开=生成后发飞书审批，免审=不等审批、发飞书通知后直接进入发布/评论步骤。休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（无新素材、日上限、风控、页面核对仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
       />
 
       <Card
@@ -400,7 +451,7 @@ export function ContentSchedulePage() {
 
       <Card size="small" title="账号内容自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          每账号：总开关（默认关）→ 自动发帖 / 自动评论各自开关 + 日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动联系评论都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）、每条需飞书人审；自动路径过风控配额（手动不受限）。联系评论额外规矩：开启须先配联系方式（未配硬拒）；建议**一码一号**——同一联系方式配多账号仍可开启，但会提示防关联封号风险；日上限=每日自动尝试数（被拒/无目标也占额度），硬上限 10、建议 ≤3；改联系方式后请自查一码一号。
+          每账号：总开关（默认关）→ 自动发帖 / 自动评论 / 自动联系评论各自选择关、开或免审，并配置日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动联系评论都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）；选择免审时只跳过飞书审批等待，不跳过风控配额、去重、页面核对和结果回执。联系评论额外规矩：开启须先配联系方式（未配硬拒）；建议**一码一号**——同一联系方式配多账号仍可开启，但会提示防关联封号风险；日上限=每日自动尝试数（被拒/无目标也占额度），硬上限 10、建议 ≤3；改联系方式后请自查一码一号。
         </Typography.Paragraph>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />
