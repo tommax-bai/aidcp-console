@@ -33,6 +33,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
+import { IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES, prepareImageForUpload } from '../utils/imageUploadCompression';
 import type {
   FacebookCommentConfig,
   FacebookCommentMode,
@@ -60,6 +61,8 @@ interface PendingUpload {
   uid: string;
   name: string;
   size: number;
+  originalSize: number;
+  compressed: boolean;
   type: string;
   file: File;
 }
@@ -78,6 +81,11 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function pendingUploadSizeLabel(item: PendingUpload): string {
+  if (!item.compressed) return formatBytes(item.size);
+  return `${formatBytes(item.originalSize)} → ${formatBytes(item.size)}`;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -256,7 +264,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
     onError: (error) => message.error(errorText(error, '排序保存失败')),
   });
 
-  const beforeUpload: UploadProps['beforeUpload'] = (file) => {
+  const beforeUpload: UploadProps['beforeUpload'] = async (file) => {
     if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
       message.error('仅支持 PNG / JPG / WEBP / GIF 图片');
       return Upload.LIST_IGNORE;
@@ -265,11 +273,23 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
       message.error('单张图片不能超过 10 MB');
       return Upload.LIST_IGNORE;
     }
+    const prepared = await prepareImageForUpload(file);
     const key = pendingKey(file);
     setPendingUploads((prev) =>
       prev.some((item) => item.uid === key)
         ? prev
-        : [...prev, { uid: key, name: file.name, size: file.size, type: file.type, file }],
+        : [
+            ...prev,
+            {
+              uid: key,
+              name: file.name,
+              size: prepared.finalSize,
+              originalSize: prepared.originalSize,
+              compressed: prepared.compressed,
+              type: prepared.file.type || file.type,
+              file: prepared.file,
+            },
+          ],
     );
     return Upload.LIST_IGNORE;
   };
@@ -528,7 +548,9 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                     >
                       <InboxOutlined className="facebook-publish-media__upload-icon" />
                       <Typography.Text>选择或拖入发帖图片</Typography.Text>
-                      <Typography.Text type="secondary">支持 PNG / JPG / WEBP / GIF，单张最大 10 MB</Typography.Text>
+                      <Typography.Text type="secondary">
+                        支持 PNG / JPG / WEBP / GIF，单张最大 10 MB；大于 {formatBytes(IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES)} 自动压缩，不裁剪
+                      </Typography.Text>
                     </Upload.Dragger>
 
                     {pendingUploads.length > 0 ? (
@@ -540,7 +562,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                               closable={!upload.isPending}
                               onClose={() => setPendingUploads((prev) => prev.filter((file) => file.uid !== item.uid))}
                             >
-                              {item.name} · {formatBytes(item.size)}
+                              {item.name} · {pendingUploadSizeLabel(item)}
                             </Tag>
                           ))}
                         </Space>

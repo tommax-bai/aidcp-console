@@ -10,6 +10,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FacebookSearchConfig } from './FacebookSearchConfig';
+import { IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES } from '../utils/imageUploadCompression';
 import type { FacebookCommentConfig, FacebookPublishMediaList, PanelAccount } from '../types/api';
 
 // jsdom 未实现 getComputedStyle 的伪元素形态（AntD Modal 量滚动条会传第二参 → 抛错打断 footer 渲染）。丢弃第二参。
@@ -115,6 +116,27 @@ function selectFiles(files: File[]) {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error('image file input not found');
   fireEvent.change(input, { target: { files } });
+}
+
+function mockImageCompression(compressedBytes: Uint8Array, type = 'image/jpeg') {
+  const restore: Array<() => void> = [];
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  globalThis.createImageBitmap = vi.fn(async () => ({ width: 3024, height: 4032, close: vi.fn() })) as typeof createImageBitmap;
+  restore.push(() => {
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+  });
+  const getContext = vi
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
+  const toBlob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function toBlob(callback, requestedType) {
+    const bytes = compressedBytes.buffer.slice(compressedBytes.byteOffset, compressedBytes.byteOffset + compressedBytes.byteLength) as ArrayBuffer;
+    const blob = new Blob([bytes], { type: requestedType || type });
+    Object.defineProperty(blob, 'arrayBuffer', { value: () => Promise.resolve(bytes.slice(0)) });
+    callback(blob);
+  });
+  restore.push(() => getContext.mockRestore());
+  restore.push(() => toBlob.mockRestore());
+  return () => restore.reverse().forEach((fn) => fn());
 }
 
 describe('FacebookSearchConfig', () => {
@@ -253,6 +275,32 @@ describe('FacebookSearchConfig', () => {
     expect(
       state.postCalls.map((call) => (call.body as { files: Array<{ filename: string }> }).files.map((file) => file.filename)),
     ).toEqual([['one.png'], ['two.jpg']]);
+  });
+
+  it('发帖图片：超过 600KB 的图片先压缩，再上传压缩后的内容', async () => {
+    const compressedBytes = new Uint8Array([1, 2, 3, 4]);
+    const restoreCompression = mockImageCompression(compressedBytes, 'image/jpeg');
+    try {
+      renderCmp();
+      fireEvent.click(screen.getByText('FB配置'));
+      fireEvent.click(await screen.findByText('发帖图片'));
+
+      const large = new File([new Uint8Array(IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES + 1024)], 'large.jpg', { type: 'image/jpeg' });
+      selectFiles([large]);
+
+      await screen.findByText(/large\.jpg · .* → 4 B/);
+      fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
+
+      await waitFor(() => expect(state.postCalls.length).toBe(1));
+      const uploaded = (state.postCalls[0].body as { files: Array<{ filename: string; contentType: string; dataBase64: string }> }).files[0];
+      expect(uploaded).toEqual({
+        filename: 'large.jpg',
+        contentType: 'image/jpeg',
+        dataBase64: 'AQIDBA==',
+      });
+    } finally {
+      restoreCompression();
+    }
   });
 
   it('发帖图片：单张失败不阻断后续上传，失败文件保留待重试', async () => {
