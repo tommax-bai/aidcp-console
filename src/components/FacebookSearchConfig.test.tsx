@@ -5,12 +5,13 @@
  *  - legacy containers 不再展示 / 不再提交。
  * 只 mock HTTP 客户端层，组件 + react-query 走真实路径。
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FacebookSearchConfig } from './FacebookSearchConfig';
-import { IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES } from '../utils/imageUploadCompression';
+import { IMAGE_UPLOAD_COMPRESSION_TARGET_BYTES } from '../utils/imageUploadCompression';
+import type { ImageUploadCompressionRejectReason } from '../utils/imageUploadCompression';
 import type { FacebookCommentConfig, FacebookPublishMediaList, PanelAccount } from '../types/api';
 
 // jsdom 未实现 getComputedStyle 的伪元素形态（AntD Modal 量滚动条会传第二参 → 抛错打断 footer 渲染）。丢弃第二参。
@@ -40,6 +41,10 @@ const state = vi.hoisted(() => ({
   patchCalls: [] as Array<{ path: string; body: unknown }>,
   deleteCalls: [] as string[],
   postFailures: [] as string[],
+}));
+
+const imageCompression = vi.hoisted(() => ({
+  prepareImageForUpload: vi.fn(),
 }));
 
 vi.mock('../api/client', async () => ({
@@ -82,6 +87,11 @@ vi.mock('../api/client', async () => ({
   }),
 }));
 
+vi.mock('../utils/imageUploadCompression', async () => ({
+  ...(await vi.importActual<typeof import('../utils/imageUploadCompression')>('../utils/imageUploadCompression')),
+  prepareImageForUpload: imageCompression.prepareImageForUpload,
+}));
+
 function fbAccount(): PanelAccount {
   return {
     accountId: 'fb-1',
@@ -118,25 +128,48 @@ function selectFiles(files: File[]) {
   fireEvent.change(input, { target: { files } });
 }
 
-function mockImageCompression(compressedBytes: Uint8Array, type = 'image/jpeg') {
-  const restore: Array<() => void> = [];
-  const previousCreateImageBitmap = globalThis.createImageBitmap;
-  globalThis.createImageBitmap = vi.fn(async () => ({ width: 3024, height: 4032, close: vi.fn() })) as typeof createImageBitmap;
-  restore.push(() => {
-    globalThis.createImageBitmap = previousCreateImageBitmap;
+function bytesBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function jpegName(name: string): string {
+  const withoutExtension = name.replace(/\.[^.\\/]+$/, '');
+  return `${withoutExtension || 'image'}.jpg`;
+}
+
+function fileWithArrayBuffer(bytes: Uint8Array, name: string, type = 'image/jpeg'): File {
+  const buffer = bytesBuffer(bytes);
+  const file = new File([buffer], name, { type, lastModified: 123 });
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => Promise.resolve(buffer.slice(0)),
   });
-  const getContext = vi
-    .spyOn(HTMLCanvasElement.prototype, 'getContext')
-    .mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
-  const toBlob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function toBlob(callback, requestedType) {
-    const bytes = compressedBytes.buffer.slice(compressedBytes.byteOffset, compressedBytes.byteOffset + compressedBytes.byteLength) as ArrayBuffer;
-    const blob = new Blob([bytes], { type: requestedType || type });
-    Object.defineProperty(blob, 'arrayBuffer', { value: () => Promise.resolve(bytes.slice(0)) });
-    callback(blob);
+  return file;
+}
+
+function mockImageCompression(compressedBytes: Uint8Array) {
+  imageCompression.prepareImageForUpload.mockImplementation(async (file: File) => {
+    const compressed = fileWithArrayBuffer(compressedBytes, jpegName(file.name), 'image/jpeg');
+    return {
+      ok: true,
+      file: compressed,
+      originalName: file.name,
+      originalSize: file.size,
+      finalSize: compressed.size,
+      outputType: 'image/jpeg',
+      compressed: true,
+    };
   });
-  restore.push(() => getContext.mockRestore());
-  restore.push(() => toBlob.mockRestore());
-  return () => restore.reverse().forEach((fn) => fn());
+  return () => imageCompression.prepareImageForUpload.mockReset();
+}
+
+function mockImageCompressionReject(reason: ImageUploadCompressionRejectReason = 'not_smaller') {
+  imageCompression.prepareImageForUpload.mockImplementation(async (file: File) => ({
+    ok: false,
+    originalName: file.name,
+    originalSize: file.size,
+    reason,
+  }));
+  return () => imageCompression.prepareImageForUpload.mockReset();
 }
 
 describe('FacebookSearchConfig', () => {
@@ -194,6 +227,7 @@ describe('FacebookSearchConfig', () => {
     state.patchCalls = [];
     state.deleteCalls = [];
     state.postFailures = [];
+    imageCompression.prepareImageForUpload.mockReset();
   });
 
   it('点开时回填关键词和评论方式；legacy 群组不再展示', async () => {
@@ -253,42 +287,45 @@ describe('FacebookSearchConfig', () => {
   });
 
   it('发帖图片：批量选择后逐张提交到账号素材池', async () => {
-    renderCmp();
-    fireEvent.click(screen.getByText('FB配置'));
-    fireEvent.click(await screen.findByText('发帖图片'));
-
-    await waitFor(() =>
-      expect(state.getCalls).toContain('/api/accounts/fb-1/facebook-publish-media'),
-    );
-
-    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'one.png', { type: 'image/png' });
-    const jpg = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'two.jpg', { type: 'image/jpeg' });
-    Object.defineProperty(png, 'arrayBuffer', { value: () => Promise.resolve(new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer) });
-    Object.defineProperty(jpg, 'arrayBuffer', { value: () => Promise.resolve(new Uint8Array([0xff, 0xd8, 0xff]).buffer) });
-    selectFiles([png, jpg]);
-
-    await screen.findByText(/two\.jpg/);
-    fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
-
-    await waitFor(() => expect(state.postCalls.length).toBe(2));
-    expect(state.postCalls.every((call) => call.path === '/api/accounts/fb-1/facebook-publish-media/upload')).toBe(true);
-    expect(
-      state.postCalls.map((call) => (call.body as { files: Array<{ filename: string }> }).files.map((file) => file.filename)),
-    ).toEqual([['one.png'], ['two.jpg']]);
-  });
-
-  it('发帖图片：超过 600KB 的图片先压缩，再上传压缩后的内容', async () => {
-    const compressedBytes = new Uint8Array([1, 2, 3, 4]);
-    const restoreCompression = mockImageCompression(compressedBytes, 'image/jpeg');
+    const restoreCompression = mockImageCompression(new Uint8Array([1, 2]));
     try {
       renderCmp();
       fireEvent.click(screen.getByText('FB配置'));
       fireEvent.click(await screen.findByText('发帖图片'));
 
-      const large = new File([new Uint8Array(IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES + 1024)], 'large.jpg', { type: 'image/jpeg' });
+      await waitFor(() =>
+        expect(state.getCalls).toContain('/api/accounts/fb-1/facebook-publish-media'),
+      );
+
+      const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'one.png', { type: 'image/png' });
+      const jpg = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'two.jpg', { type: 'image/jpeg' });
+      selectFiles([png, jpg]);
+
+      await waitFor(() => expect(screen.queryByRole('button', { name: /上传图片/ })).not.toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
+
+      await waitFor(() => expect(state.postCalls.length).toBe(2));
+      expect(state.postCalls.every((call) => call.path === '/api/accounts/fb-1/facebook-publish-media/upload')).toBe(true);
+      expect(
+        state.postCalls.map((call) => (call.body as { files: Array<{ filename: string; contentType: string }> }).files.map((file) => [file.filename, file.contentType])),
+      ).toEqual([[['one.jpg', 'image/jpeg']], [['two.jpg', 'image/jpeg']]]);
+    } finally {
+      restoreCompression();
+    }
+  });
+
+  it('发帖图片：超过 600KB 的图片先压缩，再上传压缩后的内容', async () => {
+    const compressedBytes = new Uint8Array([1, 2, 3, 4]);
+    const restoreCompression = mockImageCompression(compressedBytes);
+    try {
+      renderCmp();
+      fireEvent.click(screen.getByText('FB配置'));
+      fireEvent.click(await screen.findByText('发帖图片'));
+
+      const large = new File([new Uint8Array(IMAGE_UPLOAD_COMPRESSION_TARGET_BYTES + 1024)], 'large.jpg', { type: 'image/jpeg' });
       selectFiles([large]);
 
-      await screen.findByText(/large\.jpg · .* → 4 B/);
+      await waitFor(() => expect(screen.queryByRole('button', { name: /上传图片/ })).not.toBeNull());
       fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
 
       await waitFor(() => expect(state.postCalls.length).toBe(1));
@@ -305,22 +342,43 @@ describe('FacebookSearchConfig', () => {
 
   it('发帖图片：单张失败不阻断后续上传，失败文件保留待重试', async () => {
     state.postFailures = ['two.jpg'];
-    renderCmp();
-    fireEvent.click(screen.getByText('FB配置'));
-    fireEvent.click(await screen.findByText('发帖图片'));
+    const restoreCompression = mockImageCompression(new Uint8Array([1, 2]));
+    try {
+      renderCmp();
+      fireEvent.click(screen.getByText('FB配置'));
+      fireEvent.click(await screen.findByText('发帖图片'));
 
-    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'one.png', { type: 'image/png' });
-    const jpg = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'two.jpg', { type: 'image/jpeg' });
-    Object.defineProperty(png, 'arrayBuffer', { value: () => Promise.resolve(new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer) });
-    Object.defineProperty(jpg, 'arrayBuffer', { value: () => Promise.resolve(new Uint8Array([0xff, 0xd8, 0xff]).buffer) });
-    selectFiles([png, jpg]);
-    await screen.findByText(/two\.jpg/);
+      const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'one.png', { type: 'image/png' });
+      const jpg = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'two.jpg', { type: 'image/jpeg' });
+      selectFiles([png, jpg]);
+      await waitFor(() => expect(screen.queryByRole('button', { name: /上传图片/ })).not.toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
-    await waitFor(() => expect(state.postCalls.length).toBe(2));
-    expect(await screen.findByText(/one\.png 已入池/)).toBeTruthy();
-    expect(await screen.findByText(/two\.jpg 失败：测试上传失败/)).toBeTruthy();
-    expect(screen.getByText(/two\.jpg ·/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
+      await waitFor(() => expect(state.postCalls.length).toBe(2));
+      expect(await screen.findByText(/one\.jpg 已入池/)).toBeTruthy();
+      expect(await screen.findByText(/two\.jpg 失败：测试上传失败/)).toBeTruthy();
+      expect(screen.getByText(/two\.jpg ·/)).toBeTruthy();
+    } finally {
+      restoreCompression();
+    }
+  });
+
+  it('发帖图片：无法转成更小 JPEG 的图片不会入队上传', async () => {
+    const restoreCompression = mockImageCompressionReject('decode_failed');
+    try {
+      renderCmp();
+      fireEvent.click(screen.getByText('FB配置'));
+      fireEvent.click(await screen.findByText('发帖图片'));
+
+      const bad = new File([new Uint8Array([1, 2, 3, 4])], 'bad.png', { type: 'image/png' });
+      selectFiles([bad]);
+
+      await waitFor(() => expect(screen.queryByText(/bad\.png/)).toBeNull());
+      expect(screen.queryByRole('button', { name: /上传图片/ })).toBeNull();
+      expect(state.postCalls).toHaveLength(0);
+    } finally {
+      restoreCompression();
+    }
   });
 
   it('发帖图片：待人工确认图片可以确认、改备注和删除', async () => {

@@ -33,7 +33,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
-import { IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES, prepareImageForUpload } from '../utils/imageUploadCompression';
+import { IMAGE_UPLOAD_COMPRESSION_TARGET_BYTES, prepareImageForUpload } from '../utils/imageUploadCompression';
 import type {
   FacebookCommentConfig,
   FacebookCommentMode,
@@ -46,7 +46,7 @@ import type {
 import { accountName } from '../types/accountDisplay';
 
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const ACCEPTED_IMAGE_TYPES = ['image/*'];
 
 const STATUS_META: Record<FacebookPublishMediaStatus, { text: string; color?: string }> = {
   available: { text: '可用', color: 'green' },
@@ -60,9 +60,9 @@ const STATUS_META: Record<FacebookPublishMediaStatus, { text: string; color?: st
 interface PendingUpload {
   uid: string;
   name: string;
+  originalName: string;
   size: number;
   originalSize: number;
-  compressed: boolean;
   type: string;
   file: File;
 }
@@ -84,8 +84,11 @@ function formatBytes(bytes: number): string {
 }
 
 function pendingUploadSizeLabel(item: PendingUpload): string {
-  if (!item.compressed) return formatBytes(item.size);
   return `${formatBytes(item.originalSize)} → ${formatBytes(item.size)}`;
+}
+
+function pendingUploadNameLabel(item: PendingUpload): string {
+  return item.originalName === item.name ? item.name : `${item.originalName} → ${item.name}`;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -265,8 +268,8 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
   });
 
   const beforeUpload: UploadProps['beforeUpload'] = async (file) => {
-    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-      message.error('仅支持 PNG / JPG / WEBP / GIF 图片');
+    if (!file.type.startsWith('image/')) {
+      message.error('仅支持图片文件');
       return Upload.LIST_IGNORE;
     }
     if (file.size > IMAGE_MAX_BYTES) {
@@ -274,6 +277,10 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
       return Upload.LIST_IGNORE;
     }
     const prepared = await prepareImageForUpload(file);
+    if (!prepared.ok) {
+      message.error(`${file.name} 无法转成更小的 JPEG，未加入上传队列`);
+      return Upload.LIST_IGNORE;
+    }
     const key = pendingKey(file);
     setPendingUploads((prev) =>
       prev.some((item) => item.uid === key)
@@ -282,11 +289,11 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
             ...prev,
             {
               uid: key,
-              name: file.name,
+              name: prepared.file.name,
+              originalName: prepared.originalName,
               size: prepared.finalSize,
               originalSize: prepared.originalSize,
-              compressed: prepared.compressed,
-              type: prepared.file.type || file.type,
+              type: prepared.outputType,
               file: prepared.file,
             },
           ],
@@ -549,7 +556,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                       <InboxOutlined className="facebook-publish-media__upload-icon" />
                       <Typography.Text>选择或拖入发帖图片</Typography.Text>
                       <Typography.Text type="secondary">
-                        支持 PNG / JPG / WEBP / GIF，单张最大 10 MB；大于 {formatBytes(IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES)} 自动压缩，不裁剪
+                        支持常见图片，单张最大 10 MB；上传前统一转 JPEG 压缩，目标约 {formatBytes(IMAGE_UPLOAD_COMPRESSION_TARGET_BYTES)}，不裁剪
                       </Typography.Text>
                     </Upload.Dragger>
 
@@ -562,7 +569,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                               closable={!upload.isPending}
                               onClose={() => setPendingUploads((prev) => prev.filter((file) => file.uid !== item.uid))}
                             >
-                              {item.name} · {pendingUploadSizeLabel(item)}
+                              {pendingUploadNameLabel(item)} · {pendingUploadSizeLabel(item)}
                             </Tag>
                           ))}
                         </Space>

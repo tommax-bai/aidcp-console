@@ -1,40 +1,49 @@
-export const IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES = 600 * 1024;
-export const IMAGE_UPLOAD_COMPRESSION_MAX_BYTES = IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES;
+export const IMAGE_UPLOAD_COMPRESSION_TARGET_BYTES = 600 * 1024;
 export const IMAGE_UPLOAD_COMPRESSION_MAX_EDGE_PX = 2048;
 
-const SAFE_COMPRESSIBLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const LOSSY_COMPRESSIBLE_TYPES = new Set(['image/jpeg', 'image/webp']);
+const OUTPUT_TYPE = 'image/jpeg';
 const MAX_EDGE_CANDIDATES = [2048, 1600, 1280];
-const LOSSY_QUALITY_CANDIDATES = [0.82, 0.74, 0.66];
+const JPEG_QUALITY_CANDIDATES = [0.82, 0.74, 0.66, 0.58];
 
-export type ImageUploadCompressionSkipReason =
-  | 'below_threshold'
+export type ImageUploadCompressionRejectReason =
   | 'unsupported_type'
   | 'decode_failed'
   | 'encode_failed'
   | 'not_smaller';
 
-export interface ImageUploadCompressionResult {
+export type ImageUploadCompressionResult =
+  | {
+      ok: true;
+      file: File;
+      originalName: string;
+      originalSize: number;
+      finalSize: number;
+      outputType: 'image/jpeg';
+      compressed: true;
+    }
+  | {
+      ok: false;
+      originalName: string;
+      originalSize: number;
+      reason: ImageUploadCompressionRejectReason;
+    };
+
+interface ImageUploadCompressionSuccess {
+  ok: true;
   file: File;
+  originalName: string;
   originalSize: number;
   finalSize: number;
-  compressed: boolean;
-  skippedReason?: ImageUploadCompressionSkipReason;
+  outputType: 'image/jpeg';
+  compressed: true;
 }
 
 interface ImageUploadCompressionOptions {
-  thresholdBytes?: number;
   targetBytes?: number;
   maxEdgePx?: number;
 }
 
 type DecodedImage = (ImageBitmap | HTMLImageElement) & { close?: () => void };
-
-function canvasOutputType(inputType: string): string {
-  if (inputType === 'image/webp') return 'image/webp';
-  if (inputType === 'image/png') return 'image/png';
-  return 'image/jpeg';
-}
 
 function dimensionsOf(image: DecodedImage): { width: number; height: number } {
   return {
@@ -80,6 +89,8 @@ function drawScaled(image: DecodedImage, maxEdgePx: number): HTMLCanvasElement |
 
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas;
 }
@@ -91,9 +102,16 @@ function encodeCanvas(canvas: HTMLCanvasElement, type: string, quality?: number)
   });
 }
 
-function buildCompressedFile(source: File, blob: Blob, type: string): File {
-  const file = new File([blob], source.name, {
-    type: blob.type || type || source.type,
+function jpegFilename(filename: string): string {
+  const trimmed = filename.trim();
+  if (!trimmed) return 'image.jpg';
+  const withoutExtension = trimmed.replace(/\.[^.\\/]+$/, '');
+  return `${withoutExtension || 'image'}.jpg`;
+}
+
+function buildCompressedFile(source: File, blob: Blob): File {
+  const file = new File([blob], jpegFilename(source.name), {
+    type: OUTPUT_TYPE,
     lastModified: source.lastModified,
   });
   if (typeof file.arrayBuffer !== 'function') {
@@ -108,61 +126,56 @@ function buildCompressedFile(source: File, blob: Blob, type: string): File {
   return file;
 }
 
+function reject(file: File, reason: ImageUploadCompressionRejectReason): ImageUploadCompressionResult {
+  return {
+    ok: false,
+    originalName: file.name,
+    originalSize: file.size,
+    reason,
+  };
+}
+
+function success(file: File, compressed: File, originalSize: number): ImageUploadCompressionSuccess {
+  return {
+    ok: true,
+    file: compressed,
+    originalName: file.name,
+    originalSize,
+    finalSize: compressed.size,
+    outputType: OUTPUT_TYPE,
+    compressed: true,
+  };
+}
+
 /**
  * Prepare an admin-uploaded image for the Facebook publish media pool.
  *
- * The function is deliberately conservative:
- * - <= 600KB files are returned unchanged.
- * - GIFs are returned unchanged to avoid silently dropping animation frames.
- * - Any decode/encode failure returns the original file.
- * - A compressed candidate is used only when it is smaller than the original.
+ * The media pool is optimized for Facebook publish speed, so this function is
+ * intentionally strict:
+ * - every accepted image must be decoded and re-encoded as JPEG;
+ * - transparent pixels are flattened on a white background;
+ * - decode/encode/no-smaller-candidate failures are rejected instead of uploading originals;
  * - Drawing always uses the full source image with proportional scaling, never crop/pad/stretch.
  */
 export async function prepareImageForUpload(
   file: File,
   options: ImageUploadCompressionOptions = {},
 ): Promise<ImageUploadCompressionResult> {
-  const thresholdBytes = options.thresholdBytes ?? IMAGE_UPLOAD_COMPRESSION_THRESHOLD_BYTES;
-  const targetBytes = options.targetBytes ?? IMAGE_UPLOAD_COMPRESSION_MAX_BYTES;
+  const targetBytes = options.targetBytes ?? IMAGE_UPLOAD_COMPRESSION_TARGET_BYTES;
   const maxEdgePx = options.maxEdgePx ?? IMAGE_UPLOAD_COMPRESSION_MAX_EDGE_PX;
 
-  if (file.size <= thresholdBytes) {
-    return {
-      file,
-      originalSize: file.size,
-      finalSize: file.size,
-      compressed: false,
-      skippedReason: 'below_threshold',
-    };
-  }
-
-  if (!SAFE_COMPRESSIBLE_TYPES.has(file.type)) {
-    return {
-      file,
-      originalSize: file.size,
-      finalSize: file.size,
-      compressed: false,
-      skippedReason: 'unsupported_type',
-    };
+  if (!file.type.startsWith('image/')) {
+    return reject(file, 'unsupported_type');
   }
 
   let image: DecodedImage;
   try {
     image = await decodeImage(file);
   } catch {
-    return {
-      file,
-      originalSize: file.size,
-      finalSize: file.size,
-      compressed: false,
-      skippedReason: 'decode_failed',
-    };
+    return reject(file, 'decode_failed');
   }
 
-  const outputType = canvasOutputType(file.type);
-  const lossy = LOSSY_COMPRESSIBLE_TYPES.has(outputType);
   const edgeCandidates = [maxEdgePx, ...MAX_EDGE_CANDIDATES.filter((edge) => edge !== maxEdgePx)];
-  const qualityCandidates = lossy ? LOSSY_QUALITY_CANDIDATES : [undefined];
   let bestBlob: Blob | null = null;
   let encodedAnyCandidate = false;
 
@@ -171,21 +184,15 @@ export async function prepareImageForUpload(
       const canvas = drawScaled(image, edge);
       if (!canvas) continue;
 
-      for (const quality of qualityCandidates) {
-        const blob = await encodeCanvas(canvas, outputType, quality);
+      for (const quality of JPEG_QUALITY_CANDIDATES) {
+        const blob = await encodeCanvas(canvas, OUTPUT_TYPE, quality);
         if (!blob) continue;
         encodedAnyCandidate = true;
         if (blob.size < file.size && (!bestBlob || blob.size < bestBlob.size)) {
           bestBlob = blob;
         }
         if (blob.size > 0 && blob.size <= targetBytes && blob.size < file.size) {
-          const compressed = buildCompressedFile(file, blob, outputType);
-          return {
-            file: compressed,
-            originalSize: file.size,
-            finalSize: compressed.size,
-            compressed: true,
-          };
+          return success(file, buildCompressedFile(file, blob), file.size);
         }
       }
     }
@@ -194,30 +201,12 @@ export async function prepareImageForUpload(
   }
 
   if (!bestBlob) {
-    return {
-      file,
-      originalSize: file.size,
-      finalSize: file.size,
-      compressed: false,
-      skippedReason: encodedAnyCandidate ? 'not_smaller' : 'encode_failed',
-    };
+    return reject(file, encodedAnyCandidate ? 'not_smaller' : 'encode_failed');
   }
 
   if (bestBlob.size >= file.size) {
-    return {
-      file,
-      originalSize: file.size,
-      finalSize: file.size,
-      compressed: false,
-      skippedReason: 'not_smaller',
-    };
+    return reject(file, 'not_smaller');
   }
 
-  const compressed = buildCompressedFile(file, bestBlob, outputType);
-  return {
-    file: compressed,
-    originalSize: file.size,
-    finalSize: compressed.size,
-    compressed: true,
-  };
+  return success(file, buildCompressedFile(file, bestBlob), file.size);
 }
