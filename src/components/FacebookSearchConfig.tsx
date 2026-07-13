@@ -23,6 +23,7 @@ import type { UploadProps } from 'antd';
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
+  CheckCircleOutlined,
   DeleteOutlined,
   InboxOutlined,
   PauseCircleOutlined,
@@ -340,7 +341,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
       width: 180,
       render: (_, row) => {
         const value = captionDrafts[row.id] ?? row.captionHint ?? '';
-        const locked = row.status === 'reserved' || row.status === 'used' || row.status === 'quarantine';
+        const locked = row.status === 'reserved' || row.status === 'used';
         return (
           <Input
             size="small"
@@ -388,10 +389,20 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
       key: 'actions',
       width: 172,
       render: (_, row) => {
-        const locked = row.status === 'reserved' || row.status === 'used' || row.status === 'quarantine';
+        const locked = row.status === 'reserved' || row.status === 'used';
         return (
           <Space size={4} wrap={false}>
-            {row.status === 'disabled' ? (
+            {row.status === 'quarantine' ? (
+              <Button
+                size="small"
+                icon={<CheckCircleOutlined />}
+                disabled={locked}
+                loading={patchSet.isPending}
+                onClick={() => patchSet.mutate({ setId: row.id, status: 'available' })}
+              >
+                确认
+              </Button>
+            ) : row.status === 'disabled' ? (
               <Button
                 size="small"
                 icon={<PlayCircleOutlined />}
@@ -412,8 +423,8 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                 停用
               </Button>
             )}
-            <Popconfirm title="删除这张发帖图片？" onConfirm={() => deleteSet.mutate(row.id)}>
-              <Button size="small" icon={<DeleteOutlined />} danger disabled={locked} loading={deleteSet.isPending} />
+            <Popconfirm title="删除这张发帖图片？" okText="删除" cancelText="取消" onConfirm={() => deleteSet.mutate(row.id)}>
+              <Button size="small" icon={<DeleteOutlined />} aria-label="删除图片" danger disabled={locked} loading={deleteSet.isPending} />
             </Popconfirm>
           </Space>
         );

@@ -36,6 +36,8 @@ const state = vi.hoisted(() => ({
   getCalls: [] as string[],
   putCalls: [] as Array<{ path: string; body: unknown }>,
   postCalls: [] as Array<{ path: string; body: unknown }>,
+  patchCalls: [] as Array<{ path: string; body: unknown }>,
+  deleteCalls: [] as string[],
   postFailures: [] as string[],
 }));
 
@@ -64,8 +66,19 @@ vi.mock('../api/client', async () => ({
       view: state.media,
     });
   }),
-  apiPatch: vi.fn(),
-  apiDelete: vi.fn(),
+  apiPatch: vi.fn((path: string, body: unknown) => {
+    state.patchCalls.push({ path, body });
+    const patch = body as { status?: string; captionHint?: string | null };
+    return Promise.resolve({
+      ...state.media.sets[0],
+      ...('status' in patch ? { status: patch.status } : {}),
+      ...('captionHint' in patch ? { captionHint: patch.captionHint } : {}),
+    });
+  }),
+  apiDelete: vi.fn((path: string) => {
+    state.deleteCalls.push(path);
+    return Promise.resolve({ ...state.media.sets[0], status: 'deleted' });
+  }),
 }));
 
 function fbAccount(): PanelAccount {
@@ -156,6 +169,8 @@ describe('FacebookSearchConfig', () => {
     state.getCalls = [];
     state.putCalls = [];
     state.postCalls = [];
+    state.patchCalls = [];
+    state.deleteCalls = [];
     state.postFailures = [];
   });
 
@@ -258,5 +273,54 @@ describe('FacebookSearchConfig', () => {
     expect(await screen.findByText(/one\.png 已入池/)).toBeTruthy();
     expect(await screen.findByText(/two\.jpg 失败：测试上传失败/)).toBeTruthy();
     expect(screen.getByText(/two\.jpg ·/)).toBeTruthy();
+  });
+
+  it('发帖图片：待人工确认图片可以确认、改备注和删除', async () => {
+    state.media = {
+      ...state.media,
+      statusCounts: { available: 0, reserved: 0, used: 0, disabled: 0, deleted: 0, quarantine: 1 },
+      sets: [
+        {
+          ...state.media.sets[0],
+          status: 'quarantine',
+          captionHint: null,
+          lastError: 'submitted_unconfirmed',
+        },
+      ],
+    };
+
+    renderCmp();
+    fireEvent.click(screen.getByText('FB配置'));
+    fireEvent.click(await screen.findByText('发帖图片'));
+
+    await screen.findByText('待人工确认');
+    const caption = screen.getByPlaceholderText('可选备注') as HTMLInputElement;
+    expect(caption.disabled).toBe(false);
+    fireEvent.change(caption, { target: { value: '人工确认可用' } });
+    fireEvent.blur(caption);
+    await waitFor(() =>
+      expect(state.patchCalls).toContainEqual({
+        path: '/api/accounts/fb-1/facebook-publish-media/sets/1',
+        body: { captionHint: '人工确认可用' },
+      }),
+    );
+
+    const confirmButton = screen.getByRole('button', { name: /确认/ }) as HTMLButtonElement;
+    await waitFor(() => expect(confirmButton.disabled).toBe(false));
+    fireEvent.click(confirmButton);
+    await waitFor(() =>
+      expect(state.patchCalls).toContainEqual({
+        path: '/api/accounts/fb-1/facebook-publish-media/sets/1',
+        body: { status: 'available' },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '删除图片' }));
+    await screen.findByText('删除这张发帖图片？');
+    const deleteButtons = screen.getAllByRole('button', { name: /删\s*除/ });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+    await waitFor(() =>
+      expect(state.deleteCalls).toEqual(['/api/accounts/fb-1/facebook-publish-media/sets/1']),
+    );
   });
 });
