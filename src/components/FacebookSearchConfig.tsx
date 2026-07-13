@@ -63,6 +63,11 @@ interface PendingUpload {
   file: File;
 }
 
+interface UploadProgress {
+  current: number;
+  total: number;
+}
+
 function pendingKey(file: File & { uid?: string }): string {
   return file.uid ?? `${file.name}-${file.size}-${file.lastModified}`;
 }
@@ -111,6 +116,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [uploadResults, setUploadResults] = useState<FacebookPublishUploadResult[]>([]);
   const [captionDrafts, setCaptionDrafts] = useState<Record<number, string>>({});
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
 
   const path = `/api/accounts/${encodeURIComponent(account.accountId)}/facebook-comment-config`;
   const mediaPath = `/api/accounts/${encodeURIComponent(account.accountId)}/facebook-publish-media`;
@@ -133,6 +139,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
     setUploadResults([]);
     setPendingUploads([]);
     setCaptionDrafts({});
+    setUploadProgress(null);
     void loadMedia();
     try {
       const cfg = await apiGet<FacebookCommentConfig>(path);
@@ -161,29 +168,60 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
   });
 
   const upload = useMutation({
-    mutationFn: async () => {
-      const files = await Promise.all(
-        pendingUploads.map(async (item) => ({
-          filename: item.name,
-          contentType: item.type,
-          dataBase64: arrayBufferToBase64(await item.file.arrayBuffer()),
-        })),
-      );
-      return apiPost<{ results: FacebookPublishUploadResult[]; view: FacebookPublishMediaList }>(
-        `${mediaPath}/upload`,
-        { files },
-      );
+    mutationFn: async (): Promise<{ results: FacebookPublishUploadResult[]; failedItems: PendingUpload[] }> => {
+      const batch = [...pendingUploads];
+      const results: FacebookPublishUploadResult[] = [];
+      const failedItems: PendingUpload[] = [];
+
+      // 保留批量选择，但逐张请求：避免多个 Base64 图片合并成一个超大 JSON 请求体。
+      for (let index = 0; index < batch.length; index += 1) {
+        const item = batch[index];
+        setUploadProgress({ current: index + 1, total: batch.length });
+        try {
+          const response = await apiPost<{ results: FacebookPublishUploadResult[]; view: FacebookPublishMediaList }>(
+            `${mediaPath}/upload`,
+            {
+              files: [
+                {
+                  filename: item.name,
+                  contentType: item.type,
+                  dataBase64: arrayBufferToBase64(await item.file.arrayBuffer()),
+                },
+              ],
+            },
+          );
+          const result = response.results.find((entry) => entry.filename === item.name) ?? response.results[0];
+          const normalized: FacebookPublishUploadResult =
+            result ?? { ok: false, filename: item.name, reason: 'missing_result', message: '服务器未返回上传结果' };
+          results.push(normalized);
+          setMediaView(response.view);
+          if (!normalized.ok) failedItems.push(item);
+        } catch (error) {
+          results.push({
+            ok: false,
+            filename: item.name,
+            reason: 'request_failed',
+            message: errorText(error, '图片上传失败'),
+          });
+          failedItems.push(item);
+        }
+      }
+
+      return { results, failedItems };
     },
-    onSuccess: (res) => {
-      const failed = res.results.filter((r) => !r.ok).length;
-      const succeeded = res.results.length - failed;
-      setMediaView(res.view);
-      setUploadResults(res.results);
-      setPendingUploads([]);
-      if (failed > 0) message.warning(`已上传 ${succeeded} 张，${failed} 张失败`);
+    onSuccess: ({ results, failedItems }) => {
+      const failed = results.filter((result) => !result.ok).length;
+      const succeeded = results.length - failed;
+      setUploadResults(results);
+      setPendingUploads(failedItems);
+      setUploadProgress(null);
+      if (failed > 0) message.warning(`已上传 ${succeeded} 张，${failed} 张失败；失败文件仍保留，可重试`);
       else message.success(`已上传 ${succeeded} 张图片`);
     },
-    onError: (error) => message.error(errorText(error, '图片上传失败')),
+    onError: (error) => {
+      setUploadProgress(null);
+      message.error(errorText(error, '图片上传失败'));
+    },
   });
 
   const patchSet = useMutation({
@@ -502,7 +540,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                           disabled={pendingUploads.length === 0}
                           onClick={() => upload.mutate()}
                         >
-                          上传图片
+                          {uploadProgress ? `上传中 ${uploadProgress.current}/${uploadProgress.total}` : '上传图片'}
                         </Button>
                       </div>
                     ) : null}
@@ -516,7 +554,7 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
                             </Tag>
                           ) : (
                             <Tag key={result.filename} color="red">
-                              {result.filename} 失败
+                              {result.filename} 失败{result.message ? `：${result.message}` : ''}
                             </Tag>
                           ),
                         )}

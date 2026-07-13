@@ -36,6 +36,7 @@ const state = vi.hoisted(() => ({
   getCalls: [] as string[],
   putCalls: [] as Array<{ path: string; body: unknown }>,
   postCalls: [] as Array<{ path: string; body: unknown }>,
+  postFailures: [] as string[],
 }));
 
 vi.mock('../api/client', async () => ({
@@ -51,11 +52,15 @@ vi.mock('../api/client', async () => ({
   }),
   apiPost: vi.fn((path: string, body: unknown) => {
     state.postCalls.push({ path, body });
+    const filename = ((body as { files?: Array<{ filename?: string }> }).files ?? [])[0]?.filename ?? 'unknown';
+    if (state.postFailures.includes(filename)) {
+      return Promise.resolve({
+        results: [{ ok: false, filename, reason: 'invalid_file', message: '测试上传失败' }],
+        view: state.media,
+      });
+    }
     return Promise.resolve({
-      results: [
-        { ok: true, filename: 'one.png', duplicate: false, set: state.media.sets[0] },
-        { ok: true, filename: 'two.jpg', duplicate: false, set: state.media.sets[0] },
-      ],
+      results: [{ ok: true, filename, duplicate: false, set: state.media.sets[0] }],
       view: state.media,
     });
   }),
@@ -151,6 +156,7 @@ describe('FacebookSearchConfig', () => {
     state.getCalls = [];
     state.putCalls = [];
     state.postCalls = [];
+    state.postFailures = [];
   });
 
   it('点开时回填关键词和评论方式；legacy 群组不再展示', async () => {
@@ -209,7 +215,7 @@ describe('FacebookSearchConfig', () => {
     });
   });
 
-  it('发帖图片：批量选择后一次提交到账号素材池', async () => {
+  it('发帖图片：批量选择后逐张提交到账号素材池', async () => {
     renderCmp();
     fireEvent.click(screen.getByText('FB配置'));
     fireEvent.click(await screen.findByText('发帖图片'));
@@ -227,13 +233,30 @@ describe('FacebookSearchConfig', () => {
     await screen.findByText(/two\.jpg/);
     fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
 
-    await waitFor(() => expect(state.postCalls.length).toBe(1));
-    expect(state.postCalls[0].path).toBe('/api/accounts/fb-1/facebook-publish-media/upload');
-    expect(state.postCalls[0].body).toMatchObject({
-      files: [
-        { filename: 'one.png', contentType: 'image/png' },
-        { filename: 'two.jpg', contentType: 'image/jpeg' },
-      ],
-    });
+    await waitFor(() => expect(state.postCalls.length).toBe(2));
+    expect(state.postCalls.every((call) => call.path === '/api/accounts/fb-1/facebook-publish-media/upload')).toBe(true);
+    expect(
+      state.postCalls.map((call) => (call.body as { files: Array<{ filename: string }> }).files.map((file) => file.filename)),
+    ).toEqual([['one.png'], ['two.jpg']]);
+  });
+
+  it('发帖图片：单张失败不阻断后续上传，失败文件保留待重试', async () => {
+    state.postFailures = ['two.jpg'];
+    renderCmp();
+    fireEvent.click(screen.getByText('FB配置'));
+    fireEvent.click(await screen.findByText('发帖图片'));
+
+    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'one.png', { type: 'image/png' });
+    const jpg = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'two.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(png, 'arrayBuffer', { value: () => Promise.resolve(new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer) });
+    Object.defineProperty(jpg, 'arrayBuffer', { value: () => Promise.resolve(new Uint8Array([0xff, 0xd8, 0xff]).buffer) });
+    selectFiles([png, jpg]);
+    await screen.findByText(/two\.jpg/);
+
+    fireEvent.click(screen.getByRole('button', { name: /上传图片/ }));
+    await waitFor(() => expect(state.postCalls.length).toBe(2));
+    expect(await screen.findByText(/one\.png 已入池/)).toBeTruthy();
+    expect(await screen.findByText(/two\.jpg 失败：测试上传失败/)).toBeTruthy();
+    expect(screen.getByText(/two\.jpg ·/)).toBeTruthy();
   });
 });
