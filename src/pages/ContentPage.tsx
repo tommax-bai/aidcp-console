@@ -35,6 +35,7 @@ import { accountDisplayName } from '../types/accountDisplay';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
   published: '已发布',
+  submitted: '已提交，待链接确认',
   failed: '失败',
   pending_approval: '待审',
   needs_review: '已否决',
@@ -335,7 +336,7 @@ function reasonMessage(err: unknown, fallback: string): string {
   return errorText(err, fallback);
 }
 
-/** 生命周期标签：待审 / 已编辑待审(琥珀，飞书卡片已失效) / 已发布 / 失败 / 已否决。 */
+/** 生命周期标签：待审 / 已编辑待审(琥珀，飞书卡片已失效) / 已提交待链接确认 / 已发布 / 失败 / 已否决。 */
 function lifecycleTag(row: Pick<PanelPublish, 'status' | 'contentVersion'>) {
   if (row.status === 'pending_approval') {
     return row.contentVersion > 0 ? (
@@ -344,7 +345,7 @@ function lifecycleTag(row: Pick<PanelPublish, 'status' | 'contentVersion'>) {
       <Tag color="blue">待审</Tag>
     );
   }
-  const color = row.status === 'published' ? 'green' : row.status === 'failed' ? 'red' : 'default';
+  const color = row.status === 'published' ? 'green' : row.status === 'submitted' ? 'gold' : row.status === 'failed' ? 'red' : 'default';
   return <Tag color={color}>{PUBLISH_STATUS_LABEL[row.status] ?? row.status}</Tag>;
 }
 

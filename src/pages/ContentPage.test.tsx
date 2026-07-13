@@ -259,6 +259,14 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.queryByText(/图片模型已实际使用参考图/)).toBeNull();
   });
 
+  it('页面已提交但未取得链接 → 显示待链接确认，不伪装成已发布或失败', async () => {
+    state.published = { items: [makePending({ status: 'submitted', title: '待链接确认帖子' })] };
+    renderPage();
+    expect(await screen.findByRole('row', { name: /测试账号.*待链接确认帖子.*已提交，待链接确认/ })).toBeTruthy();
+    expect(screen.queryByRole('row', { name: /测试账号.*待链接确认帖子.*已发布/ })).toBeNull();
+    expect(screen.queryByRole('row', { name: /测试账号.*待链接确认帖子.*失败/ })).toBeNull();
+  });
+
   it('参照洗稿配图审计：unsupported 明确提示按文本重新生成', async () => {
     state.published = {
       items: [
