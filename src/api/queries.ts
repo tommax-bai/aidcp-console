@@ -34,6 +34,7 @@ import type {
   ClientEnvScopeRow,
   ClientEnvScopeInput,
   ClientEnvironmentView,
+  DownloadsManifest,
 } from '../types/api';
 
 export function useVersion() {
@@ -411,5 +412,17 @@ export function useSetClientUserScope() {
       void qc.invalidateQueries({ queryKey: ['client-users'] });
       void qc.invalidateQueries({ queryKey: ['client-environments'] });
     },
+  });
+}
+
+/**
+ * 边缘客户端安装包清单（change downloads-manifest-from-host）：云端现扫本机 downloads 目录得出。
+ * 失败不重试成灾、也绝不回落写死版本——拿不到就是「暂无可用安装包」。
+ */
+export function useDownloads() {
+  return useQuery({
+    queryKey: ['downloads'],
+    queryFn: () => apiGet<DownloadsManifest>('/api/downloads'),
+    staleTime: 60_000,
   });
 }

@@ -1088,3 +1088,20 @@ export interface ClientEnvironmentView {
   assignees: ClientEnvAssignee[];
   assigneeCount: number;
 }
+
+/**
+ * 边缘客户端安装包清单（change downloads-manifest-from-host）：由云端**现扫本机 downloads 目录**得出。
+ * 版本与文件名绝不来自前端源码——那是「哪台机器上放了哪个包」的部署状态。
+ * 没有可用包时 `version=null` + `items=[]`（诚实为空，前端据此显示「暂无可用安装包」）。
+ */
+export interface DownloadItem {
+  key: 'mac-arm64' | 'mac-x64' | 'win-x64';
+  label: string;
+  file: string;
+  version: string;
+}
+
+export interface DownloadsManifest {
+  version: string | null;
+  items: DownloadItem[];
+}
