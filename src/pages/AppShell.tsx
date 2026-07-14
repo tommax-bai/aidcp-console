@@ -15,9 +15,9 @@ import { NAV_ROUTES } from '../routes';
 /** 主业务入口（顶部居中胶囊导航）：从单一来源 NAV_ROUTES 派生（#37），文案 / 图标 / 顺序与路由表同源。 */
 const BUSINESS = NAV_ROUTES;
 
-/** 当前路径是否命中某入口（'/' 精确匹配，其余按前缀，子路由保持高亮）。 */
-function isActive(pathname: string, key: string): boolean {
-  return key === '/' ? pathname === '/' : pathname.startsWith(key);
+/** 当前路径是否命中某入口（'/' 精确匹配，其余需落在路径边界内，子路由保持高亮）。 */
+export function isActive(pathname: string, key: string): boolean {
+  return key === '/' ? pathname === '/' : pathname === key || pathname.startsWith(`${key}/`);
 }
 
 /**

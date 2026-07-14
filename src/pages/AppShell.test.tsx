@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
-import { buildDownloadMenuItems } from './AppShell';
+import { buildDownloadMenuItems, isActive } from './AppShell';
 import type { DownloadsManifest } from '../types/api';
 
 /**
@@ -50,5 +50,17 @@ describe('AppShell download menu — never offers a link it has not confirmed', 
   it('says it is still loading rather than claiming there is nothing', () => {
     const items = buildDownloadMenuItems(undefined, true);
     expect(items[0]).toMatchObject({ key: 'none', disabled: true, label: '正在读取安装包…' });
+  });
+});
+
+describe('AppShell top navigation active route matching', () => {
+  it('does not mark the Content tab active while the Schedule tab is selected', () => {
+    expect(isActive('/content-schedule', '/content-schedule')).toBe(true);
+    expect(isActive('/content-schedule', '/content')).toBe(false);
+  });
+
+  it('keeps nested routes active for their owning top-level tab', () => {
+    expect(isActive('/content/drafts', '/content')).toBe(true);
+    expect(isActive('/content-schedule/accounts', '/content-schedule')).toBe(true);
   });
 });
