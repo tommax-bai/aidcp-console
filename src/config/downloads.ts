@@ -17,18 +17,22 @@
 
 export const EDGE_DOWNLOAD = {
   /** 当前发布版本（显示用；改包时一并改）。 */
-  version: '0.3.20',
+  version: '0.3.21',
   /** 同机 Nginx 静态目录前缀（相对路径=同源，无需写域名/端口）。 */
   base: '/downloads',
   /**
    * 各平台安装包（文件名须与 `/opt/aidcp/downloads/` 下实际文件一致）。
-   * mac 0.3.20（2026-07-12）：GitHub Actions CI **签名 + 公证**（Developer ID + notarytool），
-   * 用户下载安装不再被 Gatekeeper 拦成「非法软件」；该包默认连 ol（线上），界面可切。
+   * mac 0.3.21（2026-07-14）：与 0.3.20 **同一份代码**（切自 tag desktop-v0.3.20），唯一差别是
+   * 烘焙的客户登录门地址由域名 `https://aidcp.tommax.cc/capi` 换成 OL 服务器 IP
+   * `http://123.56.253.183/capi`。动机：登录门是全客户端唯一依赖公网 DNS + Cloudflare 边缘的一跳，
+   * 部分网络到不了那一跳、登录页只报「无法连接服务器」；边-云 ws 本就是裸 IP。0.3.21 全程不解析域名。
+   * 代价：登录凭据走明文 HTTP（IP 拿不到 TLS 证书）。0.3.20 仍留在 /opt/aidcp/downloads/ 可回退。
+   * 两版同为 CI **签名 + 公证**（Developer ID + notarytool），装机不被 Gatekeeper 拦；默认连 ol，界面可切。
    * win 仍 0.3.5（未随此次重打；Windows 自包含打包尚未接 CI）。
    */
   items: [
-    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.3.20-arm64.dmg' },
-    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.3.20.dmg' },
+    { key: 'mac-arm64', label: 'macOS · Apple 芯片（M 系列）', file: 'AIDCP-0.3.21-arm64.dmg' },
+    { key: 'mac-x64', label: 'macOS · Intel', file: 'AIDCP-0.3.21.dmg' },
     { key: 'win-x64', label: 'Windows · x64', file: 'AIDCP Setup 0.3.5.exe' },
   ],
 } as const;
