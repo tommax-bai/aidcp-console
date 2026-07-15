@@ -17,7 +17,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContentPage, visualCategoryPresentation } from './ContentPage';
 import { ApiError, apiPost, apiPut } from '../api/client';
-import type { DelegatedTaskDraftReceipt, PanelContentVisualCategoryBrief, PanelPublish } from '../types/api';
+import type {
+  ContentQueue,
+  ContentQueueJourney,
+  ContentQueueStageState,
+  DelegatedTaskDraftReceipt,
+  PanelContentVisualCategoryBrief,
+  PanelPublish,
+} from '../types/api';
 
 // jsdom 无 matchMedia / ResizeObserver；antd Table/Select/Drawer（rc-*）依赖，给最小桩。
 if (typeof window.matchMedia !== 'function') {
@@ -43,7 +50,7 @@ if (typeof window.ResizeObserver !== 'function') {
 
 const state = vi.hoisted(() => ({
   published: { items: [] as unknown[] },
-  queue: { status: 'idle', snapshot: null } as { status: string; snapshot: unknown; runs?: unknown[] },
+  queue: { status: 'idle', snapshot: null } as ContentQueue,
   accounts: { accounts: [] as unknown[] },
 }));
 
@@ -79,6 +86,34 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
     imagesAttachedCount: 0,
     imageReferenceAudit: null,
     sourceReference: null,
+    ...overrides,
+  };
+}
+
+const lifecycleStageLabels = ['触发与选题', '正文生成', '文本质检', '视觉策划', '出图复核', '成稿封装', '人工审批', '平台下发'] as const;
+const lifecycleStageKeys = ['source', 'content', 'text_quality', 'visual_plan', 'image_review', 'package', 'approval', 'dispatch'] as const;
+
+function journey(overrides: Partial<ContentQueueJourney> = {}, states: Partial<Record<(typeof lifecycleStageKeys)[number], ContentQueueStageState>> = {}): ContentQueueJourney {
+  return {
+    journeyId: 'run:r1',
+    runId: 'r1',
+    recordId: null,
+    accountId: 'acc-1',
+    title: '八阶段测试稿件',
+    sourceTitle: null,
+    kind: 'autonomous',
+    startedAt: 100,
+    active: true,
+    status: 'generating',
+    statusSummary: '正在生成候审稿',
+    stages: lifecycleStageKeys.map((key, index) => ({
+      key,
+      label: lifecycleStageLabels[index],
+      state: states[key] ?? (index < 2 ? 'completed' : index < 4 ? 'running' : 'pending'),
+      summary: index < 2 ? '本阶段已完成' : index < 4 ? '本阶段进行中' : '等待上游',
+      facts: key === 'image_review' ? ['有效图片 1 张'] : [],
+    })),
+    snapshot: { customDebug: { reason: 'lifecycle-raw' } },
     ...overrides,
   };
 }
@@ -184,7 +219,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     const runOf = (runId: string, sourceId: string, title: string, startedAt: number) => ({
       runId,
       accountId: 'acc-1',
-      kind: 'rewrite',
+      kind: 'rewrite' as const,
       sourceId,
       startedAt,
       status: 'running',
@@ -209,6 +244,84 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     // 切到第一轮（Segmented 首个选项）→ 详情换成甲稿。
     fireEvent.click(screen.getAllByText(/小红薯甲 · 洗稿/)[0]);
     expect(await screen.findByText('甲稿标题')).toBeTruthy();
+  });
+
+  it('新 cloud 生命周期优先展示八阶段，并保留原始快照排障入口', async () => {
+    state.published = { items: [] };
+    state.accounts = { accounts: [{ accountId: 'acc-1', nickname: 'Tmax', label: null } as unknown] };
+    state.queue = {
+      status: 'running',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [journey()], recent: [] },
+    };
+
+    renderPage();
+
+    expect(await screen.findByText('执行中')).toBeTruthy();
+    expect(screen.getByText('八阶段测试稿件')).toBeTruthy();
+    expect(screen.getByText('Tmax')).toBeTruthy();
+    for (const label of lifecycleStageLabels) expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.queryByText('洗稿/正文')).toBeNull();
+
+    fireEvent.click(screen.getByText(/原始字段/));
+    expect(await screen.findByText('customDebug')).toBeTruthy();
+    expect(screen.getByText(/lifecycle-raw/)).toBeTruthy();
+  });
+
+  it('待审和下发中使用明确阶段状态，不折叠成同一个人审/下发阶段', async () => {
+    const waiting = journey({
+      journeyId: 'publish:1', runId: null, recordId: 1, active: true, status: 'waiting_approval',
+      statusSummary: '候审稿已完成，等待人工审批', snapshot: null,
+    }, { source: 'completed', content: 'completed', text_quality: 'completed', visual_plan: 'completed', image_review: 'completed', package: 'completed', approval: 'waiting_human', dispatch: 'pending' });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      lifecycle: { status: 'waiting_human', active: [waiting], recent: [] },
+    };
+    renderPage();
+
+    expect((await screen.findAllByText('等待人工')).length).toBeGreaterThan(0);
+    expect(screen.getByText('等待审批')).toBeTruthy();
+    expect(screen.getByText('人工审批')).toBeTruthy();
+    expect(screen.getByText('平台下发')).toBeTruthy();
+    expect(screen.getAllByText('未开始').length).toBeGreaterThan(0);
+  });
+
+  it('dispatcher 在途稿显示审批完成与平台下发中', async () => {
+    const dispatching = journey({
+      journeyId: 'publish:2', runId: null, recordId: 2, active: true, status: 'dispatching',
+      statusSummary: '审批已通过，正在向平台下发', snapshot: null,
+    }, { source: 'completed', content: 'completed', text_quality: 'completed', visual_plan: 'completed', image_review: 'completed', package: 'completed', approval: 'completed', dispatch: 'running' });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [dispatching], recent: [] },
+    };
+    renderPage();
+
+    expect(await screen.findByText('平台下发中')).toBeTruthy();
+    expect(screen.getByText('平台下发')).toBeTruthy();
+    expect(screen.getAllByText('进行中').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('已完成').length).toBeGreaterThan(0);
+  });
+
+  it('失败终态只显示在最近结果，不再因 snapshot 存在冒充活跃稿件', async () => {
+    const failed = journey({
+      journeyId: 'publish:112', runId: null, recordId: 112, active: false, status: 'failed',
+      title: 'Agent选型别盲信榜单高分', statusSummary: '平台下发失败，未确认发布',
+    }, { source: 'completed', content: 'completed', text_quality: 'completed', visual_plan: 'completed', image_review: 'completed', package: 'completed', approval: 'completed', dispatch: 'failed' });
+    state.queue = {
+      status: 'failed',
+      snapshot: { stale: true },
+      lifecycle: { status: 'idle', active: [], recent: [failed] },
+    };
+    renderPage();
+
+    expect(await screen.findByText('无活跃稿件')).toBeTruthy();
+    expect(screen.getByText('最近结果 · 失败')).toBeTruthy();
+    expect(screen.getByText('平台下发失败，未确认发布')).toBeTruthy();
+    expect(screen.queryByText('活跃稿件')).toBeNull();
+    expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
   });
 
   it('修改候选稿直接入队（无确认卡），携 CAS 版本写 draft，且不直接写 draft 端点', async () => {

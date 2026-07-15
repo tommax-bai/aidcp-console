@@ -37,6 +37,9 @@ import type {
   PanelPublish,
   PanelPublishSourceReference,
   PanelVisualReferenceAudit,
+  ContentQueueJourney,
+  ContentQueueJourneyStatus,
+  ContentQueueStageState,
 } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
@@ -105,6 +108,64 @@ const STAGE_STATE_COLOR: Record<QueueStageState, string> = {
   done: 'green',
   active: 'blue',
   pending: 'default',
+};
+
+const LIFECYCLE_STATUS_LABEL: Record<string, string> = {
+  idle: '无活跃稿件',
+  running: '执行中',
+  waiting_human: '等待人工',
+};
+
+const LIFECYCLE_STATUS_COLOR: Record<string, string> = {
+  idle: 'default',
+  running: 'processing',
+  waiting_human: 'warning',
+};
+
+const JOURNEY_STATUS_LABEL: Record<ContentQueueJourneyStatus, string> = {
+  generating: '生成中',
+  waiting_approval: '等待审批',
+  dispatching: '平台下发中',
+  published: '已发布',
+  submitted: '已提交待确认',
+  failed: '失败',
+  rejected: '已驳回',
+  draft: '草稿',
+  skipped: '已跳过',
+};
+
+const JOURNEY_STATUS_COLOR: Record<ContentQueueJourneyStatus, string> = {
+  generating: 'processing',
+  waiting_approval: 'warning',
+  dispatching: 'processing',
+  published: 'success',
+  submitted: 'gold',
+  failed: 'error',
+  rejected: 'default',
+  draft: 'default',
+  skipped: 'default',
+};
+
+const LIFECYCLE_STAGE_STATE_LABEL: Record<ContentQueueStageState, string> = {
+  pending: '未开始',
+  running: '进行中',
+  retrying: '重试中',
+  waiting_human: '等待人工',
+  completed: '已完成',
+  partial: '部分完成',
+  failed: '失败',
+  skipped: '已跳过',
+};
+
+const LIFECYCLE_STAGE_STATE_COLOR: Record<ContentQueueStageState, string> = {
+  pending: 'default',
+  running: 'blue',
+  retrying: 'orange',
+  waiting_human: 'gold',
+  completed: 'green',
+  partial: 'gold',
+  failed: 'red',
+  skipped: 'default',
 };
 
 const QUEUE_STAGE_DEFINITIONS: QueueStageDefinition[] = [
@@ -333,6 +394,80 @@ function buildQueueDraftSummary(snapshot: SnapshotRecord, resolveAccountName?: (
   ].filter((value): value is string => Boolean(value));
 
   return { title, sourceTitle, accountId, author, facts };
+}
+
+function recentAlertType(status: ContentQueueJourneyStatus): 'success' | 'info' | 'warning' | 'error' {
+  if (status === 'published') return 'success';
+  if (status === 'failed') return 'error';
+  if (status === 'submitted') return 'warning';
+  return 'info';
+}
+
+function LifecycleJourneyOverview(props: {
+  journey: ContentQueueJourney;
+  resolveAccountName: (id: string) => string;
+}) {
+  const { journey, resolveAccountName } = props;
+  return (
+    <div className="publish-queue-overview">
+      {!journey.active ? (
+        <Alert
+          showIcon
+          type={recentAlertType(journey.status)}
+          message={`最近结果 · ${JOURNEY_STATUS_LABEL[journey.status]}`}
+          description={journey.statusSummary}
+          className="publish-queue-result-alert"
+        />
+      ) : null}
+      <div className={`publish-queue-draft${journey.active ? '' : ' publish-queue-draft--recent'}`}>
+        <div className="publish-queue-draft__main">
+          <Typography.Text type="secondary" className="publish-queue-draft__eyebrow">
+            {journey.active ? '活跃稿件' : '最近结果'}
+          </Typography.Text>
+          <Typography.Title level={5} className="publish-queue-draft__title" title={journey.title}>
+            {journey.title}
+          </Typography.Title>
+          {journey.sourceTitle && journey.sourceTitle !== journey.title ? (
+            <Typography.Text type="secondary" className="publish-queue-draft__source" title={journey.sourceTitle}>
+              来源：{journey.sourceTitle}
+            </Typography.Text>
+          ) : null}
+        </div>
+        <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
+          <Tag>{resolveAccountName(journey.accountId)}</Tag>
+          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{JOURNEY_STATUS_LABEL[journey.status]}</Tag>
+          {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
+        </Space>
+      </div>
+
+      <div className="publish-queue-stage-strip publish-queue-stage-strip--lifecycle" aria-label="发布生命周期八阶段">
+        {journey.stages.map((stage, index) => (
+          <div key={stage.key} className={`publish-queue-stage publish-queue-stage--${stage.state}`}>
+            <div className="publish-queue-stage__top">
+              <span className="publish-queue-stage__index">{index + 1}</span>
+              <Typography.Text strong className="publish-queue-stage__label">{stage.label}</Typography.Text>
+              <Tag color={LIFECYCLE_STAGE_STATE_COLOR[stage.state]} className="publish-queue-stage__tag">
+                {LIFECYCLE_STAGE_STATE_LABEL[stage.state]}
+              </Tag>
+            </div>
+            <Typography.Text type="secondary" className="publish-queue-stage__fields" title={stage.summary}>
+              {stage.summary}
+            </Typography.Text>
+            {stage.facts.length > 0 ? (
+              <Typography.Text className="publish-queue-stage__fact" title={stage.facts.join(' · ')}>
+                {stage.facts.join(' · ')}
+              </Typography.Text>
+            ) : null}
+            {stage.progress ? (
+              <Typography.Text type="secondary" className="publish-queue-stage__progress">
+                进度 {stage.progress.current}/{stage.progress.total}
+              </Typography.Text>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -836,8 +971,8 @@ export function ContentPage() {
     setSearchParams(next);
   };
   const [pendingOnly, setPendingOnly] = useState(false); // #18：只看待审筛选
-  // 并行多轮切换（2026-07-09 用户反馈）：发布队列卡选中查看哪一轮的阶段详情；null=自动跟随最新启动。
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // 发布生命周期切换：新 cloud 用 journeyId；旧 cloud 回落 runId。null=自动跟随最新活跃项。
+  const [selectedQueueItemId, setSelectedQueueItemId] = useState<string | null>(null);
   // 浮层当前打开的记录（含快照 contentVersion）；编辑态本地字段。
   const [viewing, setViewing] = useState<PanelPublish | null>(null);
   const [sourceViewing, setSourceViewing] = useState<PanelPublishSourceReference | null>(null);
@@ -934,6 +1069,13 @@ export function ContentPage() {
     })),
   ];
   const queueStatus = queue.data?.status ?? '—';
+  const lifecycle = queue.data?.lifecycle;
+  const lifecycleActive = lifecycle?.active ?? [];
+  const lifecycleRecent = lifecycle?.recent ?? [];
+  const selectedJourney = lifecycleActive.find((item) => item.journeyId === selectedQueueItemId)
+    ?? lifecycleActive[0]
+    ?? lifecycleRecent[0]
+    ?? null;
   // 并行多轮（change parallel-rewrite-drafts）：runs 可空缺（旧 cloud）——回落旧聚合单快照渲染，绝不白屏。
   const queueRuns = queue.data?.runs ?? [];
   // 队列卡任何账号一律显示昵称/标签、绝不裸 id（用户反馈 2026-07-09）；解析不到才回落 id。
@@ -943,36 +1085,84 @@ export function ContentPage() {
   };
   // 选中轮可切换：显式选择优先；选中轮已收敛消失则回落最新启动的一轮。
   const latestRun = queueRuns.length > 0 ? queueRuns.reduce((a, b) => (b.startedAt >= a.startedAt ? b : a)) : null;
-  const selectedRun = queueRuns.find((r) => r.runId === selectedRunId) ?? latestRun;
+  const selectedRun = queueRuns.find((r) => r.runId === selectedQueueItemId) ?? latestRun;
   // 详情区数据源：有 runs 用选中轮的快照；无 runs（旧 cloud）回落聚合单快照。
-  const queueSnapshot = selectedRun
-    ? isRecord(selectedRun.snapshot)
-      ? selectedRun.snapshot
-      : null
-    : isRecord(queue.data?.snapshot)
-      ? queue.data.snapshot
-      : null;
+  const queueSnapshot = lifecycle
+    ? isRecord(selectedJourney?.snapshot) ? selectedJourney.snapshot : null
+    : selectedRun
+      ? isRecord(selectedRun.snapshot)
+        ? selectedRun.snapshot
+        : null
+      : isRecord(queue.data?.snapshot)
+        ? queue.data.snapshot
+        : null;
   const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot, resolveAccountName) : [];
   const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot, resolveAccountName) : null;
   const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
   // 「进行中」判定：有在跑轮 / 有生成快照 / 状态正在生成。都没有 = 空闲，卡片主体收起、只留标题栏
   //（消除「标题写『进行中』、状态却『空闲』」的文案冲突）。
-  const queueActive = queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
+  const queueActive = lifecycle ? lifecycleActive.length > 0 : queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
+  const queueHasDetails = lifecycle ? selectedJourney !== null : queueActive;
+  const visibleQueueStatus = lifecycle?.status ?? queueStatus;
 
   return (
     <div className="page-stack">
       <Card
         size="small"
         title="发布队列"
-        className={queueActive ? undefined : 'publish-queue-card--collapsed'}
+        className={queueHasDetails ? undefined : 'publish-queue-card--collapsed'}
         extra={
-          <Tag color={QUEUE_STATUS_COLOR[queueStatus] ?? 'default'}>
-            {QUEUE_STATUS_LABEL[queueStatus] ?? queueStatus}
+          <Tag color={(lifecycle ? LIFECYCLE_STATUS_COLOR : QUEUE_STATUS_COLOR)[visibleQueueStatus] ?? 'default'}>
+            {(lifecycle ? LIFECYCLE_STATUS_LABEL : QUEUE_STATUS_LABEL)[visibleQueueStatus] ?? visibleQueueStatus}
           </Tag>
         }
       >
-        {/* 空闲（无进行中任务）时收起卡片主体，只留标题栏；有进行中任务才展开状态/阶段/原始字段。 */}
-        {queueActive ? (
+        {lifecycle ? (
+          selectedJourney ? (
+            <>
+              {lifecycleActive.length > 0 ? (
+                <div className="publish-queue-runs">
+                  <Space wrap size={[8, 8]}>
+                    <Typography.Text type="secondary">活跃稿件 {lifecycleActive.length}</Typography.Text>
+                    {lifecycleActive.length > 1 ? (
+                      <Select
+                        size="small"
+                        className="publish-queue-journey-select"
+                        value={selectedJourney.active ? selectedJourney.journeyId : lifecycleActive[0].journeyId}
+                        onChange={setSelectedQueueItemId}
+                        options={lifecycleActive.map((item) => ({
+                          value: item.journeyId,
+                          label: `${resolveAccountName(item.accountId)} · ${item.title} · ${JOURNEY_STATUS_LABEL[item.status]}`,
+                        }))}
+                      />
+                    ) : null}
+                  </Space>
+                </div>
+              ) : null}
+              <LifecycleJourneyOverview journey={selectedJourney} resolveAccountName={resolveAccountName} />
+              {queueSnapshot ? (
+                <Collapse
+                  size="small"
+                  ghost
+                  className="publish-queue-raw"
+                  items={[{
+                    key: 'snapshot',
+                    label: `原始字段（${rawSnapshotEntries.length}）`,
+                    children: (
+                      <Descriptions size="small" column={1} bordered>
+                        {rawSnapshotEntries.map(([k, v]) => (
+                          <Descriptions.Item key={k} label={k}>
+                            <Typography.Text style={{ fontSize: 12, wordBreak: 'break-all' }}>{compactJson(v)}</Typography.Text>
+                          </Descriptions.Item>
+                        ))}
+                      </Descriptions>
+                    ),
+                  }]}
+                />
+              ) : null}
+            </>
+          ) : null
+        ) : queueActive ? (
           <>
         {/* 并行多轮切换（change parallel-rewrite-drafts；2026-07-09 用户反馈：每轮详情可切换，不只最新一轮）。 */}
         {queueRuns.length > 0 ? (
@@ -981,7 +1171,7 @@ export function ContentPage() {
               <Segmented
                 size="small"
                 value={selectedRun?.runId}
-                onChange={(v) => setSelectedRunId(String(v))}
+                onChange={(v) => setSelectedQueueItemId(String(v))}
                 options={queueRuns.map((run) => {
                   const runSnapshot = isRecord(run.snapshot) ? run.snapshot : null;
                   const runStages = runSnapshot ? buildQueueStages(runSnapshot) : [];

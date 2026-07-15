@@ -498,6 +498,58 @@ export interface ContentQueueRun {
   snapshot: unknown | null;
 }
 
+export type ContentQueueStageState =
+  | 'pending'
+  | 'running'
+  | 'retrying'
+  | 'waiting_human'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'skipped';
+
+export interface ContentQueueStage {
+  key: 'source' | 'content' | 'text_quality' | 'visual_plan' | 'image_review' | 'package' | 'approval' | 'dispatch';
+  label: string;
+  state: ContentQueueStageState;
+  summary: string;
+  facts: string[];
+  progress?: { current: number; total: number };
+}
+
+export type ContentQueueJourneyStatus =
+  | 'generating'
+  | 'waiting_approval'
+  | 'dispatching'
+  | 'published'
+  | 'submitted'
+  | 'failed'
+  | 'rejected'
+  | 'draft'
+  | 'skipped';
+
+export interface ContentQueueJourney {
+  journeyId: string;
+  runId: string | null;
+  recordId: number | null;
+  accountId: string;
+  title: string;
+  sourceTitle: string | null;
+  kind: 'rewrite' | 'autonomous' | 'persisted';
+  startedAt: number;
+  active: boolean;
+  status: ContentQueueJourneyStatus;
+  statusSummary: string;
+  stages: ContentQueueStage[];
+  snapshot: unknown | null;
+}
+
+export interface ContentQueueLifecycle {
+  status: 'idle' | 'running' | 'waiting_human';
+  active: ContentQueueJourney[];
+  recent: ContentQueueJourney[];
+}
+
 /**
  * in-flight 发布队列（orchestrator getStatus，change parallel-rewrite-drafts 兼容形状）。
  * 旧字段 status/snapshot=聚合视图（最新启动的 running 轮，无 running 则最近终态）；runs=全部在跑轮。
@@ -507,6 +559,8 @@ export interface ContentQueue {
   status: string;
   snapshot: unknown | null;
   runs?: ContentQueueRun[];
+  /** Cloud-owned eight-stage lifecycle; absent while rolling back to an older cloud. */
+  lifecycle?: ContentQueueLifecycle;
 }
 
 // ── 精选内容后台管理（change curated-content-admin-page）────────────────────────
