@@ -334,7 +334,15 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
           slot: 0, route: 'specialized_generative', styleSource: 'reference_analysis', providerReferenceStatus: 'used',
           binding: { slot: 0, mode: 'slot', primarySourceArrayIndex: 0, primarySourceIndex: 7, references: [{ sourceArrayIndex: 0, sourceIndex: 7, url: 'https://ref.test/a.jpg', role: 'primary' }] },
           outputUrl: 'https://oss.test/out.jpg', finalStatus: 'unverified',
-          attempts: [{ status: 'unverified', reason: 'vision timeout', auditedAt: 1 }],
+          contentVisualBrief: {
+            narrativeMoment: '情绪涌来后自我整理', emotion: '脆弱但不崩溃', emotionIntensity: 0.65,
+            action: '缓慢呼吸', environment: '安静室内', facialExpression: '眉眼游离、嘴角克制',
+            gazeDirection: '侧视', headAngle: '微侧', bodyLanguage: '肩颈放松', avoid: ['标准商业微笑'],
+          },
+          attempts: [{
+            status: 'unverified', reason: 'vision timeout', auditedAt: 1,
+            scores: { form: 0.8, subject: 0.8, composition: 0.8, color: 0.8, style: 0.8, contentAlignment: 0.42 },
+          }],
         }],
       },
     })] };
@@ -345,6 +353,11 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     fireEvent.click(screen.getByText('查看逐槽视觉审计'));
     expect(await screen.findByText(/主参考：源图 #7；尝试 1 次；vision timeout/)).toBeTruthy();
     expect(screen.getByText('未经视觉核验')).toBeTruthy();
+    expect(screen.getByText(/脆弱但不崩溃（强度 0.65）/)).toBeTruthy();
+    expect(screen.getByText(/动作：缓慢呼吸；环境：安静室内/)).toBeTruthy();
+    expect(screen.getByText(/人物表演：眉眼游离、嘴角克制；侧视；微侧；肩颈放松/)).toBeTruthy();
+    expect(screen.getByText(/避免：标准商业微笑/)).toBeTruthy();
+    expect(screen.getByText(/正文一致 0.42/)).toBeTruthy();
   });
 
   it('保存并批准 → 先编辑(CAS) 再按快照版本授权发布', async () => {

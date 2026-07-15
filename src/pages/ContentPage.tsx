@@ -485,9 +485,34 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
                       {`；尝试 ${slot.attempts.length} 次`}
                       {last?.reason ? `；${last.reason}` : ''}
                     </Typography.Paragraph>
+                    {slot.contentVisualBrief ? (
+                      <div style={{ marginBottom: 6 }}>
+                        <Typography.Text strong>正文视觉：</Typography.Text>
+                        <Typography.Text type="secondary">
+                          {slot.contentVisualBrief.emotion}（强度 {slot.contentVisualBrief.emotionIntensity.toFixed(2)}）
+                          {`；${slot.contentVisualBrief.narrativeMoment}；动作：${slot.contentVisualBrief.action}；环境：${slot.contentVisualBrief.environment}`}
+                        </Typography.Text>
+                        {slot.contentVisualBrief.facialExpression || slot.contentVisualBrief.gazeDirection || slot.contentVisualBrief.headAngle || slot.contentVisualBrief.bodyLanguage ? (
+                          <Typography.Paragraph type="secondary" style={{ margin: '2px 0 0' }}>
+                            人物表演：{[
+                              slot.contentVisualBrief.facialExpression,
+                              slot.contentVisualBrief.gazeDirection,
+                              slot.contentVisualBrief.headAngle,
+                              slot.contentVisualBrief.bodyLanguage,
+                            ].filter(Boolean).join('；')}
+                          </Typography.Paragraph>
+                        ) : null}
+                        {slot.contentVisualBrief.avoid.length ? (
+                          <Typography.Paragraph type="secondary" style={{ margin: '2px 0 0' }}>
+                            避免：{slot.contentVisualBrief.avoid.join('、')}
+                          </Typography.Paragraph>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {scores ? (
                       <Typography.Text type="secondary">
                         形态 {scores.form.toFixed(2)} · 主体 {scores.subject.toFixed(2)} · 构图 {scores.composition.toFixed(2)} · 色彩 {scores.color.toFixed(2)} · 风格 {scores.style.toFixed(2)}
+                        {scores.contentAlignment == null ? '' : ` · 正文一致 ${scores.contentAlignment.toFixed(2)}`}
                       </Typography.Text>
                     ) : null}
                     {risks ? (

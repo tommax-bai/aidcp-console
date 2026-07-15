@@ -412,9 +412,13 @@ export interface PanelVisualReferenceAudit {
     providerReferenceStatus: 'used' | 'unsupported' | 'unavailable' | 'skipped';
     outputUrl: string | null;
     finalStatus: 'passed' | 'failed' | 'unverified' | 'skipped' | 'discarded';
+    contentVisualBrief?: {
+      narrativeMoment: string; emotion: string; emotionIntensity: number; action: string; environment: string;
+      facialExpression?: string; gazeDirection?: string; headAngle?: string; bodyLanguage?: string; avoid: string[];
+    };
     attempts: Array<{
       status: 'passed' | 'failed' | 'unverified' | 'skipped'; reason: string; auditedAt: number; retryGuidance?: string;
-      scores?: { form: number; subject: number; composition: number; color: number; style: number };
+      scores?: { form: number; subject: number; composition: number; color: number; style: number; contentAlignment?: number };
       risks?: { recognizableRealPerson: boolean; garbledText: boolean; watermark: boolean; copiedText: boolean; originalityRisk: 'low' | 'medium' | 'high' };
     }>;
   }>;
