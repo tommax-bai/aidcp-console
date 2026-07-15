@@ -30,7 +30,7 @@ import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
-import type { PanelImageReferenceAudit, PanelPublish, PanelPublishSourceReference } from '../types/api';
+import type { PanelImageReferenceAudit, PanelPublish, PanelPublishSourceReference, PanelVisualReferenceAudit } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
@@ -134,6 +134,7 @@ const QUEUE_STAGE_DEFINITIONS: QueueStageDefinition[] = [
     label: '配图/元数据',
     fields: [
       { key: 'postCategory', label: '品类' },
+      { key: 'referenceVisualAnalysis', label: '整组视觉反推' },
       { key: 'imageSetPlan', label: '图集规划' },
       { key: 'imagePlan', label: '生图指令' },
       { key: 'imageDirective', label: '配图结果' },
@@ -429,6 +430,88 @@ function imageReferenceAuditText(audit: PanelImageReferenceAudit | null): string
   }
 }
 
+const VISUAL_STATUS_TEXT: Record<string, string> = {
+  passed: '保真核验通过', failed: '核验失败', discarded: '重试后丢弃', unverified: '未经视觉核验', skipped: '未执行核验',
+};
+
+const VISUAL_ROUTE_TEXT: Record<string, string> = {
+  generative: '生成式', deterministic_text_card: '确定性文字卡', specialized_generative: '类型专用生成', region_guided_generative: '分区引导生成',
+};
+
+function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit | null | undefined }) {
+  if (!audit) return null;
+  const passed = audit.slots.filter((slot) => slot.finalStatus === 'passed').length;
+  const unverified = audit.slots.filter((slot) => slot.finalStatus === 'unverified').length;
+  const failed = audit.slots.filter((slot) => slot.finalStatus === 'failed' || slot.finalStatus === 'discarded').length;
+  const type = failed > 0 ? 'error' : unverified > 0 ? 'warning' : passed > 0 ? 'success' : 'info';
+  const bindingText = audit.bindingMode === 'slot' ? '逐槽主参考' : audit.bindingMode === 'legacy_all' ? '旧版整组共用' : '无参考绑定';
+  return (
+    <div style={{ marginTop: 8 }}>
+      <Alert
+        type={type}
+        showIcon
+        message={`视觉参考：${bindingText}；${passed} 槽通过，${unverified} 槽未核验，${failed} 槽失败/丢弃`}
+        description={audit.bindingMode === 'legacy_all' ? '图片模型使用过参考图，不代表生成结果已经通过保真核验。' : undefined}
+      />
+      <Collapse
+        ghost
+        size="small"
+        items={[{
+          key: 'visual-audit',
+          label: '查看逐槽视觉审计',
+          children: (
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              {audit.slots.map((slot) => {
+                const last = slot.attempts[slot.attempts.length - 1];
+                const scores = last?.scores;
+                const risks = last?.risks;
+                return (
+                  <Card key={slot.slot} size="small">
+                    <Space wrap>
+                      <Tag>槽 {slot.slot + 1}</Tag>
+                      <Tag color={slot.finalStatus === 'passed' ? 'green' : slot.finalStatus === 'unverified' ? 'orange' : slot.finalStatus === 'discarded' || slot.finalStatus === 'failed' ? 'red' : 'default'}>
+                        {VISUAL_STATUS_TEXT[slot.finalStatus] ?? slot.finalStatus}
+                      </Tag>
+                      <Tag>{VISUAL_ROUTE_TEXT[slot.route] ?? slot.route}</Tag>
+                      <Tag color={slot.styleSource === 'reference_analysis' ? 'blue' : 'default'}>
+                        {slot.styleSource === 'reference_analysis' ? '源图反推风格' : '品类风格兜底'}
+                      </Tag>
+                      <Tag color={slot.providerReferenceStatus === 'used' ? 'cyan' : 'default'}>
+                        provider {slot.providerReferenceStatus}
+                      </Tag>
+                    </Space>
+                    <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
+                      主参考：{slot.binding.primarySourceIndex == null ? '无' : `源图 #${slot.binding.primarySourceIndex}`}
+                      {`；尝试 ${slot.attempts.length} 次`}
+                      {last?.reason ? `；${last.reason}` : ''}
+                    </Typography.Paragraph>
+                    {scores ? (
+                      <Typography.Text type="secondary">
+                        形态 {scores.form.toFixed(2)} · 主体 {scores.subject.toFixed(2)} · 构图 {scores.composition.toFixed(2)} · 色彩 {scores.color.toFixed(2)} · 风格 {scores.style.toFixed(2)}
+                      </Typography.Text>
+                    ) : null}
+                    {risks ? (
+                      <div style={{ marginTop: 6 }}>
+                        {risks.recognizableRealPerson ? <Tag color="red">可识别真人</Tag> : null}
+                        {risks.garbledText ? <Tag color="red">乱码</Tag> : null}
+                        {risks.watermark ? <Tag color="red">画内水印</Tag> : null}
+                        {risks.copiedText ? <Tag color="red">疑似逐字复制</Tag> : null}
+                        <Tag color={risks.originalityRisk === 'high' ? 'red' : risks.originalityRisk === 'medium' ? 'orange' : 'green'}>
+                          原创风险 {risks.originalityRisk}
+                        </Tag>
+                      </div>
+                    ) : null}
+                  </Card>
+                );
+              })}
+            </Space>
+          ),
+        }]}
+      />
+    </div>
+  );
+}
+
 /** 配图栏（查看/编辑共用）：缩略图 + 点击大图预览；诚实标注「实际附着张数」与死链可能。
     可编辑态（editable + onDelete）每张叠删除角标，走乐观 CAS 删配图（change pending-draft-image-delete）。 */
 function ImagesStrip({
@@ -502,6 +585,7 @@ function ImagesStrip({
           style={{ marginTop: 8 }}
         />
       ) : null}
+      <VisualReferenceAuditPanel audit={row.visualReferenceAudit} />
     </div>
   );
 }

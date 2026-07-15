@@ -323,6 +323,30 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(await screen.findByText(/参考图 1 张；图片模型已实际使用参考图生成新图/)).toBeTruthy();
   });
 
+  it('视觉审计区分 provider used 与保真未核验，并展示逐槽绑定和原因', async () => {
+    state.published = { items: [makePending({
+      title: '视觉审计草稿',
+      images: ['https://oss.test/out.jpg'],
+      imageReferenceAudit: { requestedCount: 1, usableCount: 1, status: 'used', providerClaimedUsed: true, generatedCount: 1 },
+      visualReferenceAudit: {
+        analysisStatus: 'analyzed', analysisCacheKey: 'k', bindingMode: 'slot', auditEnabled: true,
+        slots: [{
+          slot: 0, route: 'specialized_generative', styleSource: 'reference_analysis', providerReferenceStatus: 'used',
+          binding: { slot: 0, mode: 'slot', primarySourceArrayIndex: 0, primarySourceIndex: 7, references: [{ sourceArrayIndex: 0, sourceIndex: 7, url: 'https://ref.test/a.jpg', role: 'primary' }] },
+          outputUrl: 'https://oss.test/out.jpg', finalStatus: 'unverified',
+          attempts: [{ status: 'unverified', reason: 'vision timeout', auditedAt: 1 }],
+        }],
+      },
+    })] };
+    renderPage();
+    fireEvent.click(await screen.findByText('视觉审计草稿'));
+    expect(await screen.findByText(/0 槽通过，1 槽未核验/)).toBeTruthy();
+    expect(screen.queryByText(/保真核验通过/)).toBeNull();
+    fireEvent.click(screen.getByText('查看逐槽视觉审计'));
+    expect(await screen.findByText(/主参考：源图 #7；尝试 1 次；vision timeout/)).toBeTruthy();
+    expect(screen.getByText('未经视觉核验')).toBeTruthy();
+  });
+
   it('保存并批准 → 先编辑(CAS) 再按快照版本授权发布', async () => {
     vi.mocked(apiPut).mockResolvedValue({
       recordId: 1,

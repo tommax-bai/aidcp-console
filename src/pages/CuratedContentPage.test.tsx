@@ -242,6 +242,28 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(await screen.findByText('参考图 1/2')).toBeTruthy();
   });
 
+  it('详情按非摄影类型展示专用视觉反推维度，不冒充相机参数', async () => {
+    state.items = [makeRow({
+      visualAnalysis: {
+        status: 'analyzed', schemaVersion: 'visual-reference-v1', cacheKey: 'k', provider: 'dashscope', model: 'qwen3.7-plus', analyzedAt: 10, sourceCount: 1,
+        setStyleBible: { summary: '克制的蓝灰界面视觉', palette: ['蓝灰'], colorTemperature: 'cool', contrast: 'medium', visualDensity: 'balanced', whitespace: '适中', hierarchy: '清楚', mood: ['理性'], texture: ['干净'], continuityRules: ['统一'], avoid: ['水印'] },
+        styleClusters: [{ id: 'c1', label: '蓝灰界面', frameIndexes: [0], summary: '统一', palette: ['蓝灰'], traits: ['克制'] }],
+        frameSpecs: [{
+          sourceArrayIndex: 0, sourceIndex: 0, kind: 'ui_document', confidence: 0.93, clusterId: 'c1', sequenceRole: 'cover',
+          common: { aspectRatio: '3:4', subject: '移动端界面结构', composition: '单列', focalHierarchy: '顶栏与内容区', palette: ['蓝灰'], lightingOrContrast: '中对比', negativeSpace: '边缘留白', texture: '干净', mood: '理性', avoid: ['具体文字'] },
+          details: { family: 'ui_document', viewport: '移动端竖屏', grid: '单列网格', componentDensity: '中等', bordersRadius: '小圆角', informationZones: '顶栏/内容区/底栏', depth: '浅层级', background: '浅灰' },
+        }],
+      },
+    })];
+    renderPage();
+    fireEvent.click(await screen.findByText('目标笔记标题'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('克制的蓝灰界面视觉')).toBeTruthy();
+    fireEvent.click(within(dialog).getByText(/源图 1 · 界面\/文档/));
+    expect(await within(dialog).findByText('viewport：移动端竖屏')).toBeTruthy();
+    expect(within(dialog).queryByText(/focalLength|焦距|相机型号/)).toBeNull();
+  });
+
   it('评论：弹窗选「联系评论」→ POST comment 带 withContact:true；未配联系方式拒绝呈现中文', async () => {
     vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'contact_info_missing' });
     renderPage();

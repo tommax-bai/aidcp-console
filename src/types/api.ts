@@ -333,6 +333,8 @@ export interface PanelPublish {
   imagesAttachedCount: number;
   /** 参照洗稿参考图是否真实被图片 provider 使用的审计；普通发布/历史行为 null。 */
   imageReferenceAudit: PanelImageReferenceAudit | null;
+  /** 逐槽参考绑定、生成路由和产后视觉核验；历史负载可缺省。 */
+  visualReferenceAudit?: PanelVisualReferenceAudit | null;
   /** 参照洗稿来稿快照；普通发布为 null。 */
   sourceReference: PanelPublishSourceReference | null;
 }
@@ -345,6 +347,77 @@ export interface PanelImageReferenceAudit {
   status: PanelImageReferenceAuditStatus;
   providerClaimedUsed: boolean;
   generatedCount: number;
+}
+
+export type VisualAnalysisStatus = 'disabled' | 'none' | 'analyzed' | 'partial' | 'unavailable';
+export type ReferenceVisualKind =
+  | 'portrait_photo' | 'still_life_photo' | 'scene_photo' | 'illustration_3d'
+  | 'text_layout' | 'ui_document' | 'infographic_chart' | 'collage_mixed';
+
+export interface VisualStyleBible {
+  summary: string;
+  palette: string[];
+  colorTemperature: string;
+  contrast: string;
+  visualDensity: string;
+  whitespace: string;
+  hierarchy: string;
+  mood: string[];
+  texture: string[];
+  continuityRules: string[];
+  avoid: string[];
+}
+
+export interface VisualFrameSpec {
+  sourceArrayIndex: number;
+  sourceIndex: number;
+  kind: ReferenceVisualKind;
+  confidence: number;
+  clusterId: string;
+  sequenceRole: string;
+  common: {
+    aspectRatio: string; subject: string; composition: string; focalHierarchy: string; palette: string[];
+    lightingOrContrast: string; negativeSpace: string; texture: string; mood: string; avoid: string[];
+  };
+  details: { family: string; [key: string]: unknown };
+}
+
+export interface ReferenceVisualAnalysis {
+  status: VisualAnalysisStatus;
+  schemaVersion: string;
+  cacheKey: string | null;
+  provider: string | null;
+  model: string | null;
+  analyzedAt: number | null;
+  sourceCount: number;
+  setStyleBible?: VisualStyleBible;
+  styleClusters?: Array<{ id: string; label: string; frameIndexes: number[]; summary: string; palette: string[]; traits: string[] }>;
+  frameSpecs?: VisualFrameSpec[];
+  error?: string;
+}
+
+export interface PanelVisualReferenceAudit {
+  analysisStatus: VisualAnalysisStatus;
+  analysisCacheKey: string | null;
+  bindingMode: 'slot' | 'legacy_all' | 'none';
+  auditEnabled: boolean;
+  slots: Array<{
+    slot: number;
+    route: 'generative' | 'deterministic_text_card' | 'specialized_generative' | 'region_guided_generative';
+    styleSource: 'reference_analysis' | 'category_fallback';
+    binding: {
+      slot: number; mode: 'slot' | 'legacy_all'; primarySourceArrayIndex: number | null; primarySourceIndex: number | null;
+      references: Array<{ sourceArrayIndex: number; sourceIndex: number; url: string; role: 'style' | 'identity' | 'primary' }>;
+    };
+    providerReferenceStatus: 'used' | 'unsupported' | 'unavailable' | 'skipped';
+    outputUrl: string | null;
+    finalStatus: 'passed' | 'failed' | 'unverified' | 'skipped' | 'discarded';
+    attempts: Array<{
+      status: 'passed' | 'failed' | 'unverified' | 'skipped'; reason: string; auditedAt: number; retryGuidance?: string;
+      scores?: { form: number; subject: number; composition: number; color: number; style: number };
+      risks?: { recognizableRealPerson: boolean; garbledText: boolean; watermark: boolean; copiedText: boolean; originalityRisk: 'low' | 'medium' | 'high' };
+    }>;
+  }>;
 }
 
 export interface PanelPublishSourceReference {
@@ -423,6 +496,8 @@ export interface PanelCuratedContent {
   firstSeenAt: number;
   updatedAt: number;
   referenceImages: CuratedReferenceImage[];
+  /** 整组视觉反推缓存；旧行/旗标关可缺省。 */
+  visualAnalysis?: ReferenceVisualAnalysis;
 }
 
 export interface CuratedContentList {

@@ -6,6 +6,7 @@ import {
   Avatar,
   Button,
   Card,
+  Collapse,
   Divider,
   Empty,
   Modal,
@@ -32,7 +33,14 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
 import { useAccounts, useCuratedContents, useCuratedFacets } from '../api/queries';
-import type { CuratedActionReceipt, CuratedContentType, CuratedReferenceImage, PanelCuratedContent } from '../types/api';
+import type {
+  CuratedActionReceipt,
+  CuratedContentType,
+  CuratedReferenceImage,
+  PanelCuratedContent,
+  ReferenceVisualAnalysis,
+  VisualFrameSpec,
+} from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
 const PAGE_SIZE = 20;
@@ -94,6 +102,82 @@ function referenceImageUrl(img: CuratedReferenceImage): string {
 
 function usableReferenceImages(images: CuratedReferenceImage[]): CuratedReferenceImage[] {
   return images.filter((img) => referenceImageUrl(img)).slice(0, 9);
+}
+
+const VISUAL_KIND_LABEL: Record<string, string> = {
+  portrait_photo: '人物摄影', still_life_photo: '静物/产品摄影', scene_photo: '景色/空间摄影', illustration_3d: '插画/3D',
+  text_layout: '文字卡/海报', ui_document: '界面/文档', infographic_chart: '图表/信息图', collage_mixed: '拼贴/混合',
+};
+
+function visualAnalysisStatus(analysis: ReferenceVisualAnalysis | undefined): { text: string; color?: string } {
+  if (!analysis) return { text: '未分析' };
+  if (analysis.status === 'analyzed') return { text: '已反推', color: 'green' };
+  if (analysis.status === 'partial') return { text: '部分反推', color: 'orange' };
+  if (analysis.status === 'unavailable') return { text: '反推不可用', color: 'red' };
+  if (analysis.status === 'disabled') return { text: '反推关闭' };
+  return { text: '无可用图' };
+}
+
+function frameDetailsText(frame: VisualFrameSpec): string[] {
+  return Object.entries(frame.details)
+    .filter(([key]) => key !== 'family')
+    .flatMap(([key, value]) => {
+      if (value == null) return [];
+      if (Array.isArray(value)) {
+        if (key === 'regions') return [`区域：${value.length} 个视觉分区`];
+        return [`${key}：${value.map(String).join('、')}`];
+      }
+      return [`${key}：${String(value)}`];
+    });
+}
+
+function VisualAnalysisPanel({ analysis }: { analysis: ReferenceVisualAnalysis | undefined }) {
+  const status = visualAnalysisStatus(analysis);
+  if (!analysis || (analysis.status !== 'analyzed' && analysis.status !== 'partial')) {
+    return (
+      <Alert
+        type={analysis?.status === 'unavailable' ? 'warning' : 'info'}
+        showIcon
+        message={`整组视觉反推：${status.text}`}
+        description={analysis?.error || '该状态不会被当作已分析，生成时使用既有品类风格兜底。'}
+        style={{ marginBottom: 12 }}
+      />
+    );
+  }
+  return (
+    <Card size="small" title={<Space><span>整组视觉反推</span><Tag color={status.color}>{status.text}</Tag></Space>} style={{ marginBottom: 12 }}>
+      <Typography.Paragraph style={{ marginBottom: 6 }}>
+        {analysis.setStyleBible?.summary || '无整组风格摘要'}
+      </Typography.Paragraph>
+      <Typography.Text type="secondary">
+        {analysis.provider}/{analysis.model} · {analysis.sourceCount} 张 · {analysis.analyzedAt ? timeText(analysis.analyzedAt) : '无分析时刻'}
+      </Typography.Text>
+      {analysis.styleClusters?.length ? (
+        <div style={{ marginTop: 8 }}>
+          {analysis.styleClusters.map((cluster) => <Tag key={cluster.id} color="blue">{cluster.label}（{cluster.frameIndexes.length}）</Tag>)}
+        </div>
+      ) : null}
+      <Collapse
+        ghost
+        size="small"
+        style={{ marginTop: 6 }}
+        items={(analysis.frameSpecs ?? []).map((frame) => ({
+          key: frame.sourceArrayIndex,
+          label: `源图 ${frame.sourceArrayIndex + 1} · ${VISUAL_KIND_LABEL[frame.kind] ?? frame.kind} · 置信 ${Math.round(frame.confidence * 100)}%`,
+          children: (
+            <Space direction="vertical" size={2}>
+              <Typography.Text>主体：{frame.common.subject}</Typography.Text>
+              <Typography.Text>构图：{frame.common.composition}</Typography.Text>
+              <Typography.Text>色彩/光影：{frame.common.palette.join('、')}；{frame.common.lightingOrContrast}</Typography.Text>
+              <Typography.Text>留白/氛围：{frame.common.negativeSpace}；{frame.common.mood}</Typography.Text>
+              {frameDetailsText(frame).map((line) => <Typography.Text type="secondary" key={line}>{line}</Typography.Text>)}
+            </Space>
+          ),
+        }))}
+      />
+      {analysis.error ? <Typography.Paragraph type="warning" style={{ marginBottom: 0 }}>部分分析说明：{analysis.error}</Typography.Paragraph> : null}
+    </Card>
+  );
 }
 
 function ReferenceImageStrip({
@@ -431,6 +515,15 @@ export function CuratedContentPage() {
       render: (images: CuratedReferenceImage[]) => (
         <ReferenceImageThumb images={images ?? []} onPreview={(previewImages) => setImagePreview({ images: previewImages, index: 0 })} />
       ),
+    },
+    {
+      title: '视觉',
+      dataIndex: 'visualAnalysis',
+      width: 92,
+      render: (analysis: ReferenceVisualAnalysis | undefined) => {
+        const status = visualAnalysisStatus(analysis);
+        return <Tag color={status.color}>{status.text}</Tag>;
+      },
     },
     {
       title: '作者',
@@ -789,6 +882,8 @@ export function CuratedContentPage() {
             <div style={{ marginBottom: 12 }}>
               <ReferenceImageStrip images={viewing.referenceImages} onPreview={openImagePreview} />
             </div>
+
+            <VisualAnalysisPanel analysis={viewing.visualAnalysis} />
 
             {/* 正文 */}
             {viewing.body ? (
