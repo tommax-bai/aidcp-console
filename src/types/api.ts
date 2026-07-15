@@ -396,6 +396,40 @@ export interface ReferenceVisualAnalysis {
   error?: string;
 }
 
+export type PanelContentVisualCategoryBrief =
+  | {
+      kind: 'portrait_photo';
+      facialExpression: string; gazeDirection: string; headAngle: string; bodyLanguage: string; gesture: string; poseEnergy: string;
+    }
+  | {
+      kind: 'text_layout';
+      coreMessage: string; informationHierarchy: string[]; emphasisTerms: string[]; readingOrder: string; informationDensity: string; cardStructure: string;
+    }
+  | {
+      kind: 'infographic_chart';
+      claim: string; relationship: string; entities: string[]; direction: string; steps: string[]; dataPolicy: string;
+    }
+  | {
+      kind: 'scene_photo';
+      timeAndWeather: string; location: string; humanPresence: string; eventTrace: string; spatialRelationship: string; motionLevel: string;
+    }
+  | {
+      kind: 'still_life_photo';
+      primaryObjects: string[]; usageState: string; objectRelationship: string; lifeTrace: string; materialFocus: string; handInteraction: string;
+    }
+  | {
+      kind: 'illustration_3d';
+      coreMetaphor: string; characterRelationship: string; symbols: string[]; motionDirection: string; exaggerationLevel: string; storyStage: string;
+    }
+  | {
+      kind: 'ui_document';
+      userTask: string; interfaceState: string; componentHierarchy: string[]; interactionPath: string[]; informationFocus: string; fidelityLabel: string;
+    }
+  | {
+      kind: 'collage_mixed';
+      regions: Array<{ role: string; content: string; priority: string }>; readingOrder: string; primarySecondaryRatio: string; continuityElements: string[];
+    };
+
 export interface PanelVisualReferenceAudit {
   analysisStatus: VisualAnalysisStatus;
   analysisCacheKey: string | null;
@@ -415,6 +449,7 @@ export interface PanelVisualReferenceAudit {
     contentVisualBrief?: {
       narrativeMoment: string; emotion: string; emotionIntensity: number; action: string; environment: string;
       facialExpression?: string; gazeDirection?: string; headAngle?: string; bodyLanguage?: string; avoid: string[];
+      categoryBrief?: PanelContentVisualCategoryBrief;
     };
     attempts: Array<{
       status: 'passed' | 'failed' | 'unverified' | 'skipped'; reason: string; auditedAt: number; retryGuidance?: string;

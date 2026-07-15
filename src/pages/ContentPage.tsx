@@ -30,7 +30,13 @@ import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
-import type { PanelImageReferenceAudit, PanelPublish, PanelPublishSourceReference, PanelVisualReferenceAudit } from '../types/api';
+import type {
+  PanelContentVisualCategoryBrief,
+  PanelImageReferenceAudit,
+  PanelPublish,
+  PanelPublishSourceReference,
+  PanelVisualReferenceAudit,
+} from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
@@ -438,6 +444,75 @@ const VISUAL_ROUTE_TEXT: Record<string, string> = {
   generative: '生成式', deterministic_text_card: '确定性文字卡', specialized_generative: '类型专用生成', region_guided_generative: '分区引导生成',
 };
 
+export function visualCategoryPresentation(category: PanelContentVisualCategoryBrief): { label: string; lines: string[] } {
+  switch (category.kind) {
+    case 'portrait_photo':
+      return {
+        label: '人物摄影',
+        lines: [
+          `人物表演：${category.facialExpression}；${category.gazeDirection}；${category.headAngle}；${category.bodyLanguage}`,
+          `手势与姿态：${category.gesture}；${category.poseEnergy}`,
+        ],
+      };
+    case 'text_layout':
+      return {
+        label: '文字卡/海报',
+        lines: [
+          `核心信息：${category.coreMessage}；层级：${category.informationHierarchy.join(' → ') || '未提供'}`,
+          `强调：${category.emphasisTerms.join('、') || '无'}；阅读：${category.readingOrder}；密度与结构：${category.informationDensity}；${category.cardStructure}`,
+        ],
+      };
+    case 'infographic_chart':
+      return {
+        label: '图表信息图',
+        lines: [
+          `信息主张：${category.claim}；关系：${category.relationship}；对象：${category.entities.join('、') || '未提供'}`,
+          `表达路径：${category.direction}；${category.steps.join(' → ') || '无步骤'}；数据边界：${category.dataPolicy}`,
+        ],
+      };
+    case 'scene_photo':
+      return {
+        label: '场景摄影',
+        lines: [
+          `场景：${category.timeAndWeather}；${category.location}；人物：${category.humanPresence}`,
+          `事件与空间：${category.eventTrace}；${category.spatialRelationship}；动态：${category.motionLevel}`,
+        ],
+      };
+    case 'still_life_photo':
+      return {
+        label: '静物摄影',
+        lines: [
+          `核心物件：${category.primaryObjects.join('、') || '未提供'}；使用状态：${category.usageState}`,
+          `物件关系：${category.objectRelationship}；生活痕迹：${category.lifeTrace}；材质与互动：${category.materialFocus}；${category.handInteraction}`,
+        ],
+      };
+    case 'illustration_3d':
+      return {
+        label: '插画/3D',
+        lines: [
+          `核心隐喻：${category.coreMetaphor}；角色关系：${category.characterRelationship}；象征物：${category.symbols.join('、') || '无'}`,
+          `叙事动势：${category.motionDirection}；夸张度：${category.exaggerationLevel}；阶段：${category.storyStage}`,
+        ],
+      };
+    case 'ui_document':
+      return {
+        label: 'UI/文档',
+        lines: [
+          `用户任务：${category.userTask}；界面状态：${category.interfaceState}；重点：${category.informationFocus}`,
+          `组件与路径：${category.componentHierarchy.join(' → ') || '未提供'}；${category.interactionPath.join(' → ') || '未提供'}；真实性边界：${category.fidelityLabel}`,
+        ],
+      };
+    case 'collage_mixed':
+      return {
+        label: '混合拼贴',
+        lines: [
+          `内容分区：${category.regions.map((region) => `${region.role}：${region.content}（${region.priority}）`).join('；')}`,
+          `阅读与主次：${category.readingOrder}；${category.primarySecondaryRatio}；连续元素：${category.continuityElements.join('、') || '无'}`,
+        ],
+      };
+  }
+}
+
 function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit | null | undefined }) {
   if (!audit) return null;
   const passed = audit.slots.filter((slot) => slot.finalStatus === 'passed').length;
@@ -465,6 +540,9 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
                 const last = slot.attempts[slot.attempts.length - 1];
                 const scores = last?.scores;
                 const risks = last?.risks;
+                const categoryView = slot.contentVisualBrief?.categoryBrief
+                  ? visualCategoryPresentation(slot.contentVisualBrief.categoryBrief)
+                  : null;
                 return (
                   <Card key={slot.slot} size="small">
                     <Space wrap>
@@ -492,7 +570,16 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
                           {slot.contentVisualBrief.emotion}（强度 {slot.contentVisualBrief.emotionIntensity.toFixed(2)}）
                           {`；${slot.contentVisualBrief.narrativeMoment}；动作：${slot.contentVisualBrief.action}；环境：${slot.contentVisualBrief.environment}`}
                         </Typography.Text>
-                        {slot.contentVisualBrief.facialExpression || slot.contentVisualBrief.gazeDirection || slot.contentVisualBrief.headAngle || slot.contentVisualBrief.bodyLanguage ? (
+                        {categoryView ? (
+                          <div style={{ marginTop: 2 }}>
+                            <Tag color="purple">{categoryView.label}</Tag>
+                            {categoryView.lines.map((line) => (
+                              <Typography.Paragraph key={line} type="secondary" style={{ margin: '2px 0 0' }}>
+                                {line}
+                              </Typography.Paragraph>
+                            ))}
+                          </div>
+                        ) : slot.contentVisualBrief.facialExpression || slot.contentVisualBrief.gazeDirection || slot.contentVisualBrief.headAngle || slot.contentVisualBrief.bodyLanguage ? (
                           <Typography.Paragraph type="secondary" style={{ margin: '2px 0 0' }}>
                             人物表演：{[
                               slot.contentVisualBrief.facialExpression,
