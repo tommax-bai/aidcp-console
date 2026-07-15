@@ -440,6 +440,15 @@ const VISUAL_STATUS_TEXT: Record<string, string> = {
   passed: '保真核验通过', failed: '核验失败', discarded: '重试后丢弃', unverified: '未经视觉核验', skipped: '未执行核验',
 };
 
+const VISUAL_SLOT_ROLE_TEXT: Record<string, string> = {
+  cover_hook: '封面钩子', context: '交代语境', problem: '呈现问题', explanation: '解释机制', evidence: '提供依据',
+  process: '展示过程', contrast: '形成对比', action: '推动行动', conclusion: '收束结论',
+};
+
+const VISUAL_AUDIT_MODE_TEXT: Record<string, string> = {
+  reference_fidelity: '参考保真', content_alignment: '正文与类型核验', skipped: '未核验',
+};
+
 const VISUAL_ROUTE_TEXT: Record<string, string> = {
   generative: '生成式', deterministic_text_card: '确定性文字卡', specialized_generative: '类型专用生成', region_guided_generative: '分区引导生成',
 };
@@ -520,13 +529,17 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
   const failed = audit.slots.filter((slot) => slot.finalStatus === 'failed' || slot.finalStatus === 'discarded').length;
   const type = failed > 0 ? 'error' : unverified > 0 ? 'warning' : passed > 0 ? 'success' : 'info';
   const bindingText = audit.bindingMode === 'slot' ? '逐槽主参考' : audit.bindingMode === 'legacy_all' ? '旧版整组共用' : '无参考绑定';
+  const hasContentAlignment = audit.slots.some((slot) => slot.auditMode === 'content_alignment');
+  const panelTitle = hasContentAlignment ? '原创配图审计' : '参考配图审计';
   return (
     <div style={{ marginTop: 8 }}>
       <Alert
         type={type}
         showIcon
-        message={`视觉参考：${bindingText}；${passed} 槽通过，${unverified} 槽未核验，${failed} 槽失败/丢弃`}
-        description={audit.bindingMode === 'legacy_all' ? '图片模型使用过参考图，不代表生成结果已经通过保真核验。' : undefined}
+        message={`${panelTitle}：${bindingText}；${passed} 槽通过，${unverified} 槽未核验，${failed} 槽失败/丢弃`}
+        description={hasContentAlignment
+          ? '没有来源图片时，只核验槽位职责、目标类型与正文表达；不做来源相似度或复制判断。'
+          : audit.bindingMode === 'legacy_all' ? '图片模型使用过参考图，不代表生成结果已经通过保真核验。' : undefined}
       />
       <Collapse
         ghost
@@ -536,10 +549,25 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
           label: '查看逐槽视觉审计',
           children: (
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              {audit.visualSetBrief ? (
+                <Card size="small" title="整组视觉计划">
+                  <Typography.Paragraph style={{ marginBottom: 4 }}>
+                    <Typography.Text strong>叙事推进：</Typography.Text>{audit.visualSetBrief.narrativeArc}
+                  </Typography.Paragraph>
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
+                    连续性：{audit.visualSetBrief.continuityRules.join('；')}
+                  </Typography.Paragraph>
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                    类型组合：{audit.visualSetBrief.typeMixRationale}
+                    {audit.visualSetBrief.source === 'fallback' ? '（系统保守兜底）' : ''}
+                  </Typography.Paragraph>
+                </Card>
+              ) : null}
               {audit.slots.map((slot) => {
                 const last = slot.attempts[slot.attempts.length - 1];
                 const scores = last?.scores;
                 const risks = last?.risks;
+                const auditMode = slot.auditMode ?? (slot.binding.primarySourceIndex == null ? 'skipped' : 'reference_fidelity');
                 const categoryView = slot.contentVisualBrief?.categoryBrief
                   ? visualCategoryPresentation(slot.contentVisualBrief.categoryBrief)
                   : null;
@@ -548,18 +576,30 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
                     <Space wrap>
                       <Tag>槽 {slot.slot + 1}</Tag>
                       <Tag color={slot.finalStatus === 'passed' ? 'green' : slot.finalStatus === 'unverified' ? 'orange' : slot.finalStatus === 'discarded' || slot.finalStatus === 'failed' ? 'red' : 'default'}>
-                        {VISUAL_STATUS_TEXT[slot.finalStatus] ?? slot.finalStatus}
+                        {slot.finalStatus === 'passed' && auditMode === 'content_alignment'
+                          ? '正文与类型核验通过'
+                          : VISUAL_STATUS_TEXT[slot.finalStatus] ?? slot.finalStatus}
                       </Tag>
+                      <Tag color={auditMode === 'content_alignment' ? 'purple' : auditMode === 'reference_fidelity' ? 'blue' : 'default'}>
+                        {VISUAL_AUDIT_MODE_TEXT[auditMode] ?? auditMode}
+                      </Tag>
+                      {slot.slotRole ? <Tag color="geekblue">{VISUAL_SLOT_ROLE_TEXT[slot.slotRole] ?? slot.slotRole}</Tag> : null}
                       <Tag>{VISUAL_ROUTE_TEXT[slot.route] ?? slot.route}</Tag>
                       <Tag color={slot.styleSource === 'reference_analysis' ? 'blue' : 'default'}>
                         {slot.styleSource === 'reference_analysis' ? '源图反推风格' : '品类风格兜底'}
                       </Tag>
-                      <Tag color={slot.providerReferenceStatus === 'used' ? 'cyan' : 'default'}>
-                        provider {slot.providerReferenceStatus}
-                      </Tag>
+                      {auditMode === 'reference_fidelity' ? (
+                        <Tag color={slot.providerReferenceStatus === 'used' ? 'cyan' : 'default'}>
+                          provider {slot.providerReferenceStatus}
+                        </Tag>
+                      ) : null}
                     </Space>
                     <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
-                      主参考：{slot.binding.primarySourceIndex == null ? '无' : `源图 #${slot.binding.primarySourceIndex}`}
+                      {auditMode === 'content_alignment'
+                        ? '审核模式：正文与类型核验；无来源比较'
+                        : auditMode === 'reference_fidelity'
+                          ? `主参考：${slot.binding.primarySourceIndex == null ? '无' : `源图 #${slot.binding.primarySourceIndex}`}`
+                          : '审核模式：未执行视觉核验'}
                       {`；尝试 ${slot.attempts.length} 次`}
                       {last?.reason ? `；${last.reason}` : ''}
                     </Typography.Paragraph>
@@ -607,7 +647,8 @@ function VisualReferenceAuditPanel({ audit }: { audit: PanelVisualReferenceAudit
                         {risks.recognizableRealPerson ? <Tag color="red">可识别真人</Tag> : null}
                         {risks.garbledText ? <Tag color="red">乱码</Tag> : null}
                         {risks.watermark ? <Tag color="red">画内水印</Tag> : null}
-                        {risks.copiedText ? <Tag color="red">疑似逐字复制</Tag> : null}
+                        {risks.copyCheck === 'not_applicable' ? <Tag>来源复制检查不适用</Tag> : null}
+                        {risks.copyCheck !== 'not_applicable' && risks.copiedText ? <Tag color="red">疑似逐字复制</Tag> : null}
                         <Tag color={risks.originalityRisk === 'high' ? 'red' : risks.originalityRisk === 'medium' ? 'orange' : 'green'}>
                           原创风险 {risks.originalityRisk}
                         </Tag>

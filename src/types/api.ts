@@ -435,8 +435,17 @@ export interface PanelVisualReferenceAudit {
   analysisCacheKey: string | null;
   bindingMode: 'slot' | 'legacy_all' | 'none';
   auditEnabled: boolean;
+  visualSetBrief?: {
+    narrativeArc: string;
+    continuityRules: string[];
+    typeMixRationale: string;
+    source: 'model' | 'fallback';
+  };
   slots: Array<{
     slot: number;
+    /** 新记录必有；旧记录缺省时由绑定信息保守推断展示。 */
+    auditMode?: 'reference_fidelity' | 'content_alignment' | 'skipped';
+    slotRole?: 'cover_hook' | 'context' | 'problem' | 'explanation' | 'evidence' | 'process' | 'contrast' | 'action' | 'conclusion';
     route: 'generative' | 'deterministic_text_card' | 'specialized_generative' | 'region_guided_generative';
     styleSource: 'reference_analysis' | 'category_fallback';
     binding: {
@@ -454,7 +463,10 @@ export interface PanelVisualReferenceAudit {
     attempts: Array<{
       status: 'passed' | 'failed' | 'unverified' | 'skipped'; reason: string; auditedAt: number; retryGuidance?: string;
       scores?: { form: number; subject: number; composition: number; color: number; style: number; contentAlignment?: number };
-      risks?: { recognizableRealPerson: boolean; garbledText: boolean; watermark: boolean; copiedText: boolean; originalityRisk: 'low' | 'medium' | 'high' };
+      risks?: {
+        recognizableRealPerson: boolean; garbledText: boolean; watermark: boolean; copiedText: boolean;
+        copyCheck?: 'evaluated' | 'not_applicable'; originalityRisk: 'low' | 'medium' | 'high';
+      };
     }>;
   }>;
 }

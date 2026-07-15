@@ -366,6 +366,58 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.getByText(/正文一致 0.42/)).toBeTruthy();
   });
 
+  it('原创配图展示整组视觉计划、槽位职责和无来源的正文类型核验', async () => {
+    state.published = { items: [makePending({
+      title: '原创视觉计划草稿',
+      images: ['https://oss.test/original.jpg'],
+      visualReferenceAudit: {
+        analysisStatus: 'none', analysisCacheKey: null, bindingMode: 'none', auditEnabled: true,
+        visualSetBrief: {
+          narrativeArc: '先指出问题，再解释闭环，最后给行动',
+          continuityRules: ['统一冷蓝和米白', '重复使用环形箭头'],
+          typeMixRationale: '信息图承担因果解释',
+          source: 'model',
+        },
+        slots: [{
+          slot: 0, auditMode: 'content_alignment', slotRole: 'explanation',
+          route: 'specialized_generative', styleSource: 'category_fallback', providerReferenceStatus: 'skipped',
+          binding: { slot: 0, mode: 'legacy_all', primarySourceArrayIndex: null, primarySourceIndex: null, references: [] },
+          outputUrl: 'https://oss.test/original.jpg', finalStatus: 'passed',
+          contentVisualBrief: {
+            narrativeMoment: '解释反馈闭环', emotion: '理性', emotionIntensity: 0.4,
+            action: '沿闭环阅读', environment: '无数值信息图', avoid: ['编造数字'],
+            categoryBrief: {
+              kind: 'infographic_chart', claim: '反馈推动改进', relationship: '循环', entities: ['生成', '验证', '改进'],
+              direction: '顺时针', steps: ['生成', '验证', '改进'], dataPolicy: '正文无数字，只画无数值关系',
+            },
+          },
+          attempts: [{
+            status: 'passed', reason: '关系和正文一致', auditedAt: 1,
+            scores: { form: 0.9, subject: 0.88, composition: 0.82, color: 0.8, style: 0.84, contentAlignment: 0.91 },
+            risks: {
+              recognizableRealPerson: false, garbledText: false, watermark: false, copiedText: false,
+              copyCheck: 'not_applicable', originalityRisk: 'low',
+            },
+          }],
+        }],
+      },
+    })] };
+    renderPage();
+    fireEvent.click(await screen.findByText('原创视觉计划草稿'));
+    expect(await screen.findByText(/原创配图审计：无参考绑定；1 槽通过/)).toBeTruthy();
+    expect(screen.getByText(/不做来源相似度或复制判断/)).toBeTruthy();
+    fireEvent.click(screen.getByText('查看逐槽视觉审计'));
+    expect(await screen.findByText('整组视觉计划')).toBeTruthy();
+    expect(screen.getByText(/先指出问题，再解释闭环，最后给行动/)).toBeTruthy();
+    expect(screen.getByText(/统一冷蓝和米白；重复使用环形箭头/)).toBeTruthy();
+    expect(screen.getByText('解释机制')).toBeTruthy();
+    expect(screen.getByText('正文与类型核验')).toBeTruthy();
+    expect(screen.getByText(/审核模式：正文与类型核验；无来源比较；尝试 1 次/)).toBeTruthy();
+    expect(screen.getByText('正文与类型核验通过')).toBeTruthy();
+    expect(screen.getByText('来源复制检查不适用')).toBeTruthy();
+    expect(screen.queryByText('provider skipped')).toBeNull();
+  });
+
   it('八类正文视觉 brief 均转换为可读标签和分类语义', () => {
     const categories: PanelContentVisualCategoryBrief[] = [
       { kind: 'portrait_photo', facialExpression: '克制', gazeDirection: '侧视', headAngle: '微侧', bodyLanguage: '放松', gesture: '垂手', poseEnergy: '低唤醒' },
