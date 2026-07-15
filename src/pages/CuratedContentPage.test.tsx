@@ -2,7 +2,8 @@
  * 精选页行级定向动作前端测试（change curated-note-actions）。
  * 只 mock HTTP 客户端层，页面 + react-query 走真实渲染与调用路径。
  * 断言：按钮禁用态（视频/评论行禁洗稿、评论行动作全禁、历史壳行禁洗稿）、两端点调用参数（按行账号路由 + withContact）、
- * 触发态回执诚实分支（triggered 才绿；域内拒绝呈现说人话中文、绝不染绿）。
+ * 直接入队契约（source=console 云端直接确认入队：单次创建即 queued，无「请确认用户委托任务」二次确认卡、无 /confirm 调用）、
+ * 回执诚实（入队 ≠ 平台成功，成功文案标「非平台成功回执」；失败出错误提示、绝不染绿）。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -61,13 +62,16 @@ function makeRow(overrides: Partial<PanelCuratedContent> = {}): PanelCuratedCont
   };
 }
 
-function taskReceipt(action = 'publish_post'): DelegatedTaskDraftReceipt {
+// console 精确入口现由云端直接确认入队（source=console）：回执已是 queued + autoQueued，无「请确认用户委托任务」二次确认卡。
+// confirmation 字段仅为满足现有 DelegatedTaskDraftReceipt 类型保留（页面已不再读取/渲染它）。
+function taskReceipt(action = 'publish_post'): DelegatedTaskDraftReceipt & { autoQueued: true } {
   return {
     created: true,
+    autoQueued: true,
     task: {
       id: `task-${action}`, accountId: 'acc-1', accountName: '小萝北', platform: 'xiaohongshu', action,
       targetSuccessCount: 1, maxAttempts: 2, deadlineAt: Date.now() + 60_000, approvalMode: 'review',
-      priority: 'normal', status: 'awaiting_confirmation', progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 }, version: 1,
+      priority: 'normal', status: 'queued', progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 }, version: 1,
     },
     confirmation: {
       taskId: `task-${action}`, version: 1, title: '请确认用户委托任务', accountName: '小萝北',
@@ -123,11 +127,21 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
       makeRow({ id: 10, title: '壳行图文', body: '' }), // 历史壳行 → 禁洗稿、可评论
     ];
     vi.mocked(apiPost).mockReset();
-    vi.mocked(apiPost).mockImplementation((path: string) => Promise.resolve(
-      path.includes('/confirm') ? { task: { ...taskReceipt().task, status: 'queued', version: 2 } }
-        : taskReceipt(path.endsWith('/comment') ? 'comment_curated' : 'publish_post'),
-    ));
+    // 云端对 source=console 的委托任务直接确认入队：单次创建即返回 queued，无 /confirm 二次确认调用。
+    vi.mocked(apiPost).mockImplementation((path: string) =>
+      Promise.resolve(taskReceipt(path.endsWith('/comment') ? 'comment_curated' : 'publish_post')),
+    );
   });
+
+  /**
+   * 洗稿 Popconfirm 的确认按钮 okText 现为「洗稿」，与触发按钮同名（AntD 两字按钮均渲染成「洗 稿」）；
+   * 用弹层内的标题定位到 popconfirm 容器，再点其确认按钮，避免误命中同名触发按钮。
+   */
+  async function confirmRewritePopconfirm(): Promise<void> {
+    const title = await screen.findByText('以这篇图文洗稿成一篇新笔记？');
+    const scope = title.closest('.ant-popconfirm-inner-content') as HTMLElement;
+    fireEvent.click(within(scope).getByRole('button', { name: /洗\s*稿/ }));
+  }
 
   it('按钮禁用态：视频/评论禁洗稿；评论行全禁；历史壳行禁洗稿但可评论', async () => {
     renderPage();
@@ -146,17 +160,19 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/clear-empty'))).toBe(false);
   });
 
-  it('洗稿先创建 awaiting_confirmation；用户二次确认后才排队', async () => {
+  it('洗稿点确认即直接入队（无二次确认卡），回执诚实为排队非平台成功', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    await confirmRewritePopconfirm();
+    // 单次创建即入队；成功文案明确「非平台成功回执」，绝不冒充平台已发布。
+    expect(await screen.findByText(/非平台成功回执/)).toBeTruthy();
+    // 已被移除的「请确认用户委托任务」二次确认卡不再出现。
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
+    // 仅一次创建调用，无任何执行/副作用越过它；不再有 /confirm 二次调用。
     expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
-    expect(await screen.findByText(/这不是平台成功回执/)).toBeTruthy();
-    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/task-publish_post/confirm', { version: 1 });
+    expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/confirm'))).toBe(false);
   });
 
   it('带参考图的洗稿先弹参考模式；切到仅文本后发送 useReferenceImages:false', async () => {
@@ -177,52 +193,45 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     renderPage();
     expect(await screen.findByAltText('reference cover')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /洗稿/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
+    fireEvent.click(screen.getByRole('button', { name: /洗\s*稿/ }));
+    await confirmRewritePopconfirm();
 
     expect(await screen.findByText('带图参考')).toBeTruthy();
     const imageMode = screen.getByLabelText('带图参考') as HTMLInputElement;
     expect(imageMode.checked).toBe(true);
     fireEvent.click(screen.getByLabelText('仅文本参考'));
-    fireEvent.click(screen.getByRole('button', { name: /生成确认/ }));
+    fireEvent.click(screen.getByRole('button', { name: /开始洗稿/ }));
 
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    // 选定参考模式后直接入队，无二次确认卡；参数如实保留 useReferenceImages:false。
+    expect(await screen.findByText(/非平台成功回执/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', {
       accountId: 'acc-1',
       useReferenceImages: false,
     });
+    expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/confirm'))).toBe(false);
   });
 
-  it('任务草稿创建失败时不出现确认卡，也不显示排队成功', async () => {
+  it('委托任务创建失败时不出现确认卡，也不显示排队成功', async () => {
     vi.mocked(apiPost).mockRejectedValue(new Error('生成并发已满，请稍后再试'));
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
-    expect(await screen.findByText(/委托草稿创建失败/)).toBeTruthy();
+    await confirmRewritePopconfirm();
+    // 失败路径：出错误提示、绝不染绿；确认卡本就不存在。
+    expect(await screen.findByText(/委托任务创建失败/)).toBeTruthy();
+    expect(screen.queryByText(/非平台成功回执/)).toBeNull();
     expect(screen.queryByText('请确认用户委托任务')).toBeNull();
   });
 
-  it('确认卡锁定账号、动作、成功目标与尝试上限', async () => {
-    renderPage();
-    await screen.findByText('目标笔记标题');
-    fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
-    await screen.findByText('请确认用户委托任务');
-    const dialog = screen.getAllByRole('dialog').at(-1)!;
-    expect(within(dialog).getByText('小萝北')).toBeTruthy();
-    expect(within(dialog).getByText('发布一篇稿件')).toBeTruthy();
-    expect(within(dialog).getByText('1 个验证成功结果')).toBeTruthy();
-    expect(within(dialog).getByText('最多 2 次尝试')).toBeTruthy();
-  });
-
-  it('阅读详情浮层里可以触发洗稿', async () => {
+  it('阅读详情浮层里可以触发洗稿并直接入队', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('目标笔记标题'));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: /洗\s*稿/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    await confirmRewritePopconfirm();
+    expect(await screen.findByText(/非平台成功回执/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
   });
 
@@ -288,30 +297,32 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(within(dialog).queryByText(/focalLength|焦距|相机型号/)).toBeNull();
   });
 
-  it('评论：选择「联系评论」后先生成结构化确认，参数保留 withContact:true', async () => {
+  it('评论：选择「联系评论」后直接入队，参数保留 withContact:true', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /评\s*论/ })[0]);
     await screen.findByText('目标源帖');
     fireEvent.click(screen.getByText('联系评论'));
-    fireEvent.click(screen.getByRole('button', { name: /生成确认/ }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /发起评论/ }));
+    // 直接入队、无二次确认卡；联系评论参数如实保留 withContact:true。
+    expect(await screen.findByText(/非平台成功回执/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/comment', {
       accountId: 'acc-1',
       withContact: true,
     });
   });
 
-  it('评论确认后进入队列，不把触发态写成评论成功', async () => {
+  it('评论直接入队，不把触发态写成评论成功', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /评\s*论/ })[0]);
     await screen.findByText('目标源帖');
-    fireEvent.click(screen.getByRole('button', { name: /生成确认/ }));
-    await screen.findByText('请确认用户委托任务');
-    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
-    expect(await screen.findByText(/这不是平台成功回执/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /发起评论/ }));
+    // 入队回执诚实为「排队 / 非平台成功回执」，绝不写成「已触发评论」这类成功态。
+    expect(await screen.findByText(/非平台成功回执/)).toBeTruthy();
     expect(screen.queryByText(/已触发评论/)).toBeNull();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/comment', {
       accountId: 'acc-1',
       withContact: false,

@@ -33,7 +33,6 @@ import { QueryError } from '../components/QueryGate';
 import type {
   PanelContentVisualCategoryBrief,
   DelegatedTaskDraftReceipt,
-  DelegatedTaskView,
   PanelImageReferenceAudit,
   PanelPublish,
   PanelPublishSourceReference,
@@ -844,7 +843,6 @@ export function ContentPage() {
   const [sourceViewing, setSourceViewing] = useState<PanelPublishSourceReference | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [pendingTask, setPendingTask] = useState<DelegatedTaskDraftReceipt | null>(null);
 
   const accounts = useAccounts();
   // 只看待审走服务端 status 过滤（change parallel-rewrite-drafts）：老 pending 不被全局 50 窗口挤出；
@@ -888,23 +886,17 @@ export function ContentPage() {
         sourceRef: `candidate:${viewing.id}:v${viewing.contentVersion}:${input.action}`,
       });
     },
-    onSuccess: setPendingTask,
-    onError: (err) => message.error(reasonMessage(err, '创建委托失败')),
-  });
-
-  const confirmTask = useMutation({
-    mutationFn: (task: DelegatedTaskView) =>
-      apiPost<{ task: DelegatedTaskView }>(`/api/delegated-tasks/${task.id}/confirm`, { version: task.version }),
-    onSuccess: () => {
-      message.success('任务已确认并排队；成功状态以平台验证结果为准');
-      setPendingTask(null);
+    // console 精确入口：候选稿动作即明确指令，云端直接确认入队（不再出「确认用户委托任务」卡）。
+    // 入队 ≠ 平台成功；成功状态以平台 / 持久化验证结果为准。
+    onSuccess: (res) => {
+      message.success(`已排队（任务 ${res.task.id.slice(0, 8)}…）；成功状态以平台验证结果为准`);
       setViewing(null);
       refreshContent();
     },
-    onError: (err) => message.error(reasonMessage(err, '确认失败，请刷新候选稿后重试')),
+    onError: (err) => message.error(reasonMessage(err, '创建委托失败')),
   });
 
-  const busy = candidateTask.isPending || confirmTask.isPending;
+  const busy = candidateTask.isPending;
   const hasTextEdits = !!viewing && (editTitle !== (viewing.title ?? '') || editContent !== (viewing.content ?? ''));
 
   const onSaveDraft = () => {
@@ -1296,38 +1288,6 @@ export function ContentPage() {
             )}
           </div>
         )}
-      </Modal>
-      <Modal
-        open={!!pendingTask}
-        title={pendingTask?.confirmation.title ?? '确认用户委托任务'}
-        okText="确认并排队"
-        cancelText="返回修改"
-        confirmLoading={confirmTask.isPending}
-        onOk={() => pendingTask && confirmTask.mutate(pendingTask.task)}
-        onCancel={() => setPendingTask(null)}
-        destroyOnHidden
-      >
-        {pendingTask ? (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="账号">{pendingTask.confirmation.accountName}</Descriptions.Item>
-              <Descriptions.Item label="平台">
-                {pendingTask.confirmation.platformLabel}
-                {pendingTask.confirmation.capability === 'beta' ? <Tag color="orange" style={{ marginLeft: 8 }}>Beta</Tag> : null}
-              </Descriptions.Item>
-              <Descriptions.Item label="动作" span={2}>{pendingTask.confirmation.actionLabel}</Descriptions.Item>
-              <Descriptions.Item label="成功目标">{pendingTask.confirmation.target}</Descriptions.Item>
-              <Descriptions.Item label="尝试上限">{pendingTask.confirmation.attempts}</Descriptions.Item>
-              <Descriptions.Item label="执行窗口" span={2}>{pendingTask.confirmation.schedule}</Descriptions.Item>
-              <Descriptions.Item label="人审" span={2}>{pendingTask.confirmation.approval}</Descriptions.Item>
-              <Descriptions.Item label="任务编号" span={2}>{pendingTask.task.id}</Descriptions.Item>
-            </Descriptions>
-            <Alert type="info" showIcon message="确认后进入统一任务队列；只有平台或持久化结果验证成功才会计入成功数。" />
-            {pendingTask.confirmation.capabilityReason ? (
-              <Alert type="warning" showIcon message={`Beta 边界：${pendingTask.confirmation.capabilityReason}`} />
-            ) : null}
-          </Space>
-        ) : null}
       </Modal>
       <SourceReferenceModal source={sourceViewing} onClose={() => setSourceViewing(null)} />
     </div>

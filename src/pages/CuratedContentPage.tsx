@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   Collapse,
-  Descriptions,
   Divider,
   Empty,
   Modal,
@@ -41,7 +40,6 @@ import type {
   ReferenceVisualAnalysis,
   VisualFrameSpec,
   DelegatedTaskDraftReceipt,
-  DelegatedTaskView,
 } from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
@@ -314,7 +312,6 @@ export function CuratedContentPage() {
   // 评论弹窗：目标行 + 评论类型（内容评论 / 联系评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
   const [commentKind, setCommentKind] = useState<'content' | 'contact'>('content');
-  const [pendingTask, setPendingTask] = useState<DelegatedTaskDraftReceipt | null>(null);
 
   const effectiveAccountId = accountId === ALL_ACCOUNTS ? undefined : accountId;
   const allAccountsView = effectiveAccountId === undefined;
@@ -347,7 +344,8 @@ export function CuratedContentPage() {
     onError: () => message.error('删除失败'),
   });
 
-  // 第一次写只创建 awaiting_confirmation task；确认前不生成、不接管 edge。
+  // console 精确入口：点了洗稿 = 明确指令，云端直接确认入队（不再出「请确认用户委托任务」卡）。
+  // 入队 ≠ 已发布；终态（创作 / 发布结果）由飞书结果卡回报。人审仍在下游内容审批处。
   const createPost = useMutation({
     mutationFn: ({ row, useReferenceImages }: { row: PanelCuratedContent; useReferenceImages?: boolean }) => {
       const body =
@@ -357,34 +355,23 @@ export function CuratedContentPage() {
       return apiPost<DelegatedTaskDraftReceipt>(`/api/curated/contents/${row.id}/create-post`, body);
     },
     onSuccess: (res) => {
-      setPendingTask(res);
       setCreateTarget(null);
-      message.info('已生成结构化确认；确认前不会创作或发布');
+      message.success(`已排队洗稿创作（任务 ${res.task.id.slice(0, 8)}…）；结果由飞书结果卡回报，非平台成功回执`);
+      void qc.invalidateQueries({ queryKey: ['delegated-tasks'] });
     },
-    onError: () => message.error('委托草稿创建失败'),
+    onError: () => message.error('委托任务创建失败'),
   });
 
-  // 评论（内容/带联系方式）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
+  // 定向评论（内容/带联系方式）：同样直接入队；终态（评没评上）由飞书结果卡回报。
   const targetedComment = useMutation({
     mutationFn: ({ row, withContact }: { row: PanelCuratedContent; withContact: boolean }) =>
       apiPost<DelegatedTaskDraftReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withContact }),
     onSuccess: (res) => {
-      setPendingTask(res);
       setCommentTarget(null);
-      message.info('已生成结构化确认；确认前不会搜索、撰写或评论');
-    },
-    onError: () => message.error('委托草稿创建失败'),
-  });
-
-  const confirmTask = useMutation({
-    mutationFn: (task: DelegatedTaskView) =>
-      apiPost<{ task: DelegatedTaskView }>(`/api/delegated-tasks/${task.id}/confirm`, { version: task.version }),
-    onSuccess: ({ task }) => {
-      message.success(`已确认并排队（任务 ${task.id.slice(0, 8)}…）；这不是平台成功回执`);
-      setPendingTask(null);
+      message.success(`已排队定向评论（任务 ${res.task.id.slice(0, 8)}…）；结果由飞书结果卡回报，非平台成功回执`);
       void qc.invalidateQueries({ queryKey: ['delegated-tasks'] });
     },
-    onError: () => message.error('确认失败：目标可能已删除、版本已更新或平台边界已变化'),
+    onError: () => message.error('委托任务创建失败'),
   });
 
   const accountOptions = [
@@ -563,7 +550,7 @@ export function CuratedContentPage() {
                 <Popconfirm
                   title="以这篇图文洗稿成一篇新笔记？"
                   description={`由「${namer(row.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                  okText="生成确认"
+                  okText="洗稿"
                   onConfirm={() => openCreatePost(row)}
                   disabled={writeState.disabled}
                 >
@@ -728,7 +715,7 @@ export function CuratedContentPage() {
       <Modal
         open={!!createTarget}
         title="参考创作"
-        okText="生成确认"
+        okText="开始洗稿"
         cancelText="取消"
         confirmLoading={createPost.isPending}
         onOk={() => {
@@ -758,50 +745,9 @@ export function CuratedContentPage() {
       </Modal>
 
       <Modal
-        open={!!pendingTask}
-        title={pendingTask?.confirmation.title ?? '请确认用户委托任务'}
-        okText="确认并排队"
-        cancelText="暂不执行"
-        confirmLoading={confirmTask.isPending}
-        onOk={() => pendingTask && confirmTask.mutate(pendingTask.task)}
-        onCancel={() => setPendingTask(null)}
-        width={620}
-      >
-        {pendingTask ? (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="账号">{pendingTask.confirmation.accountName}</Descriptions.Item>
-              <Descriptions.Item label="平台">
-                {pendingTask.confirmation.platformLabel}
-                {pendingTask.confirmation.capability === 'beta' ? <Tag color="orange" style={{ marginLeft: 8 }}>Beta</Tag> : null}
-              </Descriptions.Item>
-              <Descriptions.Item label="动作" span={2}>{pendingTask.confirmation.actionLabel}</Descriptions.Item>
-              <Descriptions.Item label="成功目标">{pendingTask.confirmation.target}</Descriptions.Item>
-              <Descriptions.Item label="尝试上限">{pendingTask.confirmation.attempts}</Descriptions.Item>
-              <Descriptions.Item label="执行窗口" span={2}>{pendingTask.confirmation.schedule}</Descriptions.Item>
-              <Descriptions.Item label="人审" span={2}>{pendingTask.confirmation.approval}</Descriptions.Item>
-              <Descriptions.Item label="优先级">{pendingTask.confirmation.priority}</Descriptions.Item>
-              <Descriptions.Item label="任务编号">{pendingTask.task.id}</Descriptions.Item>
-              {pendingTask.confirmation.constraints.length > 0 ? (
-                <Descriptions.Item label="约束" span={2}>{pendingTask.confirmation.constraints.join('；')}</Descriptions.Item>
-              ) : null}
-            </Descriptions>
-            {pendingTask.confirmation.capabilityReason ? (
-              <Alert type="warning" showIcon message={`Beta 边界：${pendingTask.confirmation.capabilityReason}`} />
-            ) : null}
-            <Alert
-              type="info"
-              showIcon
-              message="成功数只按平台验证结果计算；确认只代表入队，不代表已经评论或发布。候选不足会如实部分完成。"
-            />
-          </Space>
-        ) : null}
-      </Modal>
-
-      <Modal
         open={!!commentTarget}
         title="评论"
-        okText="生成确认"
+        okText="发起评论"
         cancelText="取消"
         confirmLoading={targetedComment.isPending}
         onOk={() => {
@@ -937,7 +883,7 @@ export function CuratedContentPage() {
                   <Popconfirm
                     title="以这篇图文洗稿成一篇新笔记？"
                     description={`由「${namer(viewing.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                    okText="生成确认"
+                    okText="洗稿"
                     onConfirm={() => openCreatePost(viewing)}
                     disabled={createPostState(viewing).disabled}
                   >

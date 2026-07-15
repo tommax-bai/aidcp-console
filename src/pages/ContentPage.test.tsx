@@ -3,6 +3,9 @@
  * 只 mock HTTP 客户端层（apiGet/apiPost/apiPut），页面 + react-query 走真实渲染与调用路径；
  * 断言拒因经 errorText（#31）呈现为**说人话中文**、绝不把英文机器码（version_stale 等）直接上屏。
  *
+ * 契约变更（source=console 直接确认入队）：候选稿动作单次创建即 queued + autoQueued，无「请确认用户委托任务」
+ * 二次确认卡、无 /confirm 调用；CAS 版本（candidateVersion）随创建调用一同下发，版本冲突在创建调用本身以 409 诚实拒绝。
+ *
  * 关键：mock 工厂经 vi.importActual 保留真实 ApiError 类，使 errorText 的 `err instanceof ApiError`
  * 与测试里 `new ApiError(...)` 命中同一个类（否则 instanceof 恒 false、拒因映射被跳过）。
  */
@@ -80,13 +83,16 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
   };
 }
 
-function candidateTaskReceipt(action: string): DelegatedTaskDraftReceipt {
+// console 精确入口（候选稿动作 source=console）现由云端直接确认入队：回执已是 queued + autoQueued，无二次确认卡。
+// confirmation 字段仅为满足现有 DelegatedTaskDraftReceipt 类型保留（页面已不再读取/渲染它）。
+function candidateTaskReceipt(action: string): DelegatedTaskDraftReceipt & { autoQueued: true } {
   return {
     created: true,
+    autoQueued: true,
     task: {
       id: `task-${action}`, accountId: 'acc-1', accountName: '测试账号', platform: 'xiaohongshu', action,
       targetSuccessCount: 1, maxAttempts: 1, deadlineAt: Date.now() + 60_000, approvalMode: 'review', priority: 'normal',
-      status: 'awaiting_confirmation', progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 }, version: 4,
+      status: 'queued', progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 }, version: 4,
     },
     confirmation: {
       taskId: `task-${action}`, version: 4, title: '请确认用户委托任务', accountName: '测试账号', platformLabel: '小红书',
@@ -126,8 +132,8 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     state.accounts = { accounts: [] };
     vi.mocked(apiPut).mockReset();
     vi.mocked(apiPost).mockReset();
-    vi.mocked(apiPost).mockImplementation((path: string, body?: unknown) => {
-      if (path.includes('/confirm')) return Promise.resolve({ task: { ...candidateTaskReceipt('modify_candidate').task, status: 'queued', version: 5 } });
+    // 候选稿动作直接确认入队：单次 draft 创建即返回 queued，无 /confirm 二次确认调用。
+    vi.mocked(apiPost).mockImplementation((_path: string, body?: unknown) => {
       const action = String((body as { action?: string } | undefined)?.action ?? 'modify_candidate');
       return Promise.resolve(candidateTaskReceipt(action));
     });
@@ -205,43 +211,34 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(await screen.findByText('甲稿标题')).toBeTruthy();
   });
 
-  it('修改候选稿先生成结构化确认；确认前不直接写 draft', async () => {
+  it('修改候选稿直接入队（无确认卡），携 CAS 版本写 draft，且不直接写 draft 端点', async () => {
     await openEditDrawer();
     fireEvent.change(screen.getByPlaceholderText('标题'), { target: { value: '改后的标题' } });
     fireEvent.click(screen.getByText('创建修改任务'));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    // 单次创建即入队；成功文案明确「成功状态以平台验证结果为准」。
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    // 已被移除的「请确认用户委托任务」二次确认卡不再出现。
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
+    // 副作用闸：绝不绕过任务通道直接 PUT 写 draft。
     expect(vi.mocked(apiPut)).not.toHaveBeenCalled();
+    // CAS 版本随创建调用一同下发（candidateVersion=浮层打开时快照版本）。
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
       action: 'modify_candidate',
       targetConstraints: expect.objectContaining({ candidateId: '1', candidateVersion: 0, title: '改后的标题' }),
     }));
+    expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/confirm'))).toBe(false);
   });
 
-  it('确认候选稿修改后才排队，并携确认卡版本做 CAS', async () => {
+  it('CAS 版本冲突时诚实拒绝，不显示排队成功', async () => {
+    // 冲突现在发生在创建调用本身（携 candidateVersion 的 draft 创建被后端 409 拒）。
+    vi.mocked(apiPost).mockRejectedValue(new ApiError(409, 'version_conflict'));
     await openEditDrawer();
     fireEvent.change(screen.getByPlaceholderText('标题'), { target: { value: '改后的标题' } });
     fireEvent.click(screen.getByText('创建修改任务'));
-    await screen.findByText('请确认用户委托任务');
-    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
-    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
-    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/task-modify_candidate/confirm', {
-      version: 4,
-    });
-  });
-
-  it('确认版本冲突时诚实拒绝，不显示排队成功', async () => {
-    vi.mocked(apiPost).mockImplementation((path: string, body?: unknown) => {
-      if (path.includes('/confirm')) return Promise.reject(new ApiError(409, 'version_conflict'));
-      return Promise.resolve(candidateTaskReceipt(String((body as { action?: string })?.action)));
-    });
-    await openEditDrawer();
-    fireEvent.change(screen.getByPlaceholderText('标题'), { target: { value: '改后的标题' } });
-    fireEvent.click(screen.getByText('创建修改任务'));
-    await screen.findByText('请确认用户委托任务');
-    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
     expect(await screen.findByText(/内容已被他处修改，请刷新后重试/)).toBeTruthy();
-    expect(screen.queryByText(/任务已确认并排队/)).toBeNull();
+    expect(screen.queryByText(/成功状态以平台验证结果为准/)).toBeNull();
     expect(screen.queryByText('version_conflict')).toBeNull();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
   });
 
   it('无改动时修改任务按钮禁用，避免生成空补丁', async () => {
@@ -458,24 +455,28 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(visualCategoryPresentation(categories[6]!).lines.join('')).toContain('真实性边界：概念界面');
   });
 
-  it('无改动时批准操作先生成确认任务，不直接写审批信号', async () => {
+  it('无改动时批准操作直接入队，不绕过任务直接写审批信号', async () => {
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '创建批准任务' }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
       action: 'approve_candidate',
       targetConstraints: expect.objectContaining({ candidateId: '1', candidateVersion: 0 }),
     }));
+    // 副作用闸：批准只经任务通道，绝不直接命中发布/审批信号端点。
     expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/api/publish/'))).toBe(false);
   });
 
-  it('驳回也先生成确认任务，确认前列表仍保持待审', async () => {
+  it('驳回直接入队；入队后候选仍保持待审（不乐观改状态）', async () => {
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '创建驳回任务' }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
       action: 'reject_candidate',
     }));
+    // 驳回任务仅入队、尚未执行，列表不乐观改成已驳回，仍如实显示待审。
     expect(screen.getAllByText('待审').length).toBeGreaterThan(0);
   });
 
@@ -527,31 +528,35 @@ describe('ContentPage 待审配图删除（change pending-draft-image-delete）'
     state.accounts = { accounts: [] };
     vi.mocked(apiPut).mockReset();
     vi.mocked(apiPost).mockReset();
-    vi.mocked(apiPost).mockImplementation((path: string, body?: unknown) => {
-      if (path.includes('/confirm')) return Promise.resolve({ task: { ...candidateTaskReceipt('modify_candidate').task, status: 'queued' } });
-      return Promise.resolve(candidateTaskReceipt(String((body as { action?: string } | undefined)?.action ?? 'modify_candidate')));
-    });
+    // 删配图=修改候选稿，直接确认入队：单次 draft 创建即返回 queued，无 /confirm 调用。
+    vi.mocked(apiPost).mockImplementation((_path: string, body?: unknown) =>
+      Promise.resolve(candidateTaskReceipt(String((body as { action?: string } | undefined)?.action ?? 'modify_candidate'))),
+    );
   });
 
-  it('删一张配图 → 携保留子集生成修改任务，确认前不直接写 draft', async () => {
+  it('删一张配图 → 携保留子集直接入队修改任务，不经确认卡、不直接写 draft 端点', async () => {
     state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg', 'https://c.jpg'], imageUrl: 'https://a.jpg' })] };
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
+    // 这是配图删除的确认气泡（合法控件），非已移除的「请确认用户委托任务」委托确认卡。
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
       action: 'modify_candidate', targetConstraints: expect.objectContaining({ images: ['https://b.jpg', 'https://c.jpg'] }),
     }));
     expect(vi.mocked(apiPut)).not.toHaveBeenCalled();
   });
 
-  it('删最后一张 → 二次确认提示纯文字帖，并在任务约束中锁定空 images', async () => {
+  it('删最后一张 → 删除气泡提示纯文字帖，直接入队并在任务约束中锁定空 images', async () => {
     state.published = { items: [makePending({ images: ['https://only.jpg'], imageUrl: 'https://only.jpg' })] };
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
+    // 删除最后一张的气泡二次确认（合法控件）仍在，如实提示将作为纯文字帖。
     expect(await screen.findByText('删除最后一张配图？该帖将作为纯文字帖发布')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
-    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
       targetConstraints: expect.objectContaining({ images: [] }),
     }));
