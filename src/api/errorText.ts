@@ -55,6 +55,18 @@ const CODE_TEXT: Record<string, string> = {
   no_files: '请选择至少一张图片',
   bad_order: '图片排序数据不合法',
   bad_caption_hint: '图片备注格式不合法',
+  // 视频号互动回复配置 v1 统一错误 envelope。
+  INTERACTION_PERMISSION_DENIED: '权限不足，操作未执行',
+  INTERACTION_NOT_FOUND: '账号或配置不存在',
+  INTERACTION_SCOPE_MISMATCH: '账号范围不匹配，操作已拒绝',
+  INTERACTION_VERSION_CONFLICT: '配置已被他处修改，请刷新后重试',
+  INTERACTION_STATE_CONFLICT: '当前状态不允许该操作，请刷新后重试',
+  INTERACTION_VALIDATION_FAILED: '配置校验未通过，请检查错误摘要',
+  INTERACTION_CONFIG_MISSING: '缺少可用配置，请先完成草稿设置',
+  INTERACTION_FEATURE_DISABLED: '该账号的互动能力尚未启用',
+  INTERACTION_RATE_LIMITED: '操作过于频繁，请稍后重试',
+  INTERACTION_UPSTREAM_UNAVAILABLE: '上游服务暂不可用，请稍后重试',
+  INTERACTION_INTERNAL_ERROR: '互动配置服务暂时异常，请稍后重试',
 };
 
 /** 把 API 错误映射为说人话中文；未知码回落 fallback。reason（细分）优先于 error（粗）。 */

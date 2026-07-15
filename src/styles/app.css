@@ -1045,6 +1045,121 @@ body {
   color: var(--aidcp-primary-foreground);
 }
 
+/* ======================================================================
+ * 视频号账号级互动回复设置
+ * ====================================================================== */
+.reply-config-drawer .ant-drawer-header {
+  align-items: flex-start;
+}
+.reply-config-drawer-root .ant-drawer-content-wrapper {
+  max-width: calc(100vw - 24px);
+}
+.reply-config-drawer .ant-drawer-extra {
+  max-width: 72%;
+}
+.reply-config-drawer .ant-drawer-body {
+  background: var(--aidcp-muted);
+}
+.reply-config__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-4);
+}
+.reply-config__head-card {
+  background: var(--aidcp-background);
+}
+.reply-config__toolbar,
+.reply-config__save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aidcp-space-3);
+  flex-wrap: wrap;
+}
+.reply-config__save-row {
+  width: 100%;
+  justify-content: flex-end;
+  margin-top: var(--aidcp-space-4);
+}
+.reply-config__switch-grid,
+.reply-config__channel-grid,
+.reply-config__form-grid,
+.reply-config__limit-grid,
+.reply-config__diff-grid {
+  display: grid;
+  gap: var(--aidcp-space-3);
+}
+.reply-config__switch-grid,
+.reply-config__channel-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.reply-config__form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.reply-config__limit-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.reply-config__diff-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: var(--aidcp-space-1);
+}
+.reply-config__setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--aidcp-space-3);
+  min-height: 76px;
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-background);
+}
+.reply-config__setting--locked {
+  opacity: 0.78;
+}
+.reply-config__setting--locked > :last-child {
+  grid-column: 1 / -1;
+}
+.reply-config__section-alert {
+  margin-top: var(--aidcp-space-3);
+}
+.reply-config__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--aidcp-font-size-2xs);
+}
+.reply-config__issues {
+  margin: var(--aidcp-space-2) 0 0;
+  padding-left: var(--aidcp-space-5);
+}
+.reply-config__issues li + li {
+  margin-top: var(--aidcp-space-1);
+}
+
+@media (max-width: 760px) {
+  .reply-config-drawer-root .ant-drawer-content-wrapper {
+    max-width: 100vw;
+  }
+  .reply-config-drawer .ant-drawer-extra {
+    max-width: 100%;
+  }
+  .reply-config__switch-grid,
+  .reply-config__channel-grid,
+  .reply-config__form-grid,
+  .reply-config__limit-grid,
+  .reply-config__diff-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reply-config__toolbar,
+  .reply-config__save-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .reply-config__toolbar .ant-btn,
+  .reply-config__save-row .ant-btn {
+    width: 100%;
+  }
+}
+
 /* 角色列：名字 + 其下一行 muted 分类小字（「模型任务类型」轴，不喧宾夺主但可查） */
 .roles-role-cell__name {
   color: var(--aidcp-foreground);

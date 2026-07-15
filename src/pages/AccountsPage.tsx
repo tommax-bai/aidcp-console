@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { App, Button, Card, Popconfirm, Space } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
 import { useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
-import { AccountsTable, RiskControls, FacebookSearchConfig } from '../components';
+import { AccountsTable, RiskControls, FacebookSearchConfig, WechatChannelsReplySettings } from '../components';
 import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
 
@@ -12,6 +13,7 @@ export function AccountsPage() {
   const { data, isLoading, isError, refetch } = useAccounts();
   const { message } = App.useApp();
   const qc = useQueryClient();
+  const [replyAccount, setReplyAccount] = useState<PanelAccount | null>(null);
 
   const cmd = useMutation({
     mutationFn: (v: { accountId: string; command: 'pause' | 'resume' }) =>
@@ -76,6 +78,9 @@ export function AccountsPage() {
       )}
       <RiskControls account={a} />
       {a.platform === 'facebook' ? <FacebookSearchConfig account={a} /> : null}
+      {a.platform === 'wechat_channels' ? (
+        <Button size="small" onClick={() => setReplyAccount(a)}>回复设置</Button>
+      ) : null}
     </Space>
   );
 
@@ -92,6 +97,11 @@ export function AccountsPage() {
           onEditContact={(accountId, contactInfo) => contactCmd.mutate({ accountId, contactInfo })}
         />
       </Card>
+      <WechatChannelsReplySettings
+        account={replyAccount}
+        open={replyAccount !== null}
+        onClose={() => setReplyAccount(null)}
+      />
     </div>
   );
 }

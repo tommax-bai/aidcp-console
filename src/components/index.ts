@@ -6,6 +6,7 @@ export { AccountsTable } from './AccountsTable';
 export { AccountTotalsTable } from './AccountTotalsTable';
 export { RiskControls } from './RiskControls';
 export { FacebookSearchConfig } from './FacebookSearchConfig';
+export { WechatChannelsReplySettings } from './WechatChannelsReplySettings';
 export { DispatchControl } from './DispatchControl';
 export { ProfileLink } from './ProfileLink';
 export { InteractionsTable } from './InteractionsTable';

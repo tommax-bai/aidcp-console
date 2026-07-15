@@ -17,9 +17,17 @@ function severityRank(a: PanelAccount): number {
 
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
-// 平台展示（拆分不同平台）。platform 为自由字符串（cloud accounts.platform 事实源）：xiaohongshu / facebook。
-const PLATFORM_LABEL: Record<string, string> = { xiaohongshu: '小红书', facebook: 'Facebook' };
-const PLATFORM_COLOR: Record<string, string> = { xiaohongshu: 'magenta', facebook: 'blue' };
+// 平台展示（拆分不同平台）。platform 为自由字符串（cloud accounts.platform 事实源）。
+const PLATFORM_LABEL: Record<string, string> = {
+  xiaohongshu: '小红书',
+  facebook: 'Facebook',
+  wechat_channels: '视频号',
+};
+const PLATFORM_COLOR: Record<string, string> = {
+  xiaohongshu: 'magenta',
+  facebook: 'blue',
+  wechat_channels: 'green',
+};
 
 const viewsColumn: ColumnsType<PanelAccount>[number] = {
   // #17：站内深链——一键跳到该账号在其它页的视图，带 ?account=<id> 深链（各页读 URL 预置账号筛选）。
@@ -44,10 +52,11 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '平台',
     dataIndex: 'platform',
-    width: 92,
+    width: 96,
     filters: [
       { text: '小红书', value: 'xiaohongshu' },
       { text: 'Facebook', value: 'facebook' },
+      { text: '视频号', value: 'wechat_channels' },
     ],
     onFilter: (value, r) => r.platform === value,
     render: (p: string) => <Tag color={PLATFORM_COLOR[p] ?? 'default'}>{PLATFORM_LABEL[p] ?? p}</Tag>,

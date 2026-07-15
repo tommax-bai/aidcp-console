@@ -49,6 +49,10 @@ export class ApiError extends Error {
     message: string,
     /** 服务端细分原因（body.reason）；比粗错误名（message=body.error）更具体，供 UI 映射中文（#31）。 */
     public readonly reason?: string,
+    /** 新版统一错误 envelope 的 requestId；用于排障，不把 details 中的敏感内容直接上屏。 */
+    public readonly requestId?: string,
+    /** 新版统一错误 envelope 的安全结构化细节（例如 currentVersion / validation issues）。 */
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -64,9 +68,11 @@ export function setSessionExpiredHandler(fn: (() => void) | null): void {
   sessionExpiredHandler = fn;
 }
 
-interface RequestOptions {
+export interface RequestOptions {
   /** 默认 true；登录请求设 false：登录被拒是「用户名/密码错误」，不应触发全局会话过期跳转。 */
   notifySessionExpired?: boolean;
+  /** 账号/环境切换时取消旧请求，避免旧响应覆盖新作用域。 */
+  signal?: AbortSignal;
 }
 
 async function request<T>(
@@ -78,7 +84,7 @@ async function request<T>(
   headers.set('accept', 'application/json');
   if (token) headers.set('authorization', `Bearer ${token}`);
 
-  const res = await fetch(path, { ...init, headers });
+  const res = await fetch(path, { ...init, headers, signal: opts.signal ?? init.signal });
 
   if (res.status === 401) {
     setToken(null);
@@ -88,20 +94,30 @@ async function request<T>(
   if (!res.ok) {
     let message = res.statusText;
     let reason: string | undefined;
+    let requestId: string | undefined;
+    let details: unknown;
     try {
-      const body = (await res.json()) as { error?: string; reason?: string };
-      if (body.error) message = body.error;
+      const body = (await res.json()) as {
+        error?: string | { code?: string; message?: string; requestId?: string; details?: unknown };
+        reason?: string;
+      };
+      if (typeof body.error === 'string') message = body.error;
+      else if (body.error?.code) message = body.error.code;
       if (body.reason) reason = body.reason; // #31：保留细分原因，别只上屏粗错误码
+      if (typeof body.error === 'object' && body.error) {
+        requestId = body.error.requestId;
+        details = body.error.details;
+      }
     } catch {
       // 非 JSON 错误体，沿用 statusText
     }
-    throw new ApiError(res.status, message, reason);
+    throw new ApiError(res.status, message, reason, requestId, details);
   }
   return (await res.json()) as T;
 }
 
-export function apiGet<T>(path: string): Promise<T> {
-  return request<T>(path);
+export function apiGet<T>(path: string, opts?: RequestOptions): Promise<T> {
+  return request<T>(path, {}, opts);
 }
 
 export function apiPost<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
@@ -116,12 +132,16 @@ export function apiPost<T>(path: string, body?: unknown, opts?: RequestOptions):
   );
 }
 
-export function apiPut<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+export function apiPut<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+  return request<T>(
+    path,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    opts,
+  );
 }
 
 export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
@@ -132,9 +152,17 @@ export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-/** DELETE（精选内容后台管理 change curated-content-admin-page）：账号等约束走 query string。 */
-export function apiDelete<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'DELETE' });
+/** DELETE；需要 CAS 的新端点可带 JSON body，旧调用不传 body 时行为不变。 */
+export function apiDelete<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+  return request<T>(
+    path,
+    {
+      method: 'DELETE',
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    opts,
+  );
 }
 
 /** 触发已注册的会话过期处理（WS 收到 4401 时用，与 HTTP 401 同流程；change console-cloud-panel-hardening #25）。 */
