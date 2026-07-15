@@ -575,6 +575,53 @@ export interface CuratedActionReceipt {
   reason?: string;
 }
 
+export interface DelegatedTaskProgress {
+  successCount: number;
+  attemptCount: number;
+  skippedCount: number;
+  failureCount: number;
+}
+
+export interface DelegatedTaskView {
+  id: string;
+  accountId: string;
+  accountName: string;
+  platform: 'xiaohongshu' | 'facebook';
+  action: string;
+  targetSuccessCount: number;
+  maxAttempts: number;
+  deadlineAt: number;
+  approvalMode: 'review' | 'auto_approve' | 'draft_only';
+  priority: 'normal' | 'high';
+  status: string;
+  progress: DelegatedTaskProgress;
+  version: number;
+  terminalOutcome?: { code: string; message: string; submittedUnknown?: boolean } | null;
+}
+
+export interface DelegatedTaskConfirmation {
+  taskId: string;
+  version: number;
+  title: string;
+  accountName: string;
+  platformLabel: string;
+  actionLabel: string;
+  target: string;
+  attempts: string;
+  schedule: string;
+  approval: string;
+  priority: string;
+  constraints: string[];
+  capability: 'supported' | 'beta';
+  capabilityReason?: string;
+}
+
+export interface DelegatedTaskDraftReceipt {
+  task: DelegatedTaskView;
+  confirmation: DelegatedTaskConfirmation;
+  created: boolean;
+}
+
 /** 单厂商凭据视图（change console-model-provider-config + model-config-volcengine-provider）。永不含明文密钥。 */
 export interface ModelConfigCredential {
   provider: string;

@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Collapse,
+  Descriptions,
   Divider,
   Empty,
   Modal,
@@ -34,12 +35,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiPost } from '../api/client';
 import { useAccounts, useCuratedContents, useCuratedFacets } from '../api/queries';
 import type {
-  CuratedActionReceipt,
   CuratedContentType,
   CuratedReferenceImage,
   PanelCuratedContent,
   ReferenceVisualAnalysis,
   VisualFrameSpec,
+  DelegatedTaskDraftReceipt,
+  DelegatedTaskView,
 } from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
 
@@ -255,50 +257,6 @@ function ReferenceImageThumb({
 }
 
 /**
- * 行级动作「未触发」机器原因码 → 中文提示（change curated-note-actions）。
- * 与 cloud panel 接线层的原因码对齐；未知码原样兜底（诚实：不假装认识陌生码）。
- */
-function actionReasonLabel(reason: string | undefined): string {
-  switch (reason) {
-    case 'empty_body':
-      return '该行正文为空（历史/异常壳行），无法作为洗稿参照';
-    case 'empty_title':
-      return '该行无标题，无法搜索定位目标笔记';
-    case 'image_text_only':
-      return '只有图文行支持洗稿；视频和评论暂不支持';
-    case 'source_post_only':
-      return '只有图文或视频源帖支持评论';
-    case 'note_only':
-      return '仅源帖行支持该动作';
-    case 'needs_persona':
-      return '该账号未绑定人设——请先到「人设」页设置';
-    case 'publish_busy':
-      return '生成并发已满，请稍后再试';
-    case 'duplicate_source':
-      return '该笔记已有一轮洗稿在途——等它出稿后可再洗一版对比';
-    case 'publish_capacity':
-      return '该账号在途待审草稿已达上限——请先在「内容」页批准或驳回存量草稿';
-    case 'publish_unready':
-      return '发布触发器未就绪（云端依赖不可用）';
-    case 'comment_unready':
-      return '评论触发器未就绪（云端依赖不可用）';
-    case 'contact_info_missing':
-      return '该账号未配置「联系方式」——请先到账号页设置（不会降级为内容评论）';
-    case 'running':
-      return '该账号已有评论任务在跑，请等其结束';
-    case 'already_commented':
-      return '该账号已评论过这篇笔记，不重复评论';
-    case 'edge_offline':
-      return '该账号暂无在线边端';
-    case 'account_required':
-    case 'bad_target':
-      return '目标信息不完整，无法触发';
-    default:
-      return reason ? `未触发（${reason}）` : '未触发';
-  }
-}
-
-/**
  * 「纳入原因」机器码 → 中文友好文案（云端 evaluateAdmission / markBotAction / archiveComment 产出的码）。
  * 未知码原样兜底（诚实：不假装认识陌生码）；历史 content_missing 标注「未抓到正文」（壳行）。
  */
@@ -356,6 +314,7 @@ export function CuratedContentPage() {
   // 评论弹窗：目标行 + 评论类型（内容评论 / 联系评论）。
   const [commentTarget, setCommentTarget] = useState<PanelCuratedContent | null>(null);
   const [commentKind, setCommentKind] = useState<'content' | 'contact'>('content');
+  const [pendingTask, setPendingTask] = useState<DelegatedTaskDraftReceipt | null>(null);
 
   const effectiveAccountId = accountId === ALL_ACCOUNTS ? undefined : accountId;
   const allAccountsView = effectiveAccountId === undefined;
@@ -388,35 +347,44 @@ export function CuratedContentPage() {
     onError: () => message.error('删除失败'),
   });
 
-  // 洗稿（change curated-note-actions）：触发态回执诚实分支——triggered 才绿，域内拒绝走中文原因、绝不染绿。
+  // 第一次写只创建 awaiting_confirmation task；确认前不生成、不接管 edge。
   const createPost = useMutation({
     mutationFn: ({ row, useReferenceImages }: { row: PanelCuratedContent; useReferenceImages?: boolean }) => {
       const body =
         typeof useReferenceImages === 'boolean'
           ? { accountId: row.accountId, useReferenceImages }
           : { accountId: row.accountId };
-      return apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/create-post`, body);
+      return apiPost<DelegatedTaskDraftReceipt>(`/api/curated/contents/${row.id}/create-post`, body);
     },
     onSuccess: (res) => {
-      if (res.triggered) message.success('已触发洗稿：生成草稿后将发飞书人审卡，请到飞书完成审核');
-      else message.info(actionReasonLabel(res.reason));
+      setPendingTask(res);
+      setCreateTarget(null);
+      message.info('已生成结构化确认；确认前不会创作或发布');
     },
-    onError: () => message.error('洗稿触发失败'),
+    onError: () => message.error('委托草稿创建失败'),
   });
 
   // 评论（内容/带联系方式）：同样只回触发态；终态（评没评上）由飞书结果卡回报。
   const targetedComment = useMutation({
     mutationFn: ({ row, withContact }: { row: PanelCuratedContent; withContact: boolean }) =>
-      apiPost<CuratedActionReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withContact }),
+      apiPost<DelegatedTaskDraftReceipt>(`/api/curated/contents/${row.id}/comment`, { accountId: row.accountId, withContact }),
     onSuccess: (res) => {
-      if (res.triggered) {
-        message.success('已触发评论：搜索定位目标源帖后撰写，评论文案将发飞书人审、通过才发出；结果以飞书卡片回报');
-        setCommentTarget(null);
-      } else {
-        message.info(actionReasonLabel(res.reason));
-      }
+      setPendingTask(res);
+      setCommentTarget(null);
+      message.info('已生成结构化确认；确认前不会搜索、撰写或评论');
     },
-    onError: () => message.error('评论触发失败'),
+    onError: () => message.error('委托草稿创建失败'),
+  });
+
+  const confirmTask = useMutation({
+    mutationFn: (task: DelegatedTaskView) =>
+      apiPost<{ task: DelegatedTaskView }>(`/api/delegated-tasks/${task.id}/confirm`, { version: task.version }),
+    onSuccess: ({ task }) => {
+      message.success(`已确认并排队（任务 ${task.id.slice(0, 8)}…）；这不是平台成功回执`);
+      setPendingTask(null);
+      void qc.invalidateQueries({ queryKey: ['delegated-tasks'] });
+    },
+    onError: () => message.error('确认失败：目标可能已删除、版本已更新或平台边界已变化'),
   });
 
   const accountOptions = [
@@ -595,7 +563,7 @@ export function CuratedContentPage() {
                 <Popconfirm
                   title="以这篇图文洗稿成一篇新笔记？"
                   description={`由「${namer(row.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                  okText="触发洗稿"
+                  okText="生成确认"
                   onConfirm={() => openCreatePost(row)}
                   disabled={writeState.disabled}
                 >
@@ -760,7 +728,7 @@ export function CuratedContentPage() {
       <Modal
         open={!!createTarget}
         title="参考创作"
-        okText="触发创作"
+        okText="生成确认"
         cancelText="取消"
         confirmLoading={createPost.isPending}
         onOk={() => {
@@ -768,12 +736,7 @@ export function CuratedContentPage() {
           createPost.mutate(
             { row: createTarget, useReferenceImages: createMode === 'image' },
             {
-              onSuccess: (res) => {
-                if (res.triggered) {
-                  setCreateTarget(null);
-                  setViewing(null);
-                }
-              },
+              onSuccess: () => setViewing(null),
             },
           );
         }}
@@ -795,9 +758,50 @@ export function CuratedContentPage() {
       </Modal>
 
       <Modal
+        open={!!pendingTask}
+        title={pendingTask?.confirmation.title ?? '请确认用户委托任务'}
+        okText="确认并排队"
+        cancelText="暂不执行"
+        confirmLoading={confirmTask.isPending}
+        onOk={() => pendingTask && confirmTask.mutate(pendingTask.task)}
+        onCancel={() => setPendingTask(null)}
+        width={620}
+      >
+        {pendingTask ? (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="账号">{pendingTask.confirmation.accountName}</Descriptions.Item>
+              <Descriptions.Item label="平台">
+                {pendingTask.confirmation.platformLabel}
+                {pendingTask.confirmation.capability === 'beta' ? <Tag color="orange" style={{ marginLeft: 8 }}>Beta</Tag> : null}
+              </Descriptions.Item>
+              <Descriptions.Item label="动作" span={2}>{pendingTask.confirmation.actionLabel}</Descriptions.Item>
+              <Descriptions.Item label="成功目标">{pendingTask.confirmation.target}</Descriptions.Item>
+              <Descriptions.Item label="尝试上限">{pendingTask.confirmation.attempts}</Descriptions.Item>
+              <Descriptions.Item label="执行窗口" span={2}>{pendingTask.confirmation.schedule}</Descriptions.Item>
+              <Descriptions.Item label="人审" span={2}>{pendingTask.confirmation.approval}</Descriptions.Item>
+              <Descriptions.Item label="优先级">{pendingTask.confirmation.priority}</Descriptions.Item>
+              <Descriptions.Item label="任务编号">{pendingTask.task.id}</Descriptions.Item>
+              {pendingTask.confirmation.constraints.length > 0 ? (
+                <Descriptions.Item label="约束" span={2}>{pendingTask.confirmation.constraints.join('；')}</Descriptions.Item>
+              ) : null}
+            </Descriptions>
+            {pendingTask.confirmation.capabilityReason ? (
+              <Alert type="warning" showIcon message={`Beta 边界：${pendingTask.confirmation.capabilityReason}`} />
+            ) : null}
+            <Alert
+              type="info"
+              showIcon
+              message="成功数只按平台验证结果计算；确认只代表入队，不代表已经评论或发布。候选不足会如实部分完成。"
+            />
+          </Space>
+        ) : null}
+      </Modal>
+
+      <Modal
         open={!!commentTarget}
         title="评论"
-        okText="触发评论"
+        okText="生成确认"
         cancelText="取消"
         confirmLoading={targetedComment.isPending}
         onOk={() => {
@@ -933,7 +937,7 @@ export function CuratedContentPage() {
                   <Popconfirm
                     title="以这篇图文洗稿成一篇新笔记？"
                     description={`由「${namer(viewing.accountId)}」参照本图文写一篇草稿（借选题结构、人设口吻重写、禁逐句照抄），生成后走飞书人审，审核通过才发布。`}
-                    okText="触发洗稿"
+                    okText="生成确认"
                     onConfirm={() => openCreatePost(viewing)}
                     disabled={createPostState(viewing).disabled}
                   >

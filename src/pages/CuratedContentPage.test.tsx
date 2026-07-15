@@ -12,7 +12,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CuratedContentPage } from './CuratedContentPage';
 import { apiPost } from '../api/client';
-import type { PanelCuratedContent } from '../types/api';
+import type { DelegatedTaskDraftReceipt, PanelCuratedContent } from '../types/api';
 
 // jsdom 无 matchMedia / ResizeObserver；antd Table/Select/Modal（rc-*）依赖，给最小桩。
 if (typeof window.matchMedia !== 'function') {
@@ -61,6 +61,23 @@ function makeRow(overrides: Partial<PanelCuratedContent> = {}): PanelCuratedCont
   };
 }
 
+function taskReceipt(action = 'publish_post'): DelegatedTaskDraftReceipt {
+  return {
+    created: true,
+    task: {
+      id: `task-${action}`, accountId: 'acc-1', accountName: '小萝北', platform: 'xiaohongshu', action,
+      targetSuccessCount: 1, maxAttempts: 2, deadlineAt: Date.now() + 60_000, approvalMode: 'review',
+      priority: 'normal', status: 'awaiting_confirmation', progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 }, version: 1,
+    },
+    confirmation: {
+      taskId: `task-${action}`, version: 1, title: '请确认用户委托任务', accountName: '小萝北',
+      platformLabel: '小红书', actionLabel: action === 'comment_curated' ? '评论指定精选内容' : '发布一篇稿件',
+      target: '1 个验证成功结果', attempts: '最多 2 次尝试', schedule: '确认后排队', approval: '公开写操作保留人审',
+      priority: '普通', constraints: ['目标已锁定'], capability: 'supported',
+    },
+  };
+}
+
 const state = vi.hoisted(() => ({
   items: [] as unknown[],
 }));
@@ -106,6 +123,10 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
       makeRow({ id: 10, title: '壳行图文', body: '' }), // 历史壳行 → 禁洗稿、可评论
     ];
     vi.mocked(apiPost).mockReset();
+    vi.mocked(apiPost).mockImplementation((path: string) => Promise.resolve(
+      path.includes('/confirm') ? { task: { ...taskReceipt().task, status: 'queued', version: 2 } }
+        : taskReceipt(path.endsWith('/comment') ? 'comment_curated' : 'publish_post'),
+    ));
   });
 
   it('按钮禁用态：视频/评论禁洗稿；评论行全禁；历史壳行禁洗稿但可评论', async () => {
@@ -125,14 +146,17 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/clear-empty'))).toBe(false);
   });
 
-  it('洗稿：确认后按行账号 POST create-post；triggered=true → 引导去飞书人审', async () => {
-    vi.mocked(apiPost).mockResolvedValue({ triggered: true });
+  it('洗稿先创建 awaiting_confirmation；用户二次确认后才排队', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
-    expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
+    expect(await screen.findByText(/这不是平台成功回执/)).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/task-publish_post/confirm', { version: 1 });
   });
 
   it('带参考图的洗稿先弹参考模式；切到仅文本后发送 useReferenceImages:false', async () => {
@@ -150,55 +174,55 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
         ],
       }),
     ];
-    vi.mocked(apiPost).mockResolvedValue({ triggered: true });
     renderPage();
     expect(await screen.findByAltText('reference cover')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /洗稿/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /触发洗稿/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
 
     expect(await screen.findByText('带图参考')).toBeTruthy();
     const imageMode = screen.getByLabelText('带图参考') as HTMLInputElement;
     expect(imageMode.checked).toBe(true);
     fireEvent.click(screen.getByLabelText('仅文本参考'));
-    fireEvent.click(screen.getByRole('button', { name: /触发创作/ }));
+    fireEvent.click(screen.getByRole('button', { name: /生成确认/ }));
 
-    expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', {
       accountId: 'acc-1',
       useReferenceImages: false,
     });
   });
 
-  it('洗稿域内拒绝（publish_busy）→ 中文原因、绝不染绿', async () => {
-    vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'publish_busy' });
+  it('任务草稿创建失败时不出现确认卡，也不显示排队成功', async () => {
+    vi.mocked(apiPost).mockRejectedValue(new Error('生成并发已满，请稍后再试'));
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
-    // change parallel-rewrite-drafts：publish_busy 语义收窄为并发帽满（全局串行已消灭）。
-    expect(await screen.findByText(/生成并发已满/)).toBeTruthy();
-    expect(screen.queryByText(/已触发洗稿/)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
+    expect(await screen.findByText(/委托草稿创建失败/)).toBeTruthy();
+    expect(screen.queryByText('请确认用户委托任务')).toBeNull();
   });
 
-  it('洗稿域内拒绝（duplicate_source / publish_capacity）→ 各自中文原因、绝不染绿', async () => {
-    vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'duplicate_source' });
+  it('确认卡锁定账号、动作、成功目标与尝试上限', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /洗\s*稿/ })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
-    expect(await screen.findByText(/已有一轮洗稿在途/)).toBeTruthy();
-    expect(screen.queryByText(/已触发洗稿/)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
+    await screen.findByText('请确认用户委托任务');
+    const dialog = screen.getAllByRole('dialog').at(-1)!;
+    expect(within(dialog).getByText('小萝北')).toBeTruthy();
+    expect(within(dialog).getByText('发布一篇稿件')).toBeTruthy();
+    expect(within(dialog).getByText('1 个验证成功结果')).toBeTruthy();
+    expect(within(dialog).getByText('最多 2 次尝试')).toBeTruthy();
   });
 
   it('阅读详情浮层里可以触发洗稿', async () => {
-    vi.mocked(apiPost).mockResolvedValue({ triggered: true });
     renderPage();
     fireEvent.click(await screen.findByText('目标笔记标题'));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: /洗\s*稿/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /触\s*发\s*洗\s*稿/ }));
-    expect(await screen.findByText(/已触发洗稿/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /生成确认/ }));
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/create-post', { accountId: 'acc-1' });
   });
 
@@ -264,29 +288,30 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     expect(within(dialog).queryByText(/focalLength|焦距|相机型号/)).toBeNull();
   });
 
-  it('评论：弹窗选「联系评论」→ POST comment 带 withContact:true；未配联系方式拒绝呈现中文', async () => {
-    vi.mocked(apiPost).mockResolvedValue({ triggered: false, reason: 'contact_info_missing' });
+  it('评论：选择「联系评论」后先生成结构化确认，参数保留 withContact:true', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /评\s*论/ })[0]);
     await screen.findByText('目标源帖');
     fireEvent.click(screen.getByText('联系评论'));
-    fireEvent.click(screen.getByRole('button', { name: /触\s*发\s*评\s*论|触发评论/ }));
-    expect(await screen.findByText(/未配置「联系方式」/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /生成确认/ }));
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/comment', {
       accountId: 'acc-1',
       withContact: true,
     });
   });
 
-  it('评论触发成功 → 提示人审与结果卡、弹窗关闭', async () => {
-    vi.mocked(apiPost).mockResolvedValue({ triggered: true });
+  it('评论确认后进入队列，不把触发态写成评论成功', async () => {
     renderPage();
     await screen.findByText('目标笔记标题');
     fireEvent.click(screen.getAllByRole('button', { name: /评\s*论/ })[0]);
     await screen.findByText('目标源帖');
-    fireEvent.click(screen.getByRole('button', { name: /触\s*发\s*评\s*论|触发评论/ }));
-    expect(await screen.findByText(/已触发评论/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /生成确认/ }));
+    await screen.findByText('请确认用户委托任务');
+    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
+    expect(await screen.findByText(/这不是平台成功回执/)).toBeTruthy();
+    expect(screen.queryByText(/已触发评论/)).toBeNull();
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/curated/contents/7/comment', {
       accountId: 'acc-1',
       withContact: false,

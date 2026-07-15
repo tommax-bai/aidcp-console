@@ -14,7 +14,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContentPage, visualCategoryPresentation } from './ContentPage';
 import { ApiError, apiPost, apiPut } from '../api/client';
-import type { PanelContentVisualCategoryBrief, PanelPublish } from '../types/api';
+import type { DelegatedTaskDraftReceipt, PanelContentVisualCategoryBrief, PanelPublish } from '../types/api';
 
 // jsdom 无 matchMedia / ResizeObserver；antd Table/Select/Drawer（rc-*）依赖，给最小桩。
 if (typeof window.matchMedia !== 'function') {
@@ -80,6 +80,23 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
   };
 }
 
+function candidateTaskReceipt(action: string): DelegatedTaskDraftReceipt {
+  return {
+    created: true,
+    task: {
+      id: `task-${action}`, accountId: 'acc-1', accountName: '测试账号', platform: 'xiaohongshu', action,
+      targetSuccessCount: 1, maxAttempts: 1, deadlineAt: Date.now() + 60_000, approvalMode: 'review', priority: 'normal',
+      status: 'awaiting_confirmation', progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 }, version: 4,
+    },
+    confirmation: {
+      taskId: `task-${action}`, version: 4, title: '请确认用户委托任务', accountName: '测试账号', platformLabel: '小红书',
+      actionLabel: action === 'approve_candidate' ? '批准候选稿' : action === 'reject_candidate' ? '驳回候选稿' : '修改候选稿',
+      target: '1 个验证成功结果', attempts: '最多 1 次尝试', schedule: '确认后排队', approval: '公开写操作保留人审',
+      priority: '普通', constraints: [], capability: 'supported',
+    },
+  };
+}
+
 function renderPage(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -99,7 +116,7 @@ function renderPage(): void {
 async function openEditDrawer(): Promise<void> {
   renderPage();
   fireEvent.click(await screen.findByText('测试草稿标题'));
-  await screen.findByText('保存草稿');
+  await screen.findByText('创建修改任务');
 }
 
 describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32）', () => {
@@ -109,6 +126,11 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     state.accounts = { accounts: [] };
     vi.mocked(apiPut).mockReset();
     vi.mocked(apiPost).mockReset();
+    vi.mocked(apiPost).mockImplementation((path: string, body?: unknown) => {
+      if (path.includes('/confirm')) return Promise.resolve({ task: { ...candidateTaskReceipt('modify_candidate').task, status: 'queued', version: 5 } });
+      const action = String((body as { action?: string } | undefined)?.action ?? 'modify_candidate');
+      return Promise.resolve(candidateTaskReceipt(action));
+    });
   });
 
   it('发布队列运行中快照按阶段摘要展示，并保留原始字段', async () => {
@@ -183,48 +205,49 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(await screen.findByText('甲稿标题')).toBeTruthy();
   });
 
-  it('保存草稿成功 → 「已保存」提示，抽屉保持打开', async () => {
-    vi.mocked(apiPut).mockResolvedValue({
-      recordId: 1,
-      contentVersion: 1,
-      title: '测试草稿标题',
-      content: '正文内容',
-    });
+  it('修改候选稿先生成结构化确认；确认前不直接写 draft', async () => {
     await openEditDrawer();
-    fireEvent.click(screen.getByText('保存草稿'));
-    expect(await screen.findByText('已保存')).toBeTruthy();
-    // 保存成功不关抽屉（viewing 未清空）：底部按钮仍在。
-    expect(screen.getByText('保存草稿')).toBeTruthy();
-    // 携带打开时快照版本做 CAS（expectedVersion=0）。
-    expect(vi.mocked(apiPut)).toHaveBeenCalledWith('/api/publish/1/draft', {
-      expectedVersion: 0,
-      title: '测试草稿标题',
-      content: '正文内容',
+    fireEvent.change(screen.getByPlaceholderText('标题'), { target: { value: '改后的标题' } });
+    fireEvent.click(screen.getByText('创建修改任务'));
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(vi.mocked(apiPut)).not.toHaveBeenCalled();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
+      action: 'modify_candidate',
+      targetConstraints: expect.objectContaining({ candidateId: '1', candidateVersion: 0, title: '改后的标题' }),
+    }));
+  });
+
+  it('确认候选稿修改后才排队，并携确认卡版本做 CAS', async () => {
+    await openEditDrawer();
+    fireEvent.change(screen.getByPlaceholderText('标题'), { target: { value: '改后的标题' } });
+    fireEvent.click(screen.getByText('创建修改任务'));
+    await screen.findByText('请确认用户委托任务');
+    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/task-modify_candidate/confirm', {
+      version: 4,
     });
   });
 
-  it('版本冲突（version_stale）→ 呈现中文拒因、绝不上屏英文码', async () => {
-    vi.mocked(apiPut).mockRejectedValue(new ApiError(409, 'version_stale'));
+  it('确认版本冲突时诚实拒绝，不显示排队成功', async () => {
+    vi.mocked(apiPost).mockImplementation((path: string, body?: unknown) => {
+      if (path.includes('/confirm')) return Promise.reject(new ApiError(409, 'version_conflict'));
+      return Promise.resolve(candidateTaskReceipt(String((body as { action?: string })?.action)));
+    });
     await openEditDrawer();
-    fireEvent.click(screen.getByText('保存草稿'));
-    expect(await screen.findByText('内容已更新，请刷新后重新审批')).toBeTruthy();
-    expect(screen.queryByText('version_stale')).toBeNull();
-  });
-
-  it('版本冲突（version_conflict）→ 中文拒因', async () => {
-    vi.mocked(apiPut).mockRejectedValue(new ApiError(409, 'version_conflict'));
-    await openEditDrawer();
-    fireEvent.click(screen.getByText('保存草稿'));
-    expect(await screen.findByText('内容已被他处修改，请刷新后重试')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('标题'), { target: { value: '改后的标题' } });
+    fireEvent.click(screen.getByText('创建修改任务'));
+    await screen.findByText('请确认用户委托任务');
+    fireEvent.click(screen.getByRole('button', { name: /确认并排队/ }));
+    expect(await screen.findByText(/内容已被他处修改，请刷新后重试/)).toBeTruthy();
+    expect(screen.queryByText(/任务已确认并排队/)).toBeNull();
     expect(screen.queryByText('version_conflict')).toBeNull();
   });
 
-  it('already_decided → 中文拒因', async () => {
-    vi.mocked(apiPut).mockRejectedValue(new ApiError(409, 'already_decided'));
+  it('无改动时修改任务按钮禁用，避免生成空补丁', async () => {
     await openEditDrawer();
-    fireEvent.click(screen.getByText('保存草稿'));
-    expect(await screen.findByText('该草稿正在审批处理中，请刷新')).toBeTruthy();
-    expect(screen.queryByText('already_decided')).toBeNull();
+    expect((screen.getByRole('button', { name: '创建修改任务' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
   });
 
   it('已发布行点整行 → 笔记详情浮层：正文保留换行、配图渲染、详情页链接', async () => {
@@ -435,41 +458,25 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(visualCategoryPresentation(categories[6]!).lines.join('')).toContain('真实性边界：概念界面');
   });
 
-  it('保存并批准 → 先编辑(CAS) 再按快照版本授权发布', async () => {
-    vi.mocked(apiPut).mockResolvedValue({
-      recordId: 1,
-      contentVersion: 1,
-      title: '测试草稿标题',
-      content: '正文内容',
-    });
-    vi.mocked(apiPost).mockResolvedValue({ written: true });
+  it('无改动时批准操作先生成确认任务，不直接写审批信号', async () => {
     await openEditDrawer();
-    fireEvent.click(screen.getByRole('button', { name: '保存并批准' }));
-    // Popconfirm 确认（zhCN → 「确定」；antd 会在两个中文字间插空格 → 用 /确\s*定/ 容差匹配）。
-    fireEvent.click(await screen.findByRole('button', { name: /确\s*定/ }));
-    expect(await screen.findByText('已授权发布')).toBeTruthy();
-    // 授权携带编辑回读后的内容版本快照（「审=发」凭证），requestId 由记录 id 派生。
-    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/publish/publish-1/approve', {
-      approved: true,
-      contentVersion: 1,
-    });
+    fireEvent.click(screen.getByRole('button', { name: '创建批准任务' }));
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
+      action: 'approve_candidate',
+      targetConstraints: expect.objectContaining({ candidateId: '1', candidateVersion: 0 }),
+    }));
+    expect(vi.mocked(apiPost).mock.calls.some(([path]) => String(path).includes('/api/publish/'))).toBe(false);
   });
 
-  it('驳回成功后列表状态立即变为已否决', async () => {
-    vi.mocked(apiPost).mockImplementation(async () => {
-      state.published = { items: [makePending({ status: 'needs_review' })] };
-      return { written: true };
-    });
+  it('驳回也先生成确认任务，确认前列表仍保持待审', async () => {
     await openEditDrawer();
-    fireEvent.click(screen.getByRole('button', { name: /驳\s*回/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /确\s*定/ }));
-    expect(await screen.findByText('已驳回')).toBeTruthy();
-    expect(await screen.findByRole('row', { name: /测试账号.*测试草稿标题.*已否决/ })).toBeTruthy();
-    expect(screen.queryByRole('row', { name: /测试账号.*测试草稿标题.*待审/ })).toBeNull();
-    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/publish/publish-1/approve', {
-      approved: false,
-      contentVersion: 0,
-    });
+    fireEvent.click(screen.getByRole('button', { name: '创建驳回任务' }));
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
+      action: 'reject_candidate',
+    }));
+    expect(screen.getAllByText('待审').length).toBeGreaterThan(0);
   });
 
   it('参照洗稿行展示来稿件入口；点击来源不打开发布详情', async () => {
@@ -520,51 +527,50 @@ describe('ContentPage 待审配图删除（change pending-draft-image-delete）'
     state.accounts = { accounts: [] };
     vi.mocked(apiPut).mockReset();
     vi.mocked(apiPost).mockReset();
+    vi.mocked(apiPost).mockImplementation((path: string, body?: unknown) => {
+      if (path.includes('/confirm')) return Promise.resolve({ task: { ...candidateTaskReceipt('modify_candidate').task, status: 'queued' } });
+      return Promise.resolve(candidateTaskReceipt(String((body as { action?: string } | undefined)?.action ?? 'modify_candidate')));
+    });
   });
 
-  it('删一张配图 → 携保留子集走 draft CAS，回读真态刷新、提示已删除', async () => {
+  it('删一张配图 → 携保留子集生成修改任务，确认前不直接写 draft', async () => {
     state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg', 'https://c.jpg'], imageUrl: 'https://a.jpg' })] };
-    vi.mocked(apiPut).mockResolvedValue({
-      recordId: 1,
-      contentVersion: 1,
-      title: '测试草稿标题',
-      content: '正文内容',
-      images: ['https://b.jpg', 'https://c.jpg'],
-    });
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
-    expect(await screen.findByText('已删除该配图')).toBeTruthy();
-    expect(vi.mocked(apiPut)).toHaveBeenCalledWith('/api/publish/1/draft', {
-      expectedVersion: 0,
-      images: ['https://b.jpg', 'https://c.jpg'],
-    });
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
+      action: 'modify_candidate', targetConstraints: expect.objectContaining({ images: ['https://b.jpg', 'https://c.jpg'] }),
+    }));
+    expect(vi.mocked(apiPut)).not.toHaveBeenCalled();
   });
 
-  it('删最后一张 → 二次确认提示纯文字帖 + 成功提示 + 发空 images', async () => {
+  it('删最后一张 → 二次确认提示纯文字帖，并在任务约束中锁定空 images', async () => {
     state.published = { items: [makePending({ images: ['https://only.jpg'], imageUrl: 'https://only.jpg' })] };
-    vi.mocked(apiPut).mockResolvedValue({ recordId: 1, contentVersion: 1, title: '测试草稿标题', content: '正文内容', images: [] });
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
     expect(await screen.findByText('删除最后一张配图？该帖将作为纯文字帖发布')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
-    expect(await screen.findByText('已删除；本帖将作为纯文字帖发布')).toBeTruthy();
-    expect(vi.mocked(apiPut)).toHaveBeenCalledWith('/api/publish/1/draft', { expectedVersion: 0, images: [] });
+    expect(await screen.findByText('请确认用户委托任务')).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
+      targetConstraints: expect.objectContaining({ images: [] }),
+    }));
   });
 
-  it('删配图版本冲突 → 中文拒因、绝不上屏英文码', async () => {
+  it('删配图任务草稿创建失败 → 配图保持可见且不染绿', async () => {
     state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg'], imageUrl: 'https://a.jpg' })] };
-    vi.mocked(apiPut).mockRejectedValue(new ApiError(409, 'version_conflict'));
+    vi.mocked(apiPost).mockRejectedValue(new ApiError(409, 'version_conflict'));
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));
     expect(await screen.findByText('内容已被他处修改，请刷新后重试')).toBeTruthy();
     expect(screen.queryByText('version_conflict')).toBeNull();
+    expect(document.querySelector('img[src="https://a.jpg"]')).toBeTruthy();
   });
 
   it('删配图 invalid_field（防注入/过期）→ 中文拒因', async () => {
     state.published = { items: [makePending({ images: ['https://a.jpg', 'https://b.jpg'], imageUrl: 'https://a.jpg' })] };
-    vi.mocked(apiPut).mockRejectedValue(new ApiError(400, 'invalid_field'));
+    vi.mocked(apiPost).mockRejectedValue(new ApiError(400, 'invalid_field'));
     await openEditDrawer();
     fireEvent.click(screen.getByRole('button', { name: '删除配图 1' }));
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }));

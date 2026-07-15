@@ -25,13 +25,15 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost, apiPut } from '../api/client';
+import { apiPost } from '../api/client';
 import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
 import type {
   PanelContentVisualCategoryBrief,
+  DelegatedTaskDraftReceipt,
+  DelegatedTaskView,
   PanelImageReferenceAudit,
   PanelPublish,
   PanelPublishSourceReference,
@@ -842,6 +844,7 @@ export function ContentPage() {
   const [sourceViewing, setSourceViewing] = useState<PanelPublishSourceReference | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [pendingTask, setPendingTask] = useState<DelegatedTaskDraftReceipt | null>(null);
 
   const accounts = useAccounts();
   // 只看待审走服务端 status 过滤（change parallel-rewrite-drafts）：老 pending 不被全局 50 窗口挤出；
@@ -863,129 +866,72 @@ export function ContentPage() {
     void qc.invalidateQueries({ queryKey: ['content', 'queue'] });
   };
 
-  const patchPublishedRow = (id: number, patch: Partial<PanelPublish>) => {
-    qc.setQueriesData<{ items: PanelPublish[] }>({ queryKey: ['content', 'published'] }, (old) =>
-      old
-        ? {
-            ...old,
-            items: old.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-          }
-        : old,
-    );
+  const candidateTask = useMutation({
+    mutationFn: (input: { action: 'modify_candidate' | 'approve_candidate' | 'reject_candidate'; targetConstraints: Record<string, unknown> }) => {
+      if (!viewing) throw new Error('candidate_not_selected');
+      return apiPost<DelegatedTaskDraftReceipt>('/api/delegated-tasks/draft', {
+        accountId: viewing.accountId,
+        action: input.action,
+        targetSuccessCount: 1,
+        maxAttempts: 1,
+        deadlineAt: Date.now() + 24 * 60 * 60 * 1000,
+        executionWindow: { mode: 'immediate' },
+        sourceConstraints: {},
+        targetConstraints: {
+          candidateId: String(viewing.id),
+          candidateVersion: viewing.contentVersion,
+          ...input.targetConstraints,
+        },
+        approvalMode: 'review',
+        priority: 'normal',
+        source: 'console',
+        sourceRef: `candidate:${viewing.id}:v${viewing.contentVersion}:${input.action}`,
+      });
+    },
+    onSuccess: setPendingTask,
+    onError: (err) => message.error(reasonMessage(err, '创建委托失败')),
+  });
+
+  const confirmTask = useMutation({
+    mutationFn: (task: DelegatedTaskView) =>
+      apiPost<{ task: DelegatedTaskView }>(`/api/delegated-tasks/${task.id}/confirm`, { version: task.version }),
+    onSuccess: () => {
+      message.success('任务已确认并排队；成功状态以平台验证结果为准');
+      setPendingTask(null);
+      setViewing(null);
+      refreshContent();
+    },
+    onError: (err) => message.error(reasonMessage(err, '确认失败，请刷新候选稿后重试')),
+  });
+
+  const busy = candidateTask.isPending || confirmTask.isPending;
+  const hasTextEdits = !!viewing && (editTitle !== (viewing.title ?? '') || editContent !== (viewing.content ?? ''));
+
+  const onSaveDraft = () => {
+    if (!viewing || !hasTextEdits) return;
+    candidateTask.mutate({ action: 'modify_candidate', targetConstraints: { title: editTitle, content: editContent } });
   };
 
-  // 编辑草稿：就地改标题/正文（乐观 CAS，携带打开时快照版本）。返回写后真态（含自增版本 + 收口后的标题）。
-  const editDraft = useMutation({
-    mutationFn: (v: { id: number; expectedVersion: number; title: string; content: string }) =>
-      apiPut<{ recordId: number; contentVersion: number; title: string | null; content: string }>(
-        `/api/publish/${v.id}/draft`,
-        { expectedVersion: v.expectedVersion, title: v.title, content: v.content },
-      ),
-  });
-
-  // 审批（通过/驳回）：requestId 由行派生；授权携带内容版本快照。返回 written/alreadyDecided，绝不 published。
-  const approve = useMutation({
-    mutationFn: (v: { id: number; approved: boolean; contentVersion: number }) =>
-      apiPost<{ written?: boolean; alreadyDecided?: boolean }>(`/api/publish/publish-${v.id}/approve`, {
-        approved: v.approved,
-        contentVersion: v.contentVersion,
-      }),
-  });
-
-  // 删配图（change pending-draft-image-delete）：走同一 draft CAS 通道，只发 images 保留子集补丁；回读真态含删后 images。
-  const deleteImage = useMutation({
-    mutationFn: (v: { id: number; expectedVersion: number; images: string[] }) =>
-      apiPut<{ recordId: number; contentVersion: number; title: string | null; content: string; images: string[] }>(
-        `/api/publish/${v.id}/draft`,
-        { expectedVersion: v.expectedVersion, images: v.images },
-      ),
-  });
-
-  const busy = editDraft.isPending || approve.isPending || deleteImage.isPending;
-
-  // 保存草稿：改完留待审（回读真态刷新浮层与列表）。
-  const onSaveDraft = async () => {
+  const onSaveAndApprove = () => {
     if (!viewing) return;
-    try {
-      const res = await editDraft.mutateAsync({ id: viewing.id, expectedVersion: viewing.contentVersion, title: editTitle, content: editContent });
-      setViewing({ ...viewing, title: res.title, content: res.content ?? editContent, contentVersion: res.contentVersion });
-      setEditTitle(res.title ?? '');
-      setEditContent(res.content ?? editContent);
-      patchPublishedRow(viewing.id, { title: res.title, content: res.content ?? editContent, contentVersion: res.contentVersion });
-      refreshContent();
-      if (res.title !== editTitle) message.warning('标题超长已自动截断，请确认');
-      else message.success('已保存');
-    } catch (err) {
-      message.error(reasonMessage(err, '保存失败'));
-    }
-  };
-
-  // 保存并批准：先编辑，再据「标题是否被截断」决定是否自动批准（截断则中止、要求就截断后版本再确认一次）。
-  const onSaveAndApprove = async () => {
-    if (!viewing) return;
-    let edited: { recordId: number; contentVersion: number; title: string | null; content: string };
-    try {
-      edited = await editDraft.mutateAsync({ id: viewing.id, expectedVersion: viewing.contentVersion, title: editTitle, content: editContent });
-    } catch (err) {
-      message.error(reasonMessage(err, '保存失败'));
+    if (hasTextEdits) {
+      candidateTask.mutate({ action: 'modify_candidate', targetConstraints: { title: editTitle, content: editContent } });
       return;
     }
-    // 回读真态先落浮层（无论是否继续批准，都用后端真值）。
-    setViewing({ ...viewing, title: edited.title, content: edited.content ?? editContent, contentVersion: edited.contentVersion });
-    setEditTitle(edited.title ?? '');
-    setEditContent(edited.content ?? editContent);
-    patchPublishedRow(viewing.id, { title: edited.title, content: edited.content ?? editContent, contentVersion: edited.contentVersion });
-    refreshContent();
-    if (edited.title !== editTitle) {
-      // 标题被 clampTitle 收口 → 中止自动批准，要求人就截断后的字节再点一次批准（绝不批前发后）。
-      message.warning('标题超长已自动截断，请确认截断后的标题后再点「批准」');
-      return;
-    }
-    try {
-      const res = await approve.mutateAsync({ id: edited.recordId, approved: true, contentVersion: edited.contentVersion });
-      if (res.written) {
-        message.success('已授权发布');
-        setViewing(null);
-      } else {
-        message.info(`已决定：${res.alreadyDecided ? '通过' : '驳回'}`);
-      }
-      refreshContent();
-    } catch (err) {
-      message.error(reasonMessage(err, '审批失败'));
-    }
+    candidateTask.mutate({ action: 'approve_candidate', targetConstraints: {} });
   };
 
   // 删配图：从当前列表移除该 URL（保留子集），走乐观 CAS；成功用后端回读真态刷新（非乐观），删空提示纯文字帖。
   const onDeleteImage = async (url: string) => {
     if (!viewing) return;
     const kept = (viewing.images ?? []).filter((u) => u !== url);
-    try {
-      const res = await deleteImage.mutateAsync({ id: viewing.id, expectedVersion: viewing.contentVersion, images: kept });
-      setViewing({ ...viewing, images: res.images, contentVersion: res.contentVersion });
-      patchPublishedRow(viewing.id, { images: res.images, contentVersion: res.contentVersion });
-      refreshContent();
-      message.success(res.images.length === 0 ? '已删除；本帖将作为纯文字帖发布' : '已删除该配图');
-    } catch (err) {
-      message.error(reasonMessage(err, '删除失败'));
-    }
+    candidateTask.mutate({ action: 'modify_candidate', targetConstraints: { images: kept } });
   };
 
   // 驳回：终态否决（携带版本快照）。
   const onReject = async () => {
     if (!viewing) return;
-    try {
-      const res = await approve.mutateAsync({ id: viewing.id, approved: false, contentVersion: viewing.contentVersion });
-      if (res.written || res.alreadyDecided === false) {
-        message.success('已驳回');
-        patchPublishedRow(viewing.id, { status: 'needs_review' });
-      } else {
-        message.info(`已决定：${res.alreadyDecided ? '通过' : '驳回'}`);
-      }
-      refreshContent();
-      setViewing(null);
-    } catch (err) {
-      message.error(reasonMessage(err, '驳回失败'));
-    }
+    candidateTask.mutate({ action: 'reject_candidate', targetConstraints: {} });
   };
 
   const accountOptions = [
@@ -1229,19 +1175,15 @@ export function ContentPage() {
         footer={
           isEditable ? (
             <Space>
-              <Button onClick={onSaveDraft} loading={busy}>
-                保存草稿
+              <Button onClick={onSaveDraft} loading={busy} disabled={!hasTextEdits}>
+                创建修改任务
               </Button>
-              <Popconfirm title="保存并授权发布此条？" onConfirm={onSaveAndApprove}>
-                <Button type="primary" loading={busy}>
-                  保存并批准
-                </Button>
-              </Popconfirm>
-              <Popconfirm title="确认驳回此条发布？" onConfirm={onReject}>
-                <Button danger loading={busy}>
-                  驳回
-                </Button>
-              </Popconfirm>
+              <Button type="primary" loading={busy} onClick={onSaveAndApprove}>
+                {hasTextEdits ? '先提交修改任务' : '创建批准任务'}
+              </Button>
+              <Button danger loading={busy} onClick={onReject}>
+                创建驳回任务
+              </Button>
             </Space>
           ) : null
         }
@@ -1290,7 +1232,7 @@ export function ContentPage() {
                   <Typography.Text type="secondary">标题（过长将由服务端自动截断至 18 字素）</Typography.Text>
                   <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="标题" />
                 </div>
-                <ImagesStrip row={viewing} editable onDelete={onDeleteImage} deleting={deleteImage.isPending} />
+                <ImagesStrip row={viewing} editable onDelete={onDeleteImage} deleting={candidateTask.isPending} />
                 <div>
                   <Typography.Text type="secondary">正文</Typography.Text>
                   <Input.TextArea
@@ -1301,7 +1243,7 @@ export function ContentPage() {
                   />
                 </div>
                 <Typography.Text type="secondary">
-                  配图可删（不可增/换，删空将作为纯文字帖）；可见范围 / 话题本期在此不可改（保留原值）。「保存并批准」= 存改动后立即授权，标题被截断则需再确认一次。
+                  配图可删（不可增/换，删空将作为纯文字帖）；可见范围 / 话题本期在此不可改。修改、批准、驳回都会先生成结构化确认卡；有未提交改动时必须先完成修改任务，再另行批准。
                 </Typography.Text>
               </Space>
             ) : (
@@ -1354,6 +1296,38 @@ export function ContentPage() {
             )}
           </div>
         )}
+      </Modal>
+      <Modal
+        open={!!pendingTask}
+        title={pendingTask?.confirmation.title ?? '确认用户委托任务'}
+        okText="确认并排队"
+        cancelText="返回修改"
+        confirmLoading={confirmTask.isPending}
+        onOk={() => pendingTask && confirmTask.mutate(pendingTask.task)}
+        onCancel={() => setPendingTask(null)}
+        destroyOnHidden
+      >
+        {pendingTask ? (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="账号">{pendingTask.confirmation.accountName}</Descriptions.Item>
+              <Descriptions.Item label="平台">
+                {pendingTask.confirmation.platformLabel}
+                {pendingTask.confirmation.capability === 'beta' ? <Tag color="orange" style={{ marginLeft: 8 }}>Beta</Tag> : null}
+              </Descriptions.Item>
+              <Descriptions.Item label="动作" span={2}>{pendingTask.confirmation.actionLabel}</Descriptions.Item>
+              <Descriptions.Item label="成功目标">{pendingTask.confirmation.target}</Descriptions.Item>
+              <Descriptions.Item label="尝试上限">{pendingTask.confirmation.attempts}</Descriptions.Item>
+              <Descriptions.Item label="执行窗口" span={2}>{pendingTask.confirmation.schedule}</Descriptions.Item>
+              <Descriptions.Item label="人审" span={2}>{pendingTask.confirmation.approval}</Descriptions.Item>
+              <Descriptions.Item label="任务编号" span={2}>{pendingTask.task.id}</Descriptions.Item>
+            </Descriptions>
+            <Alert type="info" showIcon message="确认后进入统一任务队列；只有平台或持久化结果验证成功才会计入成功数。" />
+            {pendingTask.confirmation.capabilityReason ? (
+              <Alert type="warning" showIcon message={`Beta 边界：${pendingTask.confirmation.capabilityReason}`} />
+            ) : null}
+          </Space>
+        ) : null}
       </Modal>
       <SourceReferenceModal source={sourceViewing} onClose={() => setSourceViewing(null)} />
     </div>
