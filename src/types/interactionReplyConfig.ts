@@ -233,7 +233,16 @@ export interface PublishResult {
 
 export type PublishResponse = InternalApiEnvelope<PublishResult>;
 
-export type AuditAction = 'draft_saved' | 'template_archived' | 'config_published' | 'previewed';
+export interface InitializeRequest {
+  expectedVersion: 0;
+}
+
+export type InitializeResponse = InternalApiEnvelope<{
+  head: ConfigHead;
+  initializedVersion: number;
+}>;
+
+export type AuditAction = 'draft_saved' | 'template_archived' | 'config_initialized' | 'config_published' | 'previewed';
 export type AuditEntityType = 'policy' | 'template' | 'rule' | 'profile' | 'config' | 'preview';
 
 export interface AuditItem {

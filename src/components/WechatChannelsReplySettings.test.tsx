@@ -18,6 +18,9 @@ interface ServerOptions {
   stateConflictOnPolicy?: boolean;
   previewAction?: PreviewAction;
   slowAccountId?: string;
+  missingConfig?: boolean;
+  initializeDenied?: boolean;
+  initializeConflict?: boolean;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -41,6 +44,7 @@ function interactionError(code: string, status: number, details?: unknown): Resp
 
 function createServer(options: ServerOptions = {}) {
   const stores = new Map<string, ReturnType<typeof frozenInteractionFixtures>>();
+  const initializedAccounts = new Set<string>();
   const calls: Array<{ path: string; method: string; body: unknown; signal?: AbortSignal | null }> = [];
   const getStore = (accountId: string) => {
     let store = stores.get(accountId);
@@ -85,6 +89,10 @@ function createServer(options: ServerOptions = {}) {
     if (options.viewDenied && method === 'GET' && endpoint !== 'reply-config/audit') {
       return interactionError('INTERACTION_PERMISSION_DENIED', 403);
     }
+    if (options.missingConfig && !initializedAccounts.has(accountId) && method === 'GET'
+      && endpoint !== 'interaction-runtime-controls' && endpoint !== 'reply-config/audit') {
+      return interactionError('INTERACTION_CONFIG_MISSING', 404);
+    }
     if (method === 'GET') {
       if (endpoint === 'interaction-runtime-controls') return json(store.runtime);
       if (endpoint === 'interaction-reply-policy') return json(store.policy);
@@ -111,6 +119,28 @@ function createServer(options: ServerOptions = {}) {
         preview.data.action = options.previewAction;
       }
       return json(preview);
+    }
+
+    if (endpoint === 'reply-config/initialize' && method === 'POST') {
+      if (options.initializeDenied) return interactionError('INTERACTION_PERMISSION_DENIED', 403);
+      initializedAccounts.add(accountId);
+      if (options.initializeConflict) {
+        return interactionError('INTERACTION_VERSION_CONFLICT', 409, { currentVersion: 1 });
+      }
+      store.audit.data.items.unshift({
+        eventId: 'audit_initialize_001',
+        actor: 'admin_initialize',
+        action: 'config_initialized',
+        configVersion: 1,
+        entityType: 'config',
+        entityId: null,
+        summary: '创建安全默认草稿。',
+        createdAt: 1784044850000,
+      });
+      return json({
+        data: { head: store.policy.data.head, initializedVersion: 1 },
+        meta: { requestId: 'initialize-001', asOf: 1784044850000 },
+      });
     }
 
     if (endpoint === 'reply-config/publish' && method === 'POST') {
@@ -321,6 +351,44 @@ describe('WechatChannelsReplySettings', () => {
     renderDrawer();
     expect(await screen.findByText('无配置查看权限')).toBeTruthy();
     expect(screen.queryByText('回复策略草稿')).toBeNull();
+  });
+
+  it('shows missing config explicitly and initializes only a safe unpublished draft', async () => {
+    const server = createServer({ missingConfig: true });
+    renderDrawer();
+    expect(await screen.findByText('尚未创建互动回复配置')).toBeTruthy();
+    expect(screen.queryByText('回复策略草稿')).toBeNull();
+    expect(screen.getByText(/不会发布配置，不会创建模板或规则，也不会开启回复、自动发送或即时账号写入/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '创建安全草稿' }));
+    await waitForConfig();
+    const initializeCall = server.calls.find((call) => call.path.endsWith('/reply-config/initialize') && call.method === 'POST');
+    expect(initializeCall?.body).toEqual({ expectedVersion: 0 });
+    expect(screen.getByText('draft v1')).toBeTruthy();
+    expect(screen.getByText('published v未发布')).toBeTruthy();
+    expect(server.calls.some((call) => call.path.endsWith('/reply-config/publish'))).toBe(false);
+    expect(server.calls.some((call) => call.path.includes('/send'))).toBe(false);
+  });
+
+  it('keeps missing config unchanged when initialize permission is denied', async () => {
+    const server = createServer({ missingConfig: true, initializeDenied: true });
+    renderDrawer();
+    await screen.findByText('尚未创建互动回复配置');
+    fireEvent.click(screen.getByRole('button', { name: '创建安全草稿' }));
+    expect(await screen.findByText('缺少 interaction.config.edit 权限，未创建任何配置。')).toBeTruthy();
+    expect(screen.queryByText('回复策略草稿')).toBeNull();
+    expect(server.calls.filter((call) => call.path.endsWith('/reply-config/initialize'))).toHaveLength(1);
+  });
+
+  it('recovers by reading truth when another admin initializes concurrently', async () => {
+    const server = createServer({ missingConfig: true, initializeConflict: true });
+    renderDrawer();
+    await screen.findByText('尚未创建互动回复配置');
+    fireEvent.click(screen.getByRole('button', { name: '创建安全草稿' }));
+    await waitForConfig();
+    expect(screen.getByText('draft v1')).toBeTruthy();
+    expect(server.calls.filter((call) => call.path.endsWith('/reply-config/initialize'))).toHaveLength(1);
+    expect(server.calls.filter((call) => call.path.endsWith('/interaction-reply-policy') && call.method === 'GET').length).toBeGreaterThan(1);
   });
 
   it('keeps view access but fail-closes draft edits without interaction.config.edit', async () => {

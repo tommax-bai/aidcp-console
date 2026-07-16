@@ -47,6 +47,7 @@ import { ApiError } from '../api/client';
 import {
   archiveReplyTemplate,
   deleteReplyRule,
+  initializeReplyConfig,
   loadReplyAudit,
   loadReplyConfig,
   previewReply,
@@ -179,6 +180,7 @@ const TONE_LABEL: Record<ReplyTone, string> = {
 const AUDIT_ACTION_LABEL: Record<AuditItem['action'], string> = {
   draft_saved: '保存草稿',
   template_archived: '归档模板',
+  config_initialized: '创建安全草稿',
   config_published: '发布配置',
   previewed: '运行预览',
 };
@@ -204,6 +206,10 @@ function isVersionConflict(error: unknown): boolean {
   if (error.message === 'INTERACTION_VERSION_CONFLICT') return true;
   // 兼容旧端点的无细分 409；新版 INTERACTION_STATE_CONFLICT 仍按真实错误文案展示。
   return error.status === 409 && !error.message.startsWith('INTERACTION_');
+}
+
+function isConfigMissing(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.message === 'INTERACTION_CONFIG_MISSING';
 }
 
 function errorDetails(error: unknown): InteractionErrorDetails {
@@ -279,7 +285,7 @@ export function WechatChannelsReplySettings({
   const [snapshot, setSnapshot] = useState<ReplyConfigSnapshot | null>(null);
   const [auditItems, setAuditItems] = useState<AuditItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<'permission' | 'error' | null>(null);
+  const [loadError, setLoadError] = useState<'permission' | 'missing' | 'error' | null>(null);
   const [auditState, setAuditState] = useState<'loading' | 'ready' | 'permission' | 'error'>('loading');
   const [dirty, setDirty] = useState<DirtyState>(CLEAN_DIRTY);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -354,7 +360,7 @@ export function WechatChannelsReplySettings({
       if (activeAccountId.current !== accountId) return;
       controller.abort();
       setLoading(false);
-      setLoadError(isPermissionDenied(error) ? 'permission' : 'error');
+      setLoadError(isPermissionDenied(error) ? 'permission' : isConfigMissing(error) ? 'missing' : 'error');
       return;
     }
 
@@ -428,6 +434,32 @@ export function WechatChannelsReplySettings({
     }
     message.error(errorText(error, fallback));
   }, [message]);
+
+  const initializeMissingConfig = useCallback(async () => {
+    if (!account || pendingAction !== null) return;
+    const accountId = account.accountId;
+    setPendingAction('initialize');
+    setEditDenied(false);
+    try {
+      const response = await initializeReplyConfig(accountId, { expectedVersion: 0 });
+      if (activeAccountId.current !== accountId) return;
+      message.success(`已创建安全草稿 v${response.data.initializedVersion}，尚未发布`);
+      await loadAccount(accountId);
+    } catch (error) {
+      if (activeAccountId.current !== accountId || isAbort(error)) return;
+      if (isPermissionDenied(error)) {
+        setEditDenied(true);
+        message.error('缺少 interaction.config.edit 权限，未创建配置');
+      } else if (isVersionConflict(error)) {
+        message.info('配置已由其他管理员创建，正在读取最新状态');
+        await loadAccount(accountId);
+      } else {
+        message.error(errorText(error, '创建安全草稿失败'));
+      }
+    } finally {
+      if (activeAccountId.current === accountId) setPendingAction(null);
+    }
+  }, [account, loadAccount, message, pendingAction]);
 
   const runWrite = useCallback(async (
     action: string,
@@ -1299,6 +1331,26 @@ export function WechatChannelsReplySettings({
         {loading ? <Skeleton active paragraph={{ rows: 12 }} /> : null}
         {!loading && loadError === 'permission' ? (
           <Result status="403" title="无配置查看权限" subTitle="需要 interaction.config.view；没有读取或展示该账号配置。" />
+        ) : null}
+        {!loading && loadError === 'missing' ? (
+          <Result
+            status="info"
+            title="尚未创建互动回复配置"
+            subTitle="可以显式创建安全草稿 v1；不会发布配置，不会创建模板或规则，也不会开启回复、自动发送或即时账号写入。"
+            extra={(
+              <Space wrap>
+                <Button
+                  type="primary"
+                  loading={pendingAction === 'initialize'}
+                  disabled={editDenied || pendingAction !== null && pendingAction !== 'initialize'}
+                  onClick={() => void initializeMissingConfig()}
+                >创建安全草稿</Button>
+                <Button disabled={pendingAction !== null} onClick={() => account && void loadAccount(account.accountId)}>重新检查</Button>
+              </Space>
+            )}
+          >
+            {editDenied ? <Alert type="warning" showIcon message="缺少 interaction.config.edit 权限，未创建任何配置。" /> : null}
+          </Result>
         ) : null}
         {!loading && loadError === 'error' ? (
           <Result status="error" title="互动回复设置加载失败" subTitle="未使用默认值冒充服务端配置。" extra={<Button type="primary" onClick={() => account && void loadAccount(account.accountId)}>重试</Button>} />

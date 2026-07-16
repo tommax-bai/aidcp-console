@@ -2,6 +2,8 @@ import { apiDelete, apiGet, apiPost, apiPut } from './client';
 import type {
   AuditResponse,
   InternalApiEnvelope,
+  InitializeRequest,
+  InitializeResponse,
   PolicyResponse,
   PolicyUpdate,
   PreviewRequest,
@@ -139,4 +141,10 @@ export function previewReply(accountId: string, body: PreviewRequest, signal?: A
 
 export function publishReplyConfig(accountId: string, body: PublishRequest): Promise<PublishResponse> {
   return apiPost(`${basePath(accountId)}/reply-config/publish`, body);
+}
+
+export async function initializeReplyConfig(accountId: string, body: InitializeRequest): Promise<InitializeResponse> {
+  const response = await apiPost<InitializeResponse>(`${basePath(accountId)}/reply-config/initialize`, body);
+  assertAccount(accountId, response.data.head.accountId, response.data.head.platform);
+  return response;
 }
