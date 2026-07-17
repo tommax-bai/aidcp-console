@@ -69,6 +69,7 @@ export function sourceTag(source: string) {
 const PLATFORM_META: Record<string, { text: string; color: string }> = {
   xiaohongshu: { text: '小红书', color: 'magenta' },
   facebook: { text: 'Facebook', color: 'blue' },
+  wechat_channels: { text: '视频号', color: 'green' },
 };
 /** 平台标签（未知值灰底裸值；platform 可为 null → 不显示）。 */
 export function platformTag(platform: string | null) {
@@ -78,9 +79,10 @@ export function platformTag(platform: string | null) {
 }
 
 /** 平台下拉候选（与 cloud 支持平台对齐；仅作录入辅助，未知历史值仍能透传/展示）。 */
-const PLATFORM_OPTIONS = [
+export const CLIENT_ENV_PLATFORM_OPTIONS = [
   { label: '小红书', value: 'xiaohongshu' },
   { label: 'Facebook', value: 'facebook' },
+  { label: '视频号', value: 'wechat_channels' },
 ];
 
 function fmtTime(ms: number | null): string {
@@ -727,7 +729,7 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
                     style={{ width: 130 }}
                     value={newPlatform}
                     onChange={(v) => setNewPlatform(v)}
-                    options={PLATFORM_OPTIONS}
+                    options={CLIENT_ENV_PLATFORM_OPTIONS}
                   />
                   <Button onClick={addManual}>登记并加入</Button>
                 </Space>

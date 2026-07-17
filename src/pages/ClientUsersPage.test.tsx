@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { statusTag, sourceTag, platformTag, copyToClipboard, assigneeCell } from './ClientUsersPage';
+import {
+  CLIENT_ENV_PLATFORM_OPTIONS,
+  assigneeCell,
+  copyToClipboard,
+  platformTag,
+  sourceTag,
+  statusTag,
+} from './ClientUsersPage';
 import type { ClientEnvironmentView } from '../types/api';
 
 /**
@@ -15,6 +22,8 @@ describe('ClientUsersPage display helpers — enum drift fallback', () => {
     expect(render(sourceTag('client')).container.textContent).toContain('客户端自建');
     expect(render(platformTag('xiaohongshu')).container.textContent).toContain('小红书');
     expect(render(platformTag('facebook')).container.textContent).toContain('Facebook');
+    expect(render(platformTag('wechat_channels')).container.textContent).toContain('视频号');
+    expect(CLIENT_ENV_PLATFORM_OPTIONS).toContainEqual({ label: '视频号', value: 'wechat_channels' });
   });
 
   it('falls back to raw value (no crash) for unknown enum values', () => {

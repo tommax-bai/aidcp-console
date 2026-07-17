@@ -76,8 +76,13 @@ export async function loadReplyConfig(accountId: string, signal?: AbortSignal): 
   };
 }
 
-export async function loadReplyAudit(accountId: string, signal?: AbortSignal): Promise<AuditResponse> {
-  const response = await apiGet<AuditResponse>(`${basePath(accountId)}/reply-config/audit`, { signal });
+export async function loadReplyAudit(
+  accountId: string,
+  signal?: AbortSignal,
+  cursor?: string,
+): Promise<AuditResponse> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const response = await apiGet<AuditResponse>(`${basePath(accountId)}/reply-config/audit${query}`, { signal });
   assertAccount(accountId, response.data.accountId);
   return response;
 }

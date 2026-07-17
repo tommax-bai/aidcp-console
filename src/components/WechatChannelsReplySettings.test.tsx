@@ -21,6 +21,10 @@ interface ServerOptions {
   missingConfig?: boolean;
   initializeDenied?: boolean;
   initializeConflict?: boolean;
+  auditPagination?: boolean;
+  auditPageFailures?: number;
+  slowAuditPageAccountId?: string;
+  unknownAuditEnums?: boolean;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -46,6 +50,7 @@ function createServer(options: ServerOptions = {}) {
   const stores = new Map<string, ReturnType<typeof frozenInteractionFixtures>>();
   const initializedAccounts = new Set<string>();
   const calls: Array<{ path: string; method: string; body: unknown; signal?: AbortSignal | null }> = [];
+  let remainingAuditPageFailures = options.auditPageFailures ?? 0;
   const getStore = (accountId: string) => {
     let store = stores.get(accountId);
     if (!store) {
@@ -66,15 +71,16 @@ function createServer(options: ServerOptions = {}) {
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const path = typeof input === 'string' ? input : input.toString();
+    const requestUrl = new URL(path, 'http://console.test');
     const method = init.method ?? 'GET';
     const body = typeof init.body === 'string' ? JSON.parse(init.body) as unknown : undefined;
     calls.push({ path, method, body, signal: init.signal });
 
-    if (path === '/api/accounts') {
+    if (requestUrl.pathname === '/api/accounts') {
       return json({ accounts: [panelAccount(), panelAccount('fb_demo', 'facebook'), panelAccount('xhs_demo', 'xiaohongshu')] });
     }
 
-    const match = path.match(/^\/api\/accounts\/([^/]+)\/(.+)$/);
+    const match = requestUrl.pathname.match(/^\/api\/accounts\/([^/]+)\/(.+)$/);
     if (!match) return interactionError('INTERACTION_NOT_FOUND', 404);
     const accountId = decodeURIComponent(match[1]);
     const endpoint = match[2];
@@ -100,7 +106,50 @@ function createServer(options: ServerOptions = {}) {
       if (endpoint === 'reply-rules') return json(store.rules);
       if (endpoint === 'reply-profile') return json(store.profiles);
       if (endpoint === 'reply-config/audit') {
-        return options.auditDenied ? interactionError('INTERACTION_PERMISSION_DENIED', 403) : json(store.audit);
+        if (options.auditDenied) return interactionError('INTERACTION_PERMISSION_DENIED', 403);
+        const cursor = requestUrl.searchParams.get('cursor');
+        if (cursor) {
+          if (accountId === options.slowAuditPageAccountId) {
+            return await new Promise<Response>((_resolve, reject) => {
+              init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+            });
+          }
+          if (remainingAuditPageFailures > 0) {
+            remainingAuditPageFailures -= 1;
+            return interactionError('INTERACTION_UPSTREAM_UNAVAILABLE', 503);
+          }
+          const page = structuredClone(store.audit);
+          page.data.items = [
+            structuredClone(store.audit.data.items[0]),
+            {
+              eventId: `audit_page_002_${accountId}`,
+              actor: `admin_${accountId}`,
+              action: 'config_published',
+              configVersion: 1,
+              entityType: 'config',
+              entityId: accountId,
+              summary: `第二页审计 · ${accountId}`,
+              createdAt: 1784044700000,
+            },
+          ];
+          page.data.nextCursor = null;
+          return json(page);
+        }
+        const firstPage = structuredClone(store.audit);
+        if (options.auditPagination) firstPage.data.nextCursor = 'opaque/+==';
+        if (options.unknownAuditEnums) {
+          firstPage.data.items.unshift({
+            eventId: `audit_future_${accountId}`,
+            actor: 'admin_future',
+            action: 'policy_reconciled',
+            configVersion: 2,
+            entityType: 'runtime_control',
+            entityId: accountId,
+            summary: '未来审计枚举仍须可读。',
+            createdAt: 1784044800000,
+          });
+        }
+        return json(firstPage);
       }
     }
 
@@ -408,6 +457,69 @@ describe('WechatChannelsReplySettings', () => {
     fireEvent.click(screen.getByRole('tab', { name: '审计' }));
     expect(await screen.findByText('无审计查看权限')).toBeTruthy();
     expect(screen.getByText(/需要 interaction.audit.view/)).toBeTruthy();
+  });
+
+  it('appends an opaque-cursor audit page, deduplicates event ids, and shows the honest end state', async () => {
+    const server = createServer({ auditPagination: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '审计' }));
+    fireEvent.click(await screen.findByRole('button', { name: '加载更多审计记录' }));
+    expect(await screen.findByText('第二页审计 · acct_wc_demo')).toBeTruthy();
+    expect(screen.getByText('已加载全部审计记录')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '加载更多审计记录' })).toBeNull();
+    expect(screen.getAllByText('保存草稿')).toHaveLength(1);
+    expect(server.calls.some((call) => call.path.includes('cursor=opaque%2F%2B%3D%3D'))).toBe(true);
+  });
+
+  it('keeps loaded audit rows on a page error and retries the same cursor', async () => {
+    const server = createServer({ auditPagination: true, auditPageFailures: 1 });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '审计' }));
+    expect(await screen.findByText('保存账号级回复策略草稿。')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '加载更多审计记录' }));
+    expect(await screen.findByText('后续审计加载失败')).toBeTruthy();
+    expect(screen.getByText('保存账号级回复策略草稿。')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重试加载更多' }));
+    expect(await screen.findByText('第二页审计 · acct_wc_demo')).toBeTruthy();
+    expect(server.calls.filter((call) => call.path.includes('cursor=opaque%2F%2B%3D%3D'))).toHaveLength(2);
+  });
+
+  it('renders unknown audit action and entity wire values without hiding the event', async () => {
+    createServer({ unknownAuditEnums: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '审计' }));
+    expect(await screen.findByText('policy_reconciled')).toBeTruthy();
+    expect(screen.getByText(/runtime_control/)).toBeTruthy();
+    expect(screen.getByText('未来审计枚举仍须可读。')).toBeTruthy();
+  });
+
+  it('aborts an in-flight audit page when switching accounts and never appends it to the new account', async () => {
+    const server = createServer({ auditPagination: true, slowAuditPageAccountId: 'acct_slow_audit' });
+    const slow = { ...panelAccount('acct_slow_audit'), nickname: '慢审计账号' };
+    const fast = { ...panelAccount('acct_fast_audit'), nickname: '新审计账号' };
+    const view = render(
+      <AntdApp>
+        <WechatChannelsReplySettings account={slow} open onClose={() => undefined} />
+      </AntdApp>,
+    );
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '审计' }));
+    fireEvent.click(await screen.findByRole('button', { name: '加载更多审计记录' }));
+    await waitFor(() => expect(server.calls.some((call) => call.path.includes('/acct_slow_audit/') && call.path.includes('cursor='))).toBe(true));
+
+    view.rerender(
+      <AntdApp>
+        <WechatChannelsReplySettings account={fast} open onClose={() => undefined} />
+      </AntdApp>,
+    );
+    await screen.findByText('互动回复设置 · 新审计账号');
+    await waitForConfig();
+    const slowPage = server.calls.find((call) => call.path.includes('/acct_slow_audit/') && call.path.includes('cursor='));
+    expect(slowPage?.signal?.aborted).toBe(true);
+    expect(screen.queryByText('第二页审计 · acct_slow_audit')).toBeNull();
   });
 
   it('keeps platform hard gates disabled and exposes accessible preview labels', async () => {

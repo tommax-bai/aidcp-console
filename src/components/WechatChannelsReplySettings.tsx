@@ -62,6 +62,7 @@ import { errorText } from '../api/errorText';
 import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
 import type {
+  AuditAction,
   AuditItem,
   InteractionChannel,
   InteractionErrorDetails,
@@ -177,13 +178,18 @@ const TONE_LABEL: Record<ReplyTone, string> = {
   friendly: '亲切',
   concise: '简洁',
 };
-const AUDIT_ACTION_LABEL: Record<AuditItem['action'], string> = {
+const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   draft_saved: '保存草稿',
   template_archived: '归档模板',
   config_initialized: '创建安全草稿',
   config_published: '发布配置',
   previewed: '运行预览',
 };
+
+/** 已知审计动作显示中文；未知未来 wire 值原样展示，避免空标签或枚举漂移白屏。 */
+export function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABEL[action as AuditAction] ?? action;
+}
 const HARD_GATES = [
   '没有有效 published 配置，或模板变量缺失安全兜底',
   '登录非 active、账号身份不一致或写 capability 不可用',
@@ -280,10 +286,13 @@ export function WechatChannelsReplySettings({
 }) {
   const { message } = App.useApp();
   const requestController = useRef<AbortController | null>(null);
+  const auditPageController = useRef<AbortController | null>(null);
   const activeAccountId = useRef<string | null>(null);
   const dirtyRef = useRef<DirtyState>(CLEAN_DIRTY);
   const [snapshot, setSnapshot] = useState<ReplyConfigSnapshot | null>(null);
   const [auditItems, setAuditItems] = useState<AuditItem[]>([]);
+  const [auditNextCursor, setAuditNextCursor] = useState<string | null>(null);
+  const [auditPageState, setAuditPageState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<'permission' | 'missing' | 'error' | null>(null);
   const [auditState, setAuditState] = useState<'loading' | 'ready' | 'permission' | 'error'>('loading');
@@ -311,8 +320,12 @@ export function WechatChannelsReplySettings({
   activeAccountId.current = open ? (account?.accountId ?? null) : null;
 
   const resetScopedState = useCallback(() => {
+    auditPageController.current?.abort();
+    auditPageController.current = null;
     setSnapshot(null);
     setAuditItems([]);
+    setAuditNextCursor(null);
+    setAuditPageState('idle');
     setLoadError(null);
     setAuditState('loading');
     setDirty(CLEAN_DIRTY);
@@ -337,12 +350,16 @@ export function WechatChannelsReplySettings({
 
   const loadAccount = useCallback(async (accountId: string) => {
     requestController.current?.abort();
+    auditPageController.current?.abort();
+    auditPageController.current = null;
     const controller = new AbortController();
     requestController.current = controller;
     setLoading(true);
     setLoadError(null);
     setSnapshot(null);
     setAuditItems([]);
+    setAuditNextCursor(null);
+    setAuditPageState('idle');
     setAuditState('loading');
 
     const auditPromise = loadReplyAudit(accountId, controller.signal)
@@ -371,6 +388,7 @@ export function WechatChannelsReplySettings({
       if (!audit) throw new Error('reply_audit_missing');
       if (activeAccountId.current !== accountId || controller.signal.aborted) return;
       setAuditItems(audit.data.items);
+      setAuditNextCursor(audit.data.nextCursor);
       setAuditState('ready');
     } catch (error) {
       if (isAbort(error) || activeAccountId.current !== accountId) return;
@@ -380,14 +398,21 @@ export function WechatChannelsReplySettings({
 
   useEffect(() => {
     requestController.current?.abort();
+    auditPageController.current?.abort();
     resetScopedState();
     if (open && account?.accountId) void loadAccount(account.accountId);
-    return () => requestController.current?.abort();
+    return () => {
+      requestController.current?.abort();
+      auditPageController.current?.abort();
+    };
   }, [account?.accountId, loadAccount, open, resetScopedState]);
 
   const refreshAfterWrite = useCallback(async (accountId: string, saved: DirtySection | 'templates' | 'rules') => {
     const controller = new AbortController();
     requestController.current?.abort();
+    auditPageController.current?.abort();
+    auditPageController.current = null;
+    setAuditPageState('idle');
     requestController.current = controller;
     const next = await loadReplyConfig(accountId, controller.signal);
     if (activeAccountId.current !== accountId || controller.signal.aborted) return;
@@ -410,6 +435,7 @@ export function WechatChannelsReplySettings({
       const audit = await loadReplyAudit(accountId, controller.signal);
       if (activeAccountId.current === accountId && !controller.signal.aborted) {
         setAuditItems(audit.data.items);
+        setAuditNextCursor(audit.data.nextCursor);
         setAuditState('ready');
       }
     } catch (error) {
@@ -418,6 +444,32 @@ export function WechatChannelsReplySettings({
       }
     }
   }, []);
+
+  const loadMoreAudit = useCallback(async () => {
+    const accountId = account?.accountId;
+    const cursor = auditNextCursor;
+    if (!accountId || !cursor || auditPageState === 'loading') return;
+
+    auditPageController.current?.abort();
+    const controller = new AbortController();
+    auditPageController.current = controller;
+    setAuditPageState('loading');
+    try {
+      const audit = await loadReplyAudit(accountId, controller.signal, cursor);
+      if (activeAccountId.current !== accountId || controller.signal.aborted) return;
+      setAuditItems((current) => {
+        const seen = new Set(current.map((item) => item.eventId));
+        return [...current, ...audit.data.items.filter((item) => !seen.has(item.eventId))];
+      });
+      setAuditNextCursor(audit.data.nextCursor);
+      setAuditPageState('idle');
+    } catch (error) {
+      if (isAbort(error) || activeAccountId.current !== accountId) return;
+      setAuditPageState('error');
+    } finally {
+      if (auditPageController.current === controller) auditPageController.current = null;
+    }
+  }, [account?.accountId, auditNextCursor, auditPageState]);
 
   const handleMutationError = useCallback((error: unknown, permission: PermissionKind, fallback: string) => {
     if (isPermissionDenied(error)) {
@@ -1269,20 +1321,39 @@ export function WechatChannelsReplySettings({
     if (auditState === 'permission') return <Result status="403" title="无审计查看权限" subTitle="需要 interaction.audit.view；配置正文未泄露。" />;
     if (auditState === 'error') return <Alert type="error" showIcon message="审计信息加载失败" action={<Button size="small" onClick={() => account && void loadAccount(account.accountId)}>重试</Button>} />;
     return (
-      <List
-        bordered
-        dataSource={auditItems}
-        locale={{ emptyText: <Empty description="暂无审计记录" /> }}
-        renderItem={(item) => (
-          <List.Item>
-            <List.Item.Meta
-              avatar={<AuditOutlined />}
-              title={<Space><Tag>v{item.configVersion}</Tag><Typography.Text strong>{AUDIT_ACTION_LABEL[item.action]}</Typography.Text><Typography.Text>{item.actor}</Typography.Text></Space>}
-              description={<Space direction="vertical" size={0}><span>{item.summary}</span><Typography.Text type="secondary">{formatTime(item.createdAt)} · {item.entityType}{item.entityId ? ` · ${item.entityId}` : ''}</Typography.Text></Space>}
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <List
+          bordered
+          dataSource={auditItems}
+          locale={{ emptyText: <Empty description="暂无审计记录" /> }}
+          renderItem={(item) => (
+            <List.Item>
+              <List.Item.Meta
+                avatar={<AuditOutlined />}
+                title={<Space><Tag>v{item.configVersion}</Tag><Typography.Text strong>{auditActionLabel(item.action)}</Typography.Text><Typography.Text>{item.actor}</Typography.Text></Space>}
+                description={<Space direction="vertical" size={0}><span>{item.summary}</span><Typography.Text type="secondary">{formatTime(item.createdAt)} · {item.entityType}{item.entityId ? ` · ${item.entityId}` : ''}</Typography.Text></Space>}
+              />
+            </List.Item>
+          )}
+        />
+        {auditNextCursor ? (
+          auditPageState === 'error' ? (
+            <Alert
+              type="error"
+              showIcon
+              message="后续审计加载失败"
+              description="已加载的记录已保留，可以重试下一页。"
+              action={<Button size="small" onClick={() => void loadMoreAudit()}>重试加载更多</Button>}
             />
-          </List.Item>
+          ) : (
+            <Button loading={auditPageState === 'loading'} onClick={() => void loadMoreAudit()}>
+              加载更多审计记录
+            </Button>
+          )
+        ) : (
+          <Typography.Text type="secondary">已加载全部审计记录</Typography.Text>
         )}
-      />
+      </Space>
     );
   };
 

@@ -248,9 +248,10 @@ export type AuditEntityType = 'policy' | 'template' | 'rule' | 'profile' | 'conf
 export interface AuditItem {
   eventId: string;
   actor: string;
-  action: AuditAction;
+  /** Wire 枚举开放读取：已知值做中文映射，Cloud 先扩值时仍显示原值。 */
+  action: string;
   configVersion: number;
-  entityType: AuditEntityType;
+  entityType: string;
   entityId: string | null;
   summary: string;
   createdAt: number;
