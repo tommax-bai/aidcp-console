@@ -1169,6 +1169,34 @@ body {
 .reply-config__setting--locked > :last-child {
   grid-column: 1 / -1;
 }
+.reply-config__processing-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--aidcp-space-3);
+  width: 100%;
+}
+.reply-config__processing-mode {
+  align-items: flex-start;
+  min-height: 82px;
+  margin-inline-end: 0;
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-background);
+}
+.reply-config__processing-mode > span:last-child {
+  display: block;
+  padding-inline-start: var(--aidcp-space-1);
+}
+.reply-config__processing-mode .ant-radio-label > span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-1);
+}
+.reply-config__processing-mode:has(.ant-radio-checked) {
+  border-color: var(--aidcp-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--aidcp-primary) 32%, transparent);
+}
 .reply-config__section-alert {
   margin-top: var(--aidcp-space-3);
 }
@@ -1193,6 +1221,7 @@ body {
   }
   .reply-config__switch-grid,
   .reply-config__channel-grid,
+  .reply-config__processing-modes,
   .reply-config__form-grid,
   .reply-config__limit-grid,
   .reply-config__diff-grid {

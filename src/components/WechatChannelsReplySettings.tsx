@@ -72,7 +72,6 @@ import type {
   PreviewResult,
   ReplyConfigSnapshot,
   ReplyIntent,
-  ReplyMode,
   ReplyProfile,
   ReplyRule,
   ReplyTemplate,
@@ -88,6 +87,14 @@ import {
   TEMPLATE_VARIABLE_LABEL,
   TEMPLATE_VARIABLES,
 } from './wechatChannelsReplyValidation';
+import {
+  applyReplyProcessingMode,
+  isCanonicalReplyProcessingPolicy,
+  REPLY_PROCESSING_MODES,
+  replyProcessingModeMetaOf,
+  replyProcessingModeOf,
+  type ReplyProcessingMode,
+} from './wechatChannelsReplyMode';
 
 type DirtySection = 'runtime' | 'policy' | 'profiles';
 type DirtyState = Record<DirtySection, boolean>;
@@ -95,11 +102,8 @@ type PermissionKind = 'edit' | 'publish' | 'preview';
 
 const CLEAN_DIRTY: DirtyState = { runtime: false, policy: false, profiles: false };
 const CHANNEL_LABEL: Record<InteractionChannel, string> = { comment: '评论', dm: '私信' };
-const MODE_LABEL: Record<ReplyMode, string> = {
-  draft_only: '仅草稿',
-  review_before_send: '审核后发送',
-  auto_safe: '低风险自动发送',
-};
+const COMMENT_PREVIEW_PERMISSION_ERROR = '当前后台账号没有模拟预览权限（interaction.config.preview），Cloud 预览链路未运行。';
+const DM_PREVIEW_PERMISSION_ERROR = '当前后台账号缺少私信预览权限（interaction.config.preview 与 interaction.dm.view_full），Cloud 预览链路未运行。';
 const PREVIEW_ACTION_META: Record<PreviewAction, { label: string; color: string }> = {
   draft: { label: '生成草稿', color: 'blue' },
   review_required: { label: '需要人工审核', color: 'gold' },
@@ -245,6 +249,18 @@ function updateAt<T>(items: T[], index: number, value: T): T[] {
 
 function statusText(enabled: boolean): ReactNode {
   return enabled ? <Tag color="green">已开启</Tag> : <Tag>已关闭</Tag>;
+}
+
+function channelProcessingSummary(
+  enabled: boolean,
+  allowAutoSend: boolean,
+  processingMode: ReplyProcessingMode,
+): string {
+  if (!enabled) return '不处理（读取开关独立）';
+  if (processingMode === 'off') return '已选参与，当前账号不自动处理';
+  if (processingMode === 'draft') return '处理，只生成草稿';
+  if (processingMode === 'review') return '处理，全部人工审核';
+  return allowAutoSend ? '处理，低风险模板可自动发送' : '处理，全部人工审核';
 }
 
 interface TemplateEditorState {
@@ -702,7 +718,14 @@ export function WechatChannelsReplySettings({
       setRuleEditorError('规则与模板渠道必须一致。');
       return;
     }
-    const candidate = { ...rule, name: rule.name.trim() };
+    const candidate = {
+      ...rule,
+      name: rule.name.trim(),
+      actions: {
+        ...rule.actions,
+        allowAutoSend: rule.actions.polish ? false : rule.actions.allowAutoSend,
+      },
+    };
     const peers = snapshot.rules.filter((item) => item.ruleId !== candidate.ruleId);
     if (findObviousRuleConflicts([...peers, candidate]).length) {
       setRuleEditorError('已有同渠道、同优先级、同条件但使用不同模板的规则，请调整优先级或条件。');
@@ -752,8 +775,8 @@ export function WechatChannelsReplySettings({
         if (previewInput.channel === 'dm') setDmPreviewDenied(true);
         else setPreviewDenied(true);
         setPreviewError(previewInput.channel === 'dm'
-          ? '缺少 interaction.config.preview 或 interaction.dm.view_full 权限，未运行私信预览。'
-          : '缺少 interaction.config.preview 权限，未运行预览。');
+          ? DM_PREVIEW_PERMISSION_ERROR
+          : COMMENT_PREVIEW_PERMISSION_ERROR);
       } else if (isVersionConflict(error)) {
         setConflictVersion(errorDetails(error).currentVersion ?? null);
         setPreviewError('草稿版本已变化，请刷新后重新预览。');
@@ -885,8 +908,8 @@ export function WechatChannelsReplySettings({
       render: (_, row) => (
         <Space wrap>
           <Tag>{snapshot?.templates.find((item) => item.templateId === row.actions.templateId)?.name ?? row.actions.templateId}</Tag>
-          {row.actions.polish ? <Tag color="blue">AI 润色</Tag> : <Tag>不润色</Tag>}
-          {row.actions.allowAutoSend ? <Tag color="green">允许低风险自动</Tag> : <Tag>人工路径</Tag>}
+          {row.actions.polish ? <Tag color="blue">AI 润色 · 必须人工</Tag> : <Tag>模板原文</Tag>}
+          {row.actions.allowAutoSend ? <Tag color="green">继承上层自动范围</Tag> : <Tag color="gold">必须人工审核</Tag>}
           {row.actions.forceHumanTags.map((tag) => <Tag key={tag} color="gold">{RISK_TAG_LABEL[tag]}</Tag>)}
         </Space>
       ),
@@ -914,17 +937,20 @@ export function WechatChannelsReplySettings({
     if (!snapshot) return null;
     const runtime = snapshot.runtime;
     const policy = snapshot.policy;
+    const processingMode = replyProcessingModeOf(policy);
+    const canonicalProcessingMode = isCanonicalReplyProcessingPolicy(policy);
     return (
       <div className="reply-config__stack">
         <Card
           size="small"
-          title={<Space><ApiOutlined />即时运行开关</Space>}
+          title={<Space><ApiOutlined />即时运行控制（紧急停写）</Space>}
           extra={<Typography.Text type="secondary">独立版本 v{runtime.version} · {runtime.updatedBy} · {formatTime(runtime.updatedAt)}</Typography.Text>}
         >
           <Alert
             type="info"
             showIcon
-            message="读取开关与写入总闸立即生效，不属于 draft/published 配置。"
+            message="这里控制当前是否收取、是否真实发送，保存后立即生效。"
+            description="它不改变下方长期回复策略；关闭账号或渠道发送后，仍可按读取开关继续收取互动和保留草稿。"
             className="reply-config__section-alert"
           />
           <div className="reply-config__switch-grid">
@@ -939,8 +965,8 @@ export function WechatChannelsReplySettings({
               }))}
             />
             <SettingSwitch
-              label="账号写总闸"
-              description="关闭时保留收取、草稿和待处理队列，但不发送。"
+              label="账号发送"
+              description="关闭后立即暂停评论和私信发送，保留收取、草稿和待处理队列。"
               checked={!runtime.writePaused}
               disabled={editDenied}
               onChange={(checked) => mutateSnapshot('runtime', (current) => ({
@@ -950,20 +976,20 @@ export function WechatChannelsReplySettings({
             />
             <SettingSwitch
               label="评论收取 / 回复"
-              description="分别控制评论读取与文本回复 capability。"
+              description="左侧控制读取；右侧是评论发送的即时开关。"
               checked={runtime.commentsReadEnabled}
               secondaryChecked={runtime.commentsReplyEnabled}
-              secondaryLabel="回复"
+              secondaryLabel="允许回复"
               disabled={editDenied}
               onChange={(checked) => mutateSnapshot('runtime', (current) => ({ ...current, runtime: { ...current.runtime, commentsReadEnabled: checked } }))}
               onSecondaryChange={(checked) => mutateSnapshot('runtime', (current) => ({ ...current, runtime: { ...current.runtime, commentsReplyEnabled: checked } }))}
             />
             <SettingSwitch
               label="私信收取 / 文本发送"
-              description="图片私信在 v1 固定关闭。"
+              description="左侧控制读取；右侧是文本发送的即时开关。图片发送固定关闭。"
               checked={runtime.dmReadEnabled}
               secondaryChecked={runtime.dmSendTextEnabled}
-              secondaryLabel="发送文本"
+              secondaryLabel="允许发送"
               disabled={editDenied}
               onChange={(checked) => mutateSnapshot('runtime', (current) => ({ ...current, runtime: { ...current.runtime, dmReadEnabled: checked } }))}
               onSecondaryChange={(checked) => mutateSnapshot('runtime', (current) => ({ ...current, runtime: { ...current.runtime, dmSendTextEnabled: checked } }))}
@@ -982,40 +1008,46 @@ export function WechatChannelsReplySettings({
           </Space>
         </Card>
 
-        <Card size="small" title="回复策略草稿">
+        <Card size="small" title="回复处理策略草稿">
+          <Alert
+            type="info"
+            showIcon
+            message="这里只选择一次账号的回复处理方式"
+            description="保存后仍需发布才影响新互动；即时发送开关和 Cloud 硬门禁会在发送时继续独立检查。"
+          />
           <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="运行模式" extra="自动发送仍需同时通过所有 Cloud 硬门禁。">
+            <Form.Item label="回复处理方式" className="reply-config__section-alert">
               <Radio.Group
-                aria-label="运行模式"
-                optionType="button"
-                buttonStyle="solid"
-                value={policy.mode}
+                aria-label="回复处理方式"
+                value={processingMode}
                 disabled={editDenied}
                 onChange={(event) => mutateSnapshot('policy', (current) => ({
                   ...current,
-                  policy: { ...current.policy, mode: event.target.value as ReplyMode },
+                  policy: applyReplyProcessingMode(current.policy, event.target.value as ReplyProcessingMode),
                 }))}
               >
-                {Object.entries(MODE_LABEL).map(([value, label]) => <Radio.Button key={value} value={value}>{label}</Radio.Button>)}
+                <div className="reply-config__processing-modes">
+                  {REPLY_PROCESSING_MODES.map((value) => (
+                    <Radio key={value} value={value} className="reply-config__processing-mode">
+                      <span>
+                        <Typography.Text strong>{replyProcessingModeMetaOf(value).label}</Typography.Text>
+                        <Typography.Text type="secondary">{replyProcessingModeMetaOf(value).description}</Typography.Text>
+                      </span>
+                    </Radio>
+                  ))}
+                </div>
               </Radio.Group>
             </Form.Item>
-            <div className="reply-config__switch-grid">
-              <SettingSwitch
-                label="生成草稿"
-                description="关闭时仍可收取互动，但不会自动生成回复草稿。"
-                checked={policy.generateDrafts}
-                disabled={editDenied}
-                onChange={(checked) => mutateSnapshot('policy', (current) => ({ ...current, policy: { ...current.policy, generateDrafts: checked } }))}
+            {!canonicalProcessingMode ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={`检测到历史组合，已按不扩权原则显示为“${replyProcessingModeMetaOf(processingMode).label}”`}
+                description="只有主动选择更高处理方式才会增加生成或发送权限；保存后会写回规范组合。"
+                className="reply-config__section-alert"
               />
-              <SettingSwitch
-                label="允许发送"
-                description="配置层发送开关；不能绕过即时写总闸。"
-                checked={policy.sendReplies}
-                disabled={editDenied}
-                onChange={(checked) => mutateSnapshot('policy', (current) => ({ ...current, policy: { ...current.policy, sendReplies: checked } }))}
-              />
-            </div>
-            <Divider orientation="left">渠道策略</Divider>
+            ) : null}
+            <Divider orientation="left">参与回复处理的渠道</Divider>
             <div className="reply-config__channel-grid">
               {(['comment', 'dm'] as const).map((channel) => (
                 <Card key={channel} size="small" title={CHANNEL_LABEL[channel]}>
@@ -1030,7 +1062,8 @@ export function WechatChannelsReplySettings({
                           channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], enabled: event.target.checked } },
                         },
                       }))}
-                    >启用该渠道</Checkbox>
+                    >处理{CHANNEL_LABEL[channel]}互动</Checkbox>
+                    <Typography.Text type="secondary">关闭后仍可按即时读取开关收取，但不生成或发送该渠道的回复。</Typography.Text>
                     <Checkbox
                       checked={policy.channels[channel].aiPolishEnabled}
                       disabled={editDenied || channel === 'dm'}
@@ -1041,18 +1074,20 @@ export function WechatChannelsReplySettings({
                           channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], aiPolishEnabled: event.target.checked } },
                         },
                       }))}
-                    >允许 AI 润色{channel === 'dm' ? '（v1 默认关闭）' : ''}</Checkbox>
-                    <Checkbox
-                      checked={policy.channels[channel].allowAutoSend}
-                      disabled={editDenied}
-                      onChange={(event) => mutateSnapshot('policy', (current) => ({
-                        ...current,
-                        policy: {
-                          ...current.policy,
-                          channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], allowAutoSend: event.target.checked } },
-                        },
-                      }))}
-                    >允许低风险自动发送</Checkbox>
+                    >允许规则使用 AI 润色{channel === 'dm' ? '（v1 私信关闭）' : '（使用后必须人工审核）'}</Checkbox>
+                    {processingMode === 'auto' ? (
+                      <Checkbox
+                        checked={policy.channels[channel].allowAutoSend}
+                        disabled={editDenied}
+                        onChange={(event) => mutateSnapshot('policy', (current) => ({
+                          ...current,
+                          policy: {
+                            ...current.policy,
+                            channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], allowAutoSend: event.target.checked } },
+                          },
+                        }))}
+                      >此渠道的低风险模板可自动发送</Checkbox>
+                    ) : null}
                   </Space>
                 </Card>
               ))}
@@ -1222,8 +1257,8 @@ export function WechatChannelsReplySettings({
         <Alert
           type="warning"
           showIcon
-          message="平台硬门禁不可关闭"
-          description="普通账号管理员只能增加更严格的策略；Cloud RiskController、身份、capability、幂等和待核验门禁始终生效。"
+          message="系统保护始终生效，不是可配置开关"
+          description="下列 Cloud RiskController、身份、capability、幂等和待核验门禁不可关闭；账号管理员只能通过限速和人工审核增加更严格的限制。"
         />
         <List
           bordered
@@ -1236,7 +1271,7 @@ export function WechatChannelsReplySettings({
         />
         <Card
           size="small"
-          title="账号安全限速"
+          title="账号安全限速（只能收紧）"
           extra={<Button type="primary" onClick={savePolicy} disabled={!dirty.policy || editDenied} loading={pendingAction === 'policy'}>保存到策略草稿</Button>}
         >
           <div className="reply-config__limit-grid">
@@ -1306,9 +1341,9 @@ export function WechatChannelsReplySettings({
         </Form>
       </Card>
       {previewError ? <Alert type="error" showIcon message={previewError} /> : null}
-      {!previewError && previewDenied ? <Alert type="error" showIcon message="缺少 interaction.config.preview 权限，未运行预览。" /> : null}
+      {!previewError && previewDenied ? <Alert type="error" showIcon message={COMMENT_PREVIEW_PERMISSION_ERROR} /> : null}
       {!previewError && !previewDenied && previewInput.channel === 'dm' && dmPreviewDenied ? (
-        <Alert type="error" showIcon message="缺少 interaction.config.preview 或 interaction.dm.view_full 权限，未运行私信预览。" />
+        <Alert type="error" showIcon message={DM_PREVIEW_PERMISSION_ERROR} />
       ) : null}
       {pendingAction === 'preview' ? <Skeleton active /> : null}
       {!previewResult && pendingAction !== 'preview' && !previewError ? <Empty description="输入模拟内容后查看完整决策链路" /> : null}
@@ -1367,13 +1402,13 @@ export function WechatChannelsReplySettings({
     { key: 'audit', label: '审计', children: renderAudit() },
   ] : [];
 
-  const publishSummary = snapshot ? [
-    `运行模式：${MODE_LABEL[snapshot.policy.mode]}`,
-    `配置发送开关：${snapshot.policy.sendReplies ? '允许发送' : '关闭'}`,
+  const publishProcessingMode = snapshot ? replyProcessingModeOf(snapshot.policy) : null;
+  const publishSummary = snapshot && publishProcessingMode ? [
+    `回复处理方式：${replyProcessingModeMetaOf(publishProcessingMode).label}`,
     `即时账号写总闸：${snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`,
-    `评论：${snapshot.policy.channels.comment.enabled ? '启用' : '关闭'}，${snapshot.policy.channels.comment.allowAutoSend ? '允许低风险自动' : '人工路径'}`,
-    `私信：${snapshot.policy.channels.dm.enabled ? '启用' : '关闭'}，${snapshot.policy.channels.dm.allowAutoSend ? '允许低风险自动' : '人工路径'}`,
-    `允许自动发送的启用规则：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend).length} 条`,
+    `评论：${channelProcessingSummary(snapshot.policy.channels.comment.enabled, snapshot.policy.channels.comment.allowAutoSend, publishProcessingMode)}`,
+    `私信：${channelProcessingSummary(snapshot.policy.channels.dm.enabled, snapshot.policy.channels.dm.allowAutoSend, publishProcessingMode)}`,
+    `启用规则：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend && !rule.actions.polish).length} 条继承自动范围，${snapshot.rules.filter((rule) => rule.enabled && (!rule.actions.allowAutoSend || rule.actions.polish)).length} 条必须人工`,
   ] : [];
 
   return (
@@ -1488,7 +1523,7 @@ export function WechatChannelsReplySettings({
             type="warning"
             showIcon
             message="发布后 Cloud 工作流只读取新的 immutable published 版本"
-            description="以下是会影响自动发送的当前设置；最终 validation summary 由 Cloud 在发布事务中返回。"
+            description="以下是本次发布的有效用户意图；即时运行控制和不可关闭的 Cloud 硬门禁不会被本次发布绕过。"
           />
           <List size="small" bordered dataSource={publishSummary} renderItem={(item) => <List.Item><CheckCircleOutlined /> {item}</List.Item>} />
           {hasDirty ? <Alert type="error" showIcon message="仍有未保存页面修改，请先保存再发布。" /> : null}
@@ -1692,8 +1727,18 @@ function RuleEditorModal({
         <Divider orientation="left">命中动作</Divider>
         <Form.Item label="回复模板"><Select aria-label="回复模板" value={rule.actions.templateId || undefined} options={channelTemplates.map((item) => ({ value: item.templateId, label: `${item.name} · v${item.templateVersion}` }))} onChange={(templateId) => setActions({ templateId })} /></Form.Item>
         <Space direction="vertical">
-          <Checkbox checked={rule.actions.polish} onChange={(event) => setActions({ polish: event.target.checked })}>允许 AI 润色</Checkbox>
-          <Checkbox checked={rule.actions.allowAutoSend} onChange={(event) => setActions({ allowAutoSend: event.target.checked })}>规则允许低风险自动发送</Checkbox>
+          <Checkbox
+            checked={rule.actions.polish}
+            onChange={(event) => setActions(event.target.checked
+              ? { polish: true, allowAutoSend: false }
+              : { polish: false })}
+          >使用 AI 润色（必须人工审核）</Checkbox>
+          <Checkbox
+            checked={rule.actions.polish || !rule.actions.allowAutoSend}
+            disabled={rule.actions.polish}
+            onChange={(event) => setActions({ allowAutoSend: !event.target.checked })}
+          >此规则必须人工审核</Checkbox>
+          <Typography.Text type="secondary">取消后仅继承账号和渠道的自动化上限，不代表一定自动发送。</Typography.Text>
         </Space>
         <Form.Item label="命中这些风险标签时强制人工" className="reply-config__section-alert">
           <Select aria-label="强制人工风险标签" mode="multiple" value={rule.actions.forceHumanTags} options={RISK_TAGS.map((value) => ({ value, label: RISK_TAG_LABEL[value] }))} onChange={(forceHumanTags) => setActions({ forceHumanTags })} />

@@ -300,7 +300,7 @@ function renderDrawer(account = panelAccount()) {
 }
 
 async function waitForConfig() {
-  await screen.findByText('回复策略草稿');
+  await screen.findByText('回复处理策略草稿');
 }
 
 beforeEach(() => {
@@ -342,12 +342,33 @@ describe('WechatChannelsReplySettings', () => {
     const server = createServer();
     renderDrawer();
     await waitForConfig();
-    fireEvent.click(screen.getByRole('switch', { name: '生成草稿' }));
+    fireEvent.click(screen.getByRole('radio', { name: /不自动处理，仅收取互动/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存策略草稿' }));
     await waitFor(() => expect(server.calls.some((call) => call.path.endsWith('/interaction-reply-policy') && call.method === 'PUT')).toBe(true));
     const call = server.calls.find((item) => item.path.endsWith('/interaction-reply-policy') && item.method === 'PUT');
-    expect(call?.body).toMatchObject({ expectedVersion: 1, policy: { generateDrafts: false } });
+    expect(call?.body).toMatchObject({
+      expectedVersion: 1,
+      policy: { mode: 'draft_only', generateDrafts: false, sendReplies: false },
+    });
     await waitFor(() => expect(screen.getByText('当前聚合版本').parentElement?.textContent).toContain('v2'));
+  });
+
+  it('shows one fail-closed processing choice and asks for channel auto scope only in auto mode', async () => {
+    createServer();
+    renderDrawer();
+    await waitForConfig();
+
+    expect((screen.getByRole('radio', { name: /只生成回复草稿/ }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText(/检测到历史组合，已按不扩权原则显示为/)).toBeTruthy();
+    expect(screen.queryByRole('switch', { name: '生成草稿' })).toBeNull();
+    expect(screen.queryByText('配置层发送开关；不能绕过即时写总闸。')).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: '此渠道的低风险模板可自动发送' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: /低风险模板自动发送/ }));
+    expect(screen.getAllByRole('checkbox', { name: '此渠道的低风险模板可自动发送' })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('radio', { name: /人工审核后发送/ }));
+    expect(screen.queryByRole('checkbox', { name: '此渠道的低风险模板可自动发送' })).toBeNull();
   });
 
   it('publishes only through reply-config/publish and displays the returned published version', async () => {
@@ -361,6 +382,18 @@ describe('WechatChannelsReplySettings', () => {
     await waitFor(() => expect(server.calls.some((call) => call.path.endsWith('/reply-config/publish') && call.method === 'POST')).toBe(true));
     expect(server.calls.some((call) => call.path.includes('/send'))).toBe(false);
     await screen.findByText('published v1');
+  });
+
+  it('summarizes the effective processing intent without repeating wire-level switches', async () => {
+    createServer();
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('button', { name: '发布' }));
+    const publishTitle = await screen.findByText('发布回复配置');
+    const dialog = publishTitle.closest('.ant-modal') as HTMLElement;
+    expect(within(dialog).getByText('回复处理方式：只生成回复草稿')).toBeTruthy();
+    expect(within(dialog).queryByText(/配置发送开关/)).toBeNull();
+    expect(within(dialog).queryByText(/运行模式：/)).toBeNull();
   });
 
   it('does not change published state when interaction.config.publish is denied', async () => {
@@ -379,7 +412,7 @@ describe('WechatChannelsReplySettings', () => {
     createServer({ conflictOnPolicy: true });
     renderDrawer();
     await waitForConfig();
-    fireEvent.click(screen.getByRole('switch', { name: '生成草稿' }));
+    fireEvent.click(screen.getByRole('radio', { name: /不自动处理，仅收取互动/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存策略草稿' }));
     expect(await screen.findByText('版本冲突：远端当前为 v7')).toBeTruthy();
     expect(screen.getByText(/本次保存\/发布没有显示成功/)).toBeTruthy();
@@ -389,7 +422,7 @@ describe('WechatChannelsReplySettings', () => {
     createServer({ stateConflictOnPolicy: true });
     renderDrawer();
     await waitForConfig();
-    fireEvent.click(screen.getByRole('switch', { name: '生成草稿' }));
+    fireEvent.click(screen.getByRole('radio', { name: /不自动处理，仅收取互动/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存策略草稿' }));
     expect(await screen.findByText('当前状态不允许该操作，请刷新后重试')).toBeTruthy();
     expect(screen.queryByText(/版本冲突：远端当前/)).toBeNull();
@@ -399,14 +432,14 @@ describe('WechatChannelsReplySettings', () => {
     createServer({ viewDenied: true });
     renderDrawer();
     expect(await screen.findByText('无配置查看权限')).toBeTruthy();
-    expect(screen.queryByText('回复策略草稿')).toBeNull();
+    expect(screen.queryByText('回复处理策略草稿')).toBeNull();
   });
 
   it('shows missing config explicitly and initializes only a safe unpublished draft', async () => {
     const server = createServer({ missingConfig: true });
     renderDrawer();
     expect(await screen.findByText('尚未创建互动回复配置')).toBeTruthy();
-    expect(screen.queryByText('回复策略草稿')).toBeNull();
+    expect(screen.queryByText('回复处理策略草稿')).toBeNull();
     expect(screen.getByText(/不会发布配置，不会创建模板或规则，也不会开启回复、自动发送或即时账号写入/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '创建安全草稿' }));
@@ -425,7 +458,7 @@ describe('WechatChannelsReplySettings', () => {
     await screen.findByText('尚未创建互动回复配置');
     fireEvent.click(screen.getByRole('button', { name: '创建安全草稿' }));
     expect(await screen.findByText('缺少 interaction.config.edit 权限，未创建任何配置。')).toBeTruthy();
-    expect(screen.queryByText('回复策略草稿')).toBeNull();
+    expect(screen.queryByText('回复处理策略草稿')).toBeNull();
     expect(server.calls.filter((call) => call.path.endsWith('/reply-config/initialize'))).toHaveLength(1);
   });
 
@@ -444,7 +477,7 @@ describe('WechatChannelsReplySettings', () => {
     const server = createServer({ editDenied: true });
     renderDrawer();
     await waitForConfig();
-    fireEvent.click(screen.getByRole('switch', { name: '生成草稿' }));
+    fireEvent.click(screen.getByRole('radio', { name: /不自动处理，仅收取互动/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存策略草稿' }));
     expect(await screen.findByText('当前账号缺少 interaction.config.edit 权限，草稿未保存。')).toBeTruthy();
     expect(server.stores.get('acct_wc_demo')?.policy.data.policy.generateDrafts).toBe(true);
@@ -577,6 +610,37 @@ describe('WechatChannelsReplySettings', () => {
     });
   });
 
+  it('presents rule automation as a restriction and forces AI-polished rules to human review', async () => {
+    const server = createServer();
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: /匹配规则/ }));
+    const ruleName = await screen.findByText(/感谢类评论/);
+    const ruleRow = ruleName.closest('tr') as HTMLElement;
+    fireEvent.click(within(ruleRow).getByText('编辑').closest('button') as HTMLButtonElement);
+
+    const editorTitle = await screen.findByText('编辑匹配规则');
+    const dialog = editorTitle.closest('.ant-modal') as HTMLElement;
+    const polish = within(dialog).getByRole('checkbox', { name: '使用 AI 润色（必须人工审核）' }) as HTMLInputElement;
+    const mustReview = within(dialog).getByRole('checkbox', { name: '此规则必须人工审核' }) as HTMLInputElement;
+    expect(polish.checked).toBe(true);
+    expect(mustReview.checked).toBe(true);
+    expect(mustReview.disabled).toBe(true);
+
+    fireEvent.click(polish);
+    expect(mustReview.disabled).toBe(false);
+    fireEvent.click(mustReview);
+    expect(mustReview.checked).toBe(false);
+    fireEvent.click(polish);
+    expect(mustReview.checked).toBe(true);
+    expect(mustReview.disabled).toBe(true);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存草稿' }));
+    await waitFor(() => expect(server.calls.some((call) => call.path.includes('/reply-rules/') && call.method === 'PUT')).toBe(true));
+    const call = server.calls.find((item) => item.path.includes('/reply-rules/') && item.method === 'PUT');
+    expect(call?.body).toMatchObject({ rule: { actions: { polish: true, allowAutoSend: false } } });
+  });
+
   it.each([
     ['review_required', '需要人工审核'],
     ['no_match', '没有命中规则'],
@@ -601,7 +665,7 @@ describe('WechatChannelsReplySettings', () => {
     await waitForConfig();
     fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
     fireEvent.click(screen.getByRole('button', { name: '运行无副作用预览' }));
-    expect(await screen.findByText('缺少 interaction.config.preview 权限，未运行预览。')).toBeTruthy();
+    expect(await screen.findByText('当前后台账号没有模拟预览权限（interaction.config.preview），Cloud 预览链路未运行。')).toBeTruthy();
     expect(screen.queryByText('Cloud 预览结果')).toBeNull();
   });
 
@@ -612,12 +676,12 @@ describe('WechatChannelsReplySettings', () => {
     fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
     fireEvent.click(screen.getByRole('radio', { name: '私信' }));
     fireEvent.click(screen.getByRole('button', { name: '运行无副作用预览' }));
-    expect(await screen.findByText('缺少 interaction.config.preview 或 interaction.dm.view_full 权限，未运行私信预览。')).toBeTruthy();
+    expect(await screen.findByText('当前后台账号缺少私信预览权限（interaction.config.preview 与 interaction.dm.view_full），Cloud 预览链路未运行。')).toBeTruthy();
     expect((screen.getByRole('button', { name: '运行无副作用预览' }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('radio', { name: '评论' }));
     expect((screen.getByRole('button', { name: '运行无副作用预览' }) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByText(/未运行私信预览/)).toBeNull();
+    expect(screen.queryByText(/缺少私信预览权限/)).toBeNull();
   });
 
   it('aborts the previous account reads and prevents stale account content from winning', async () => {
