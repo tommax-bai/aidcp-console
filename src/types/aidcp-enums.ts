@@ -11,7 +11,7 @@ export type RiskStatus = (typeof RISK_STATUSES)[number];
 export const RISK_QUOTA_LEVELS = ['conservative', 'normal', 'aggressive'] as const;
 export type RiskQuotaLevel = (typeof RISK_QUOTA_LEVELS)[number];
 
-export const RISK_ACTIONS = ['like', 'collect', 'comment', 'follow', 'publish', 'view', 'comment_like', 'join_group'] as const;
+export const RISK_ACTIONS = ['like', 'collect', 'comment', 'follow', 'publish', 'view', 'comment_like', 'join_group', 'dm_reply'] as const;
 export type RiskAction = (typeof RISK_ACTIONS)[number];
 
 export const ALERT_SEVERITIES = ['P0', 'P1', 'P2', 'P3'] as const;
@@ -67,6 +67,7 @@ export const RISK_ACTION_COLOR: Record<RiskAction, string> = {
   view: 'default',
   comment_like: 'cyan', // 评论赞（change console-cloud-panel-hardening #4；灰度 AIDCP_COMMENT_LIKE）
   join_group: 'lime',
+  dm_reply: 'orange',
 };
 
 /** 告警分级色（V1 用；P3 中性灰不抢视觉）。 */
@@ -111,6 +112,7 @@ export const RISK_ACTION_LABEL: Record<RiskAction, string> = {
   view: '浏览',
   comment_like: '评论赞', // change console-cloud-panel-hardening #4
   join_group: '加群',
+  dm_reply: '私信回复',
 };
 
 /** 运营态中文 label（durable 暂停，区别于验证码暂停）。 */
@@ -151,4 +153,9 @@ export function tagOf(
   key: string,
 ): { text: string; color: string } {
   return map[key] ?? { text: key, color: 'default' };
+}
+
+/** 标量中文文案映射按 wire 值取值的安全入口；未知值诚实显示原值。 */
+export function labelOf(map: Record<string, string>, key: string): string {
+  return map[key] ?? key;
 }

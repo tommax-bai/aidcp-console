@@ -42,6 +42,7 @@ import type {
   DelegatedTaskDraftReceipt,
 } from '../types/api';
 import { accountDisplayName, makeAccountNamer } from '../types/accountDisplay';
+import { labelOf } from '../types/aidcp-enums';
 
 const PAGE_SIZE = 20;
 
@@ -163,7 +164,7 @@ function VisualAnalysisPanel({ analysis }: { analysis: ReferenceVisualAnalysis |
         style={{ marginTop: 6 }}
         items={(analysis.frameSpecs ?? []).map((frame) => ({
           key: frame.sourceArrayIndex,
-          label: `源图 ${frame.sourceArrayIndex + 1} · ${VISUAL_KIND_LABEL[frame.kind] ?? frame.kind} · 置信 ${Math.round(frame.confidence * 100)}%`,
+          label: `源图 ${frame.sourceArrayIndex + 1} · ${labelOf(VISUAL_KIND_LABEL, frame.kind)} · 置信 ${Math.round(frame.confidence * 100)}%`,
           children: (
             <Space direction="vertical" size={2}>
               <Typography.Text>主体：{frame.common.subject}</Typography.Text>

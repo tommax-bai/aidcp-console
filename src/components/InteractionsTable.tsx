@@ -2,7 +2,7 @@ import { Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ProfileLink } from './ProfileLink';
 import { QueryError } from './QueryGate';
-import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, type RiskAction } from '../types/aidcp-enums';
+import { RISK_ACTION_LABEL, RISK_ACTION_COLOR, labelOf, type RiskAction } from '../types/aidcp-enums';
 import type { PanelInteraction } from '../types/api';
 
 function makeColumns(nameOf: (id: string) => string): ColumnsType<PanelInteraction> {
@@ -25,7 +25,7 @@ function makeColumns(nameOf: (id: string) => string): ColumnsType<PanelInteracti
       dataIndex: 'action',
       key: 'action',
       render: (v: string) => (
-        <Tag color={RISK_ACTION_COLOR[v as RiskAction]}>{RISK_ACTION_LABEL[v as RiskAction] ?? v}</Tag>
+        <Tag color={RISK_ACTION_COLOR[v as RiskAction]}>{labelOf(RISK_ACTION_LABEL, v)}</Tag>
       ),
     },
     {

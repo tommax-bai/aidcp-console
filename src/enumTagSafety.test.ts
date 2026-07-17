@@ -6,9 +6,8 @@
  * 新枚举值就会 `undefined.color` 抛错、整页 white-screen（真实事故：`llmKind:'vision'`
  * 让 /roles 全崩）。唯一安全入口是 tagOf()（src/types/aidcp-enums.ts）：未知值回落灰底原值标签。
  *
- * 本测试扫描全部组件/页面源码，禁止 `大写映射[...] .color/.text/.label` 裸取。
- * 命中即失败并指出位置，要求改走 tagOf()。标量映射（`MAP[key]` 直接当 prop 值、不再 .prop）
- * 落空只是默认样式、不崩，故不在禁列。
+ * 本测试扫描全部组件/页面源码：对象值徽标映射禁止裸取属性；可见的 `*_LABEL`
+ * 标量文案也禁止裸取，避免枚举漂移后渲染空白。命中分别要求改走 tagOf() / labelOf()。
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -41,6 +40,7 @@ function stripComments(src: string): string {
 
 // 大写常量映射（如 KIND_LABEL / SOURCE_TAG）按变量索引后直接读 .color/.text/.label 的裸取。
 const OFFENSE = /[A-Z][A-Z0-9_]{2,}\[[^\]\n]+\]\.(?:color|text|label)\b/;
+const LABEL_OFFENSE = /[A-Z][A-Z0-9_]*_LABEL\[[^\]\n]+\]/;
 
 describe('enum tag safety', () => {
   it('对象值徽标映射一律经 tagOf() 取值，禁止 MAP[key].color/.text/.label 裸取', () => {
@@ -56,6 +56,22 @@ describe('enum tag safety', () => {
     expect(
       offenders,
       `以下裸取会在后端枚举漂移时白屏，请改走 tagOf()（src/types/aidcp-enums.ts）：\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('可见标量文案映射一律经 labelOf() 取值，禁止 SOME_LABEL[key] 裸取', () => {
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC)) {
+      const lines = stripComments(readFileSync(file, 'utf8')).split('\n');
+      lines.forEach((line, i) => {
+        if (LABEL_OFFENSE.test(line)) {
+          offenders.push(`${file.replace(`${SRC}/`, 'src/')}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(
+      offenders,
+      `以下标量文案裸取会在后端枚举漂移时显示空白，请改走 labelOf()（src/types/aidcp-enums.ts）：\n${offenders.join('\n')}`,
     ).toEqual([]);
   });
 });

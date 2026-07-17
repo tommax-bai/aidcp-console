@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Badge, Button, Input, List, Space, Tag, Typography } from 'antd';
 import { usePanelWs, type WsStatus } from '../ws/panelWs';
+import { labelOf } from '../types/aidcp-enums';
 
 const STATUS_BADGE: Record<WsStatus, 'processing' | 'success' | 'warning' | 'default'> = {
   connecting: 'processing',
@@ -38,7 +39,7 @@ export function LiveEventStream() {
   return (
     <>
       <Space wrap style={{ marginBottom: 8 }}>
-        <Badge status={STATUS_BADGE[status]} text={`连接：${STATUS_LABEL[status]}`} />
+        <Badge status={STATUS_BADGE[status]} text={`连接：${labelOf(STATUS_LABEL, status)}`} />
         {/* 诚实文案：暂停期间到达的帧被丢弃（panelWs onmessage 直接 return），并无缓冲，绝不暗示可补看。 */}
         <Button size="small" onClick={togglePause}>
           {paused ? '恢复（暂停中新事件已丢弃）' : '暂停'}

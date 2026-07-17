@@ -17,7 +17,7 @@ const ALL_ACCOUNTS = '__all__';
 const CONTACTS_LIMIT = 1000;
 
 // 加入原因 → 中文标签（reason = NotificationItem.kind）。
-const REASON_LABEL: Record<string, { text: string; color: string }> = {
+const REASON_TAG: Record<string, { text: string; color: string }> = {
   comment: { text: '评论', color: 'blue' },
   mention: { text: '@提及', color: 'geekblue' },
   like: { text: '点赞', color: 'magenta' },
@@ -25,7 +25,7 @@ const REASON_LABEL: Record<string, { text: string; color: string }> = {
   follow: { text: '关注', color: 'green' },
 };
 function reasonTag(r: string) {
-  const m = REASON_LABEL[r];
+  const m = REASON_TAG[r];
   return <Tag color={m?.color}>{m?.text ?? r}</Tag>;
 }
 

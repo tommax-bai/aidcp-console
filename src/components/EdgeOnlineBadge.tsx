@@ -1,5 +1,5 @@
 import { Badge, Tooltip } from 'antd';
-import { EDGE_ONLINE_BADGE, EDGE_ONLINE_LABEL, type EdgeOnlineState } from '../types/aidcp-enums';
+import { EDGE_ONLINE_BADGE, EDGE_ONLINE_LABEL, labelOf, type EdgeOnlineState } from '../types/aidcp-enums';
 
 const TOOLTIP: Record<EdgeOnlineState, string> = {
   online: '在线：在连接表中且近期有心跳',
@@ -14,7 +14,7 @@ const TOOLTIP: Record<EdgeOnlineState, string> = {
 export function EdgeOnlineBadge({ state }: { state: EdgeOnlineState }) {
   return (
     <Tooltip title={TOOLTIP[state]}>
-      <Badge status={EDGE_ONLINE_BADGE[state]} text={EDGE_ONLINE_LABEL[state]} />
+      <Badge status={EDGE_ONLINE_BADGE[state]} text={labelOf(EDGE_ONLINE_LABEL, state)} />
     </Tooltip>
   );
 }

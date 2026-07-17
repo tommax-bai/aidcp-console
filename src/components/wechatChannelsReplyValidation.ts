@@ -5,6 +5,7 @@ import type {
   TemplateVariable,
   ValidationIssue,
 } from '../types/interactionReplyConfig';
+import { labelOf } from '../types/aidcp-enums';
 
 export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   'user_name',
@@ -136,7 +137,7 @@ export function collectLocalValidationIssues(
         issues.push({
           path: `profiles.${channel}.variableFallbacks.${variable}`,
           code: 'variable_fallback_missing',
-          message: `${channel === 'comment' ? '评论' : '私信'}渠道缺少「${TEMPLATE_VARIABLE_LABEL[variable]}」安全兜底。`,
+          message: `${channel === 'comment' ? '评论' : '私信'}渠道缺少「${labelOf(TEMPLATE_VARIABLE_LABEL, variable)}」安全兜底。`,
         });
       }
     }

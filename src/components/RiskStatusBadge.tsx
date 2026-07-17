@@ -1,5 +1,5 @@
 import { Tag } from 'antd';
-import { RISK_STATUS_COLOR, RISK_STATUS_LABEL, type RiskStatus } from '../types/aidcp-enums';
+import { RISK_STATUS_COLOR, RISK_STATUS_LABEL, labelOf, type RiskStatus } from '../types/aidcp-enums';
 
 /**
  * 风控 STATUS 徽标：filled warm Tag（暖色实底）。
@@ -8,5 +8,5 @@ import { RISK_STATUS_COLOR, RISK_STATUS_LABEL, type RiskStatus } from '../types/
  * warm(实底) vs cool(描边) 色相/形态 + 所在列表头（「风控」vs「档位」）三重区分。
  */
 export function RiskStatusBadge({ status }: { status: RiskStatus }) {
-  return <Tag color={RISK_STATUS_COLOR[status]}>{RISK_STATUS_LABEL[status]}</Tag>;
+  return <Tag color={RISK_STATUS_COLOR[status]}>{labelOf(RISK_STATUS_LABEL, status)}</Tag>;
 }

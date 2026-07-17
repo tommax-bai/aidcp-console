@@ -61,6 +61,7 @@ import {
 import { errorText } from '../api/errorText';
 import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
+import { labelOf } from '../types/aidcp-enums';
 import type {
   AuditAction,
   AuditItem,
@@ -192,7 +193,7 @@ const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
 
 /** 已知审计动作显示中文；未知未来 wire 值原样展示，避免空标签或枚举漂移白屏。 */
 export function auditActionLabel(action: string): string {
-  return AUDIT_ACTION_LABEL[action as AuditAction] ?? action;
+  return labelOf(AUDIT_ACTION_LABEL, action);
 }
 const HARD_GATES = [
   '没有有效 published 配置，或模板变量缺失安全兜底',
@@ -910,7 +911,7 @@ export function WechatChannelsReplySettings({
           <Tag>{snapshot?.templates.find((item) => item.templateId === row.actions.templateId)?.name ?? row.actions.templateId}</Tag>
           {row.actions.polish ? <Tag color="blue">AI 润色 · 必须人工</Tag> : <Tag>模板原文</Tag>}
           {row.actions.allowAutoSend ? <Tag color="green">继承上层自动范围</Tag> : <Tag color="gold">必须人工审核</Tag>}
-          {row.actions.forceHumanTags.map((tag) => <Tag key={tag} color="gold">{RISK_TAG_LABEL[tag]}</Tag>)}
+            {row.actions.forceHumanTags.map((tag) => <Tag key={tag} color="gold">{labelOf(RISK_TAG_LABEL, tag)}</Tag>)}
         </Space>
       ),
     },
@@ -1062,7 +1063,7 @@ export function WechatChannelsReplySettings({
             <Divider orientation="left">参与回复处理的渠道</Divider>
             <div className="reply-config__channel-grid">
               {(['comment', 'dm'] as const).map((channel) => (
-                <Card key={channel} size="small" title={CHANNEL_LABEL[channel]}>
+              <Card key={channel} size="small" title={labelOf(CHANNEL_LABEL, channel)}>
                   <Space direction="vertical">
                     <Checkbox
                       checked={policy.channels[channel].enabled}
@@ -1074,7 +1075,7 @@ export function WechatChannelsReplySettings({
                           channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], enabled: event.target.checked } },
                         },
                       }))}
-                    >处理{CHANNEL_LABEL[channel]}互动</Checkbox>
+                    >处理{labelOf(CHANNEL_LABEL, channel)}互动</Checkbox>
                     <Typography.Text type="secondary">关闭后仍可按即时读取开关收取，但不生成或发送该渠道的回复。</Typography.Text>
                     <Checkbox
                       checked={policy.channels[channel].aiPolishEnabled}
@@ -1140,7 +1141,7 @@ export function WechatChannelsReplySettings({
           columns={templateColumns}
           pagination={false}
           scroll={{ x: 900 }}
-          locale={{ emptyText: <Empty description={`暂无${CHANNEL_LABEL[templateChannel]}模板`} /> }}
+          locale={{ emptyText: <Empty description={`暂无${labelOf(CHANNEL_LABEL, templateChannel)}模板`} /> }}
         />
       </div>
     );
@@ -1170,7 +1171,7 @@ export function WechatChannelsReplySettings({
           columns={ruleColumns}
           pagination={false}
           scroll={{ x: 840 }}
-          locale={{ emptyText: <Empty description={`暂无${CHANNEL_LABEL[templateChannel]}规则`} /> }}
+          locale={{ emptyText: <Empty description={`暂无${labelOf(CHANNEL_LABEL, templateChannel)}规则`} /> }}
         />
       </div>
     );
@@ -1212,7 +1213,7 @@ export function WechatChannelsReplySettings({
                   mode="multiple"
                   value={profile.tone}
                   disabled={editDenied}
-                  options={(Object.keys(TONE_LABEL) as ReplyTone[]).map((value) => ({ value, label: TONE_LABEL[value] }))}
+                  options={(Object.keys(TONE_LABEL) as ReplyTone[]).map((value) => ({ value, label: labelOf(TONE_LABEL, value) }))}
                   onChange={(tone) => change({ tone })}
                 />
               </Form.Item>
@@ -1238,9 +1239,9 @@ export function WechatChannelsReplySettings({
             <Divider orientation="left">变量缺失时的安全兜底</Divider>
             <div className="reply-config__form-grid">
               {TEMPLATE_VARIABLES.map((variable) => (
-                <Form.Item key={variable} label={TEMPLATE_VARIABLE_LABEL[variable]}>
+                <Form.Item key={variable} label={labelOf(TEMPLATE_VARIABLE_LABEL, variable)}>
                   <Input
-                    aria-label={`${TEMPLATE_VARIABLE_LABEL[variable]}兜底值`}
+                    aria-label={`${labelOf(TEMPLATE_VARIABLE_LABEL, variable)}兜底值`}
                     value={profile.variableFallbacks[variable]}
                     disabled={editDenied}
                     onChange={(event) => change({ variableFallbacks: { ...profile.variableFallbacks, [variable]: event.target.value } })}
@@ -1671,7 +1672,7 @@ function TemplateEditorModal({
           <Space wrap>
             <Typography.Text type="secondary">插入变量：</Typography.Text>
             {TEMPLATE_VARIABLES.map((variable) => (
-              <Button key={variable} size="small" onClick={() => insertVariable(variable)}>{TEMPLATE_VARIABLE_LABEL[variable]}</Button>
+              <Button key={variable} size="small" onClick={() => insertVariable(variable)}>{labelOf(TEMPLATE_VARIABLE_LABEL, variable)}</Button>
             ))}
           </Space>
           {inspection.unknownTokens.length ? (
@@ -1757,7 +1758,7 @@ function RuleEditorModal({
           <Typography.Text type="secondary">取消后仅继承账号和渠道的自动化上限，不代表一定自动发送。</Typography.Text>
         </Space>
         <Form.Item label="命中这些风险标签时强制人工" className="reply-config__section-alert">
-          <Select aria-label="强制人工风险标签" mode="multiple" value={rule.actions.forceHumanTags} options={RISK_TAGS.map((value) => ({ value, label: RISK_TAG_LABEL[value] }))} onChange={(forceHumanTags) => setActions({ forceHumanTags })} />
+              <Select aria-label="强制人工风险标签" mode="multiple" value={rule.actions.forceHumanTags} options={RISK_TAGS.map((value) => ({ value, label: labelOf(RISK_TAG_LABEL, value) }))} onChange={(forceHumanTags) => setActions({ forceHumanTags })} />
         </Form.Item>
         {error ? <Alert type="error" showIcon message={error} /> : null}
       </Form>
@@ -1803,7 +1804,7 @@ function PreviewFlow({ result, templates, rules }: { result: PreviewResult; temp
           {
             title: '4. 风险判断',
             status: result.risk.level === 'low' ? 'finish' : 'error',
-            description: <Space wrap><Tag color={riskMeta.color}>{riskMeta.label}</Tag>{result.risk.tags.map((tag) => <Tag key={tag}>{RISK_TAG_LABEL[tag]}</Tag>)}{result.risk.reasons.map((reason) => <Typography.Text key={reason}>{reason}</Typography.Text>)}</Space>,
+            description: <Space wrap><Tag color={riskMeta.color}>{riskMeta.label}</Tag>{result.risk.tags.map((tag) => <Tag key={tag}>{labelOf(RISK_TAG_LABEL, tag)}</Tag>)}{result.risk.reasons.map((reason) => <Typography.Text key={reason}>{reason}</Typography.Text>)}</Space>,
           },
           {
             title: '5. 最终动作',

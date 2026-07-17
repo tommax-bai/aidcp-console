@@ -42,6 +42,7 @@ import type {
   ContentQueueStageState,
 } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
+import { labelOf } from '../types/aidcp-enums';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
   published: '已发布',
@@ -414,7 +415,7 @@ function LifecycleJourneyOverview(props: {
         <Alert
           showIcon
           type={recentAlertType(journey.status)}
-          message={`最近结果 · ${JOURNEY_STATUS_LABEL[journey.status]}`}
+          message={`最近结果 · ${labelOf(JOURNEY_STATUS_LABEL, journey.status)}`}
           description={journey.statusSummary}
           className="publish-queue-result-alert"
         />
@@ -435,7 +436,7 @@ function LifecycleJourneyOverview(props: {
         </div>
         <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
           <Tag>{resolveAccountName(journey.accountId)}</Tag>
-          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{JOURNEY_STATUS_LABEL[journey.status]}</Tag>
+          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{labelOf(JOURNEY_STATUS_LABEL, journey.status)}</Tag>
           {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
         </Space>
       </div>
@@ -447,7 +448,7 @@ function LifecycleJourneyOverview(props: {
               <span className="publish-queue-stage__index">{index + 1}</span>
               <Typography.Text strong className="publish-queue-stage__label">{stage.label}</Typography.Text>
               <Tag color={LIFECYCLE_STAGE_STATE_COLOR[stage.state]} className="publish-queue-stage__tag">
-                {LIFECYCLE_STAGE_STATE_LABEL[stage.state]}
+                {labelOf(LIFECYCLE_STAGE_STATE_LABEL, stage.state)}
               </Tag>
             </div>
             <Typography.Text type="secondary" className="publish-queue-stage__fields" title={stage.summary}>
@@ -489,7 +490,7 @@ function lifecycleTag(row: Pick<PanelPublish, 'status' | 'contentVersion'>) {
     );
   }
   const color = row.status === 'published' ? 'green' : row.status === 'submitted' ? 'gold' : row.status === 'failed' ? 'red' : 'default';
-  return <Tag color={color}>{PUBLISH_STATUS_LABEL[row.status] ?? row.status}</Tag>;
+  return <Tag color={color}>{labelOf(PUBLISH_STATUS_LABEL, row.status)}</Tag>;
 }
 
 function sourceTitle(ref: PanelPublishSourceReference): string {
@@ -1132,7 +1133,7 @@ export function ContentPage() {
                         onChange={setSelectedQueueItemId}
                         options={lifecycleActive.map((item) => ({
                           value: item.journeyId,
-                          label: `${resolveAccountName(item.accountId)} · ${item.title} · ${JOURNEY_STATUS_LABEL[item.status]}`,
+                          label: `${resolveAccountName(item.accountId)} · ${item.title} · ${labelOf(JOURNEY_STATUS_LABEL, item.status)}`,
                         }))}
                       />
                     ) : null}
@@ -1242,7 +1243,7 @@ export function ContentPage() {
                       <span className="publish-queue-stage__index">{index + 1}</span>
                       <Typography.Text strong className="publish-queue-stage__label">{stage.label}</Typography.Text>
                       <Tag color={STAGE_STATE_COLOR[stage.state]} className="publish-queue-stage__tag">
-                        {STAGE_STATE_LABEL[stage.state]}
+                        {labelOf(STAGE_STATE_LABEL, stage.state)}
                       </Tag>
                     </div>
                     <Typography.Text type="secondary" className="publish-queue-stage__fields">

@@ -859,8 +859,8 @@ export interface PersonaDetailView {
 
 /** 限额档位（三档）。 */
 export type QuotaTier = 'conservative' | 'normal' | 'aggressive';
-/** 受限动作（与 cloud RISK_ACTIONS 一致）。 */
-export type QuotaAction = 'view' | 'like' | 'collect' | 'comment' | 'follow' | 'publish' | 'comment_like' | 'join_group';
+/** 受限动作直接复用控制台风控动作镜像，避免维护第二份联合类型。 */
+export type QuotaAction = RiskAction;
 
 /** 单 (tier,action) 三窗口生效数字 + 来源/审计（GET /api/quotas 形状）。 */
 export interface QuotaConfigRow {

@@ -1,6 +1,6 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { RISK_ACTIONS, RISK_ACTION_LABEL } from '../types/aidcp-enums';
+import { RISK_ACTIONS, RISK_ACTION_LABEL, labelOf } from '../types/aidcp-enums';
 import type { AccountTotals, PanelAccount } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 import { ProfileLink } from './ProfileLink';
@@ -34,7 +34,7 @@ export function AccountTotalsTable({
       render: (_, r) => <ProfileLink userId={r.accountId}>{nameOf(r.accountId)}</ProfileLink>,
     },
     ...RISK_ACTIONS.map((a) => ({
-      title: RISK_ACTION_LABEL[a],
+      title: labelOf(RISK_ACTION_LABEL, a),
       key: a,
       align: 'right' as const,
       // 用量可见（change decouple-quota-hit-from-risk）：显示「用了 / 上限」，撞当日上限标红。

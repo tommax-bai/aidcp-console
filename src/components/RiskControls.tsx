@@ -7,8 +7,7 @@ import {
   RISK_QUOTA_LEVELS,
   RISK_QUOTA_LABEL,
   RISK_STATUS_LABEL,
-  type RiskQuotaLevel,
-  type RiskStatus,
+  labelOf,
 } from '../types/aidcp-enums';
 
 /**
@@ -32,7 +31,7 @@ export function RiskControls({ account }: { account: PanelAccount }) {
       ),
     onSuccess: (res) => {
       // refused 可辨：状态机拒绝（changed=false）渲染「已拒绝」，绝不当成功
-      const label = RISK_STATUS_LABEL[res.state.status as RiskStatus] ?? res.state.status;
+      const label = labelOf(RISK_STATUS_LABEL, res.state.status);
       if (res.changed) message.success(`风控状态已改为 ${label}`);
       else message.warning(`已拒绝（仍为 ${label}）`);
       invalidate();
@@ -44,7 +43,7 @@ export function RiskControls({ account }: { account: PanelAccount }) {
     mutationFn: (level: string) =>
       apiPost<{ state: { quotaLevel: string } }>(`/api/accounts/${account.accountId}/risk/quota`, { level }),
     onSuccess: (res) => {
-      const label = RISK_QUOTA_LABEL[res.state.quotaLevel as RiskQuotaLevel] ?? res.state.quotaLevel;
+      const label = labelOf(RISK_QUOTA_LABEL, res.state.quotaLevel);
       message.success(`配额档位已改为 ${label}`);
       invalidate();
     },
@@ -80,7 +79,7 @@ export function RiskControls({ account }: { account: PanelAccount }) {
         placeholder="档位"
         loading={quota.isPending}
         onChange={(v) => quota.mutate(v)}
-        options={RISK_QUOTA_LEVELS.map((l) => ({ label: RISK_QUOTA_LABEL[l], value: l }))}
+        options={RISK_QUOTA_LEVELS.map((l) => ({ label: labelOf(RISK_QUOTA_LABEL, l), value: l }))}
       />
       <Modal
         title="强制恢复 — 绕过风控恢复时间窗（特权操作）"

@@ -6,7 +6,7 @@ import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
 import { ProfileLink } from './ProfileLink';
 import type { PanelAccount } from '../types/api';
-import { OPERATOR_STATUS_LABEL, type RiskStatus } from '../types/aidcp-enums';
+import { OPERATOR_STATUS_LABEL, labelOf, type RiskStatus } from '../types/aidcp-enums';
 import { accountDisplayName } from '../types/accountDisplay';
 
 const SEVERITY_ORDER: Record<RiskStatus, number> = { frozen: 0, restricted: 1, warned: 2, normal: 3 };
@@ -59,7 +59,7 @@ const columns: ColumnsType<PanelAccount> = [
       { text: '视频号', value: 'wechat_channels' },
     ],
     onFilter: (value, r) => r.platform === value,
-    render: (p: string) => <Tag color={PLATFORM_COLOR[p] ?? 'default'}>{PLATFORM_LABEL[p] ?? p}</Tag>,
+    render: (p: string) => <Tag color={PLATFORM_COLOR[p] ?? 'default'}>{labelOf(PLATFORM_LABEL, p)}</Tag>,
   },
   {
     title: '账号',

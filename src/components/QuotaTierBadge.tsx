@@ -1,5 +1,5 @@
 import { Tag } from 'antd';
-import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, type RiskQuotaLevel } from '../types/aidcp-enums';
+import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, labelOf, type RiskQuotaLevel } from '../types/aidcp-enums';
 
 /**
  * 风控 QUOTA-TIER 徽标：outlined cool Tag（冷色描边）。
@@ -10,7 +10,7 @@ import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, type RiskQuotaLevel } from '../type
 export function QuotaTierBadge({ tier }: { tier: RiskQuotaLevel }) {
   return (
     <Tag bordered color={RISK_QUOTA_COLOR[tier]}>
-      {RISK_QUOTA_LABEL[tier]}
+      {labelOf(RISK_QUOTA_LABEL, tier)}
     </Tag>
   );
 }

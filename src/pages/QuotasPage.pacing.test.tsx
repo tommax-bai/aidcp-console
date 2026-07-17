@@ -10,7 +10,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { QuotasPage } from './QuotasPage';
-import type { PacingConfigRow } from '../types/api';
+import type { PacingConfigRow, QuotaConfigRow } from '../types/api';
 
 // jsdom 无 matchMedia；antd 响应式需要最小桩。
 if (typeof window.matchMedia !== 'function') {
@@ -80,6 +80,7 @@ const HOT_LEAD_CONFIG = {
 
 const state = vi.hoisted(() => ({
   pacingRows: [] as unknown[],
+  quotaRows: [] as unknown[],
   getCalls: [] as string[],
   putCalls: [] as Array<{ path: string; body: unknown }>,
   putImpl: (() => Promise.resolve({})) as (path: string, body: unknown) => Promise<unknown>,
@@ -90,7 +91,7 @@ vi.mock('../api/client', async () => ({
   apiGet: vi.fn((path: string) => {
     state.getCalls.push(path);
     if (path === '/api/pacing') return Promise.resolve({ pacing: state.pacingRows });
-    if (path === '/api/quotas') return Promise.resolve({ quotas: [] });
+    if (path === '/api/quotas') return Promise.resolve({ quotas: state.quotaRows });
     if (path === '/api/session-limits') return Promise.resolve(SESSION_LIMITS);
     if (path === '/api/resume-config') return Promise.resolve(RESUME_CONFIG);
     if (path === '/api/hot-lead-config') return Promise.resolve(HOT_LEAD_CONFIG);
@@ -123,9 +124,23 @@ async function pacingRow(label: string): Promise<HTMLElement> {
   return tr as HTMLElement;
 }
 
+function quotaRow(action: QuotaConfigRow['action']): QuotaConfigRow {
+  return {
+    tier: 'normal',
+    action,
+    daily: 10,
+    perMinute: 2,
+    perHour: 5,
+    overridden: false,
+    updatedAt: null,
+    updatedBy: null,
+  };
+}
+
 describe('QuotasPage 节奏兜底块', () => {
   beforeEach(() => {
     state.pacingRows = PACING_ROWS.map((r) => ({ ...r }));
+    state.quotaRows = [];
     state.getCalls = [];
     state.putCalls = [];
     state.putImpl = () => Promise.resolve({ pacing: state.pacingRows });
@@ -191,5 +206,48 @@ describe('QuotasPage 节奏兜底块', () => {
     );
     // 非乐观：成功后 invalidate → 再次拉取真态（/api/pacing 被重取）。
     await waitFor(() => expect(state.getCalls.filter((p) => p === '/api/pacing').length).toBeGreaterThanOrEqual(2));
+  });
+});
+
+describe('QuotasPage 动作镜像与未知值回落', () => {
+  beforeEach(() => {
+    state.pacingRows = PACING_ROWS.map((r) => ({ ...r }));
+    state.quotaRows = [];
+    state.getCalls = [];
+    state.putCalls = [];
+    state.putImpl = () => Promise.resolve({});
+  });
+
+  it('dm_reply 显示中文动作，编辑弹窗标题不出现 undefined', async () => {
+    state.quotaRows = [quotaRow('dm_reply')];
+    renderPage();
+
+    const label = await screen.findByText('私信回复');
+    const row = label.closest('tr');
+    if (!row) throw new Error('no quota row for dm_reply');
+    fireEvent.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('编辑限额：正常 · 私信回复');
+    expect(dialog.textContent).not.toContain('undefined');
+  });
+
+  it('未知动作显示原值并稳定排在已知动作之后，页面与已知行均正常', async () => {
+    state.quotaRows = [
+      { ...quotaRow('view'), action: 'future_action' },
+      quotaRow('view'),
+    ];
+    renderPage();
+
+    const known = await screen.findByText('浏览');
+    const unknown = await screen.findByText('future_action');
+    expect(known.compareDocumentPosition(unknown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const unknownRow = unknown.closest('tr');
+    if (!unknownRow) throw new Error('no quota row for future_action');
+    fireEvent.click(within(unknownRow).getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('future_action');
+    expect(dialog.textContent).not.toContain('undefined');
   });
 });

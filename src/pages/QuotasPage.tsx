@@ -18,7 +18,7 @@ import type {
   PacingConfigView,
   PacingOperation,
 } from '../types/api';
-import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, RISK_ACTION_LABEL } from '../types/aidcp-enums';
+import { RISK_QUOTA_COLOR, RISK_QUOTA_LABEL, RISK_ACTION_LABEL, labelOf } from '../types/aidcp-enums';
 
 const QUOTA_MAX = 100_000;
 
@@ -27,8 +27,9 @@ const QUOTA_MAX = 100_000;
 // 那会与「全站绿=正常状态」语义冲突）。公用枚举无展示排序，故本页仅保留 order 附加。
 const TIER_ORDER: Record<QuotaTier, number> = { conservative: 1, normal: 2, aggressive: 3 };
 const ACTION_ORDER: Record<QuotaAction, number> = {
-  view: 1, like: 2, collect: 3, comment: 4, comment_like: 5, join_group: 6, follow: 7, publish: 8,
+  view: 1, like: 2, collect: 3, comment: 4, comment_like: 5, dm_reply: 6, join_group: 7, follow: 8, publish: 9,
 };
+const actionOrder = (action: string): number => ACTION_ORDER[action as QuotaAction] ?? Number.MAX_SAFE_INTEGER;
 
 const rowKey = (r: { tier: string; action: string }) => `${r.tier}:${r.action}`;
 
@@ -143,7 +144,7 @@ export function QuotasPage() {
         .sort(
           (a, b) =>
             TIER_ORDER[a.tier] - TIER_ORDER[b.tier] ||
-            ACTION_ORDER[a.action] - ACTION_ORDER[b.action],
+            actionOrder(a.action) - actionOrder(b.action),
         ),
     [data],
   );
@@ -152,8 +153,8 @@ export function QuotasPage() {
   const canSave = validNum(daily) && validNum(perMinute) && validNum(perHour);
 
   const columns: ColumnsType<QuotaConfigRow> = [
-    { title: '档位', dataIndex: 'tier', width: 90, render: (t: QuotaTier) => <Tag color={RISK_QUOTA_COLOR[t]}>{RISK_QUOTA_LABEL[t]}</Tag> },
-    { title: '动作', dataIndex: 'action', width: 110, render: (a: QuotaAction) => RISK_ACTION_LABEL[a] },
+    { title: '档位', dataIndex: 'tier', width: 90, render: (t: QuotaTier) => <Tag color={RISK_QUOTA_COLOR[t]}>{labelOf(RISK_QUOTA_LABEL, t)}</Tag> },
+    { title: '动作', dataIndex: 'action', width: 110, render: (a: QuotaAction) => labelOf(RISK_ACTION_LABEL, a) },
     { title: '每日', dataIndex: 'daily', width: 90, render: (n: number) => <span className="tabular-nums">{n}</span> },
     { title: '每分钟', dataIndex: 'perMinute', width: 90, render: (n: number) => <span className="tabular-nums">{n}</span> },
     { title: '每小时', dataIndex: 'perHour', width: 90, render: (n: number) => <span className="tabular-nums">{n}</span> },
@@ -472,7 +473,7 @@ export function QuotasPage() {
   );
 
   const pacingColumns: ColumnsType<PacingConfigRow> = [
-    { title: '操作类别', dataIndex: 'operation', width: 120, render: (op: PacingOperation) => PACING_OP_LABEL[op] },
+    { title: '操作类别', dataIndex: 'operation', width: 120, render: (op: PacingOperation) => labelOf(PACING_OP_LABEL, op) },
     {
       title: '覆盖场景',
       dataIndex: 'operation',
@@ -640,7 +641,7 @@ export function QuotasPage() {
       </Card>
 
       <Modal
-        title={editing ? `编辑限额：${RISK_QUOTA_LABEL[editing.tier]} · ${RISK_ACTION_LABEL[editing.action]}` : ''}
+        title={editing ? `编辑限额：${labelOf(RISK_QUOTA_LABEL, editing.tier)} · ${labelOf(RISK_ACTION_LABEL, editing.action)}` : ''}
         open={!!editing}
         onCancel={() => setEditing(null)}
         confirmLoading={save.isPending}
@@ -841,7 +842,7 @@ export function QuotasPage() {
       </Modal>
 
       <Modal
-        title={editingPacing ? `编辑节奏兜底：${PACING_OP_LABEL[editingPacing.operation]}` : ''}
+        title={editingPacing ? `编辑节奏兜底：${labelOf(PACING_OP_LABEL, editingPacing.operation)}` : ''}
         open={!!editingPacing}
         onCancel={() => setEditingPacing(null)}
         confirmLoading={savePacing.isPending}

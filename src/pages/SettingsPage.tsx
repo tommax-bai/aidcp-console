@@ -7,6 +7,7 @@ import { useModelConfig } from '../api/queries';
 import { useConfigMutation } from '../hooks/useConfigMutation';
 import { QueryError } from '../components/QueryGate';
 import type { ModelConfig } from '../types/api';
+import { labelOf } from '../types/aidcp-enums';
 
 type Credential = ModelConfig['credentials'][number];
 
@@ -283,7 +284,7 @@ export function SettingsPage() {
                           <KeyOutlined />
                           <Typography.Text strong>{cred.label}</Typography.Text>
                           <Tag color={cred.configured ? 'green' : 'default'}>{cred.configured ? '已配置' : '未配置'}</Tag>
-                          <Tag color={SOURCE_COLOR[cred.source]}>{SOURCE_LABEL[cred.source]}</Tag>
+                          <Tag color={SOURCE_COLOR[cred.source]}>{labelOf(SOURCE_LABEL, cred.source)}</Tag>
                           {hint && <Tag>{hint}</Tag>}
                         </Space>
                         <div>

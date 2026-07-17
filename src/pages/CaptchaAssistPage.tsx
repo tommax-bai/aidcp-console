@@ -3,6 +3,7 @@ import { App as AntApp, Alert, Button, Empty, Result, Space, Spin, Tag, Typograp
 import { ClearOutlined, ExportOutlined, ReloadOutlined, SendOutlined } from '@ant-design/icons';
 import { useParams, useSearchParams } from 'react-router-dom';
 import type { CaptchaAssistIncident } from '../types/api';
+import { labelOf } from '../types/aidcp-enums';
 
 const { Text, Title } = Typography;
 
@@ -234,7 +235,7 @@ export function CaptchaAssistPage() {
         <div>
           <Title level={3}>验证码协助处理</Title>
           <Space size={8} wrap>
-            {incident ? <Tag color={STATUS_COLOR[incident.status]}>{STATUS_LABEL[incident.status]}</Tag> : null}
+            {incident ? <Tag color={STATUS_COLOR[incident.status]}>{labelOf(STATUS_LABEL, incident.status)}</Tag> : null}
             {liveActive ? <Tag color="processing">实时</Tag> : null}
             {incident?.riskStatus ? <Tag>{incident.riskStatus}</Tag> : null}
             {incident?.accountName || incident?.accountId ? <Text type="secondary">{incident.accountName ?? incident.accountId}</Text> : null}
