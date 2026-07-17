@@ -30,6 +30,10 @@ const CODE_TEXT: Record<string, string> = {
   // 客户端用户后台（change edge-client-customer-auth）
   name_taken: '账户名已被占用，请换一个',
   invalid_name: '账户名格式不合法（不能为空）',
+  unknown_environment: '该环境尚未登记，无法分配',
+  env_already_assigned: '该环境已有归属，请先完成原归属撤权与清理',
+  cleanup_in_progress: '该环境归属已撤销，但清理仍待定位，暂不能重新分配',
+  offboard_in_progress: '该环境正在执行撤权清理，完成并清除保留记录前不能重新分配',
   // 自动联系评论「必须先配联系方式」拒因（content-schedule-group-comments）：云端随 bad_request 的 body.reason 下发，
   // error 恒为 'bad_request'，故必须按 reason 映射（否则只会显「请求格式有误」看不出真因）。
   // 注：联系方式「共用」自 loosen-group-comment-shared-code 起不再是 error（已放行 + 前端警告），故此处无共用拒因映射。

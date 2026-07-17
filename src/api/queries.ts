@@ -34,6 +34,8 @@ import type {
   ClientEnvScopeRow,
   ClientEnvScopeInput,
   ClientEnvironmentView,
+  ClientUserMutationResponse,
+  ClientScopeMutationResponse,
   DownloadsManifest,
 } from '../types/api';
 
@@ -378,10 +380,11 @@ export function useUpdateClientUser() {
   return useMutation({
     mutationFn: (v: { userId: string; name?: string; status?: ClientUserStatus }) => {
       const { userId, ...patch } = v;
-      return apiPatch<{ user: ClientUserView }>(`/api/client-users/${encodeURIComponent(userId)}`, patch);
+      return apiPatch<ClientUserMutationResponse>(`/api/client-users/${encodeURIComponent(userId)}`, patch);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['client-users'] });
+      void qc.invalidateQueries({ queryKey: ['client-environments'] });
     },
   });
 }
@@ -403,7 +406,7 @@ export function useSetClientUserScope() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { userId: string; environments: ClientEnvScopeInput[] }) =>
-      apiPut<{ scope: ClientEnvScopeRow[] }>(`/api/client-users/${encodeURIComponent(v.userId)}/scope`, {
+      apiPut<ClientScopeMutationResponse>(`/api/client-users/${encodeURIComponent(v.userId)}/scope`, {
         environments: v.environments,
       }),
     // 列表键是 scope 键的前缀：失效列表同时刷新 envCount 与打开中的 scope（TanStack 前缀匹配）。

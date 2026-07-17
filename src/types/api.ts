@@ -1304,6 +1304,41 @@ export interface ClientEnvAssignee {
   name: string;
 }
 
+export type ClientCleanupReason = 'environment_unbind' | 'customer_terminated' | 'admin_revoked';
+export type ClientOffboardState = 'pending_edge' | 'dispatched' | 'tombstoned' | 'purged';
+
+export type ClientCleanupReceipt =
+  | {
+      kind: 'binding_missing';
+      revocationId: string;
+      envKey: string;
+      state: 'binding_missing';
+      reason: 'customer_terminated' | 'admin_revoked';
+      requestedAt: number;
+    }
+  | {
+      kind: 'offboard_pending';
+      offboardId: string;
+      envKey: string;
+      accountId: string;
+      state: ClientOffboardState;
+      reason: ClientCleanupReason;
+      requestedAt: number;
+      purgeDueAt: number;
+    };
+
+export interface ClientUserMutationResponse {
+  user: ClientUserView;
+  /** Additive in wechat-env-ownership-revocation; absent only during a rolling deploy against an older Cloud. */
+  cleanup?: ClientCleanupReceipt[];
+}
+
+export interface ClientScopeMutationResponse {
+  scope: ClientEnvScopeRow[];
+  /** Additive in wechat-env-ownership-revocation; absent only during a rolling deploy against an older Cloud. */
+  cleanup?: ClientCleanupReceipt[];
+}
+
 /**
  * 管理侧全局环境注册表行（GET /api/client-environments；change client-user-env-picker）：
  * 系统已知的一个环境 + 它被分配给哪些端用户。跨用户聚合，受内部 JWT，仅后台可读。
@@ -1314,6 +1349,7 @@ export interface ClientEnvironmentView {
   platform: string | null;
   assignees: ClientEnvAssignee[];
   assigneeCount: number;
+  cleanup: ClientCleanupReceipt | null;
 }
 
 /**

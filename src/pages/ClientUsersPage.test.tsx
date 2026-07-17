@@ -3,12 +3,15 @@ import { render } from '@testing-library/react';
 import {
   CLIENT_ENV_PLATFORM_OPTIONS,
   assigneeCell,
+  cleanupNotice,
+  cleanupTag,
+  closeSavedScope,
   copyToClipboard,
   platformTag,
   sourceTag,
   statusTag,
 } from './ClientUsersPage';
-import type { ClientEnvironmentView } from '../types/api';
+import type { ClientCleanupReceipt, ClientEnvironmentView } from '../types/api';
 
 /**
  * 只锁「枚举漂移不白屏」这一关键不变量（memory: console↔cloud 枚举漂移会 white-screen）：
@@ -100,6 +103,7 @@ describe('assigneeCell — 多人 / 单客户 / 空 标识', () => {
     platform: null,
     assignees: Array.from({ length: n }, (_, i) => ({ userId: `u${i}`, name: `客户${i}` })),
     assigneeCount: n,
+    cleanup: null,
   });
 
   it('assigneeCount >= 2 renders 多人 badge with count', () => {
@@ -117,5 +121,40 @@ describe('assigneeCell — 多人 / 单客户 / 空 标识', () => {
   it('undefined or zero assignees renders an em dash', () => {
     expect(render(assigneeCell(undefined)).container.textContent).toContain('—');
     expect(render(assigneeCell(mk(0))).container.textContent).toContain('—');
+  });
+});
+
+describe('cleanup truthfulness — access revoked is not cleanup complete', () => {
+  const missing: ClientCleanupReceipt = {
+    kind: 'binding_missing', revocationId: 'rev-1', envKey: 'env-1', state: 'binding_missing',
+    reason: 'admin_revoked', requestedAt: 1,
+  };
+  const offboard: ClientCleanupReceipt = {
+    kind: 'offboard_pending', offboardId: 'off-1', envKey: 'env-2', accountId: 'acct-2',
+    state: 'pending_edge', reason: 'admin_revoked', requestedAt: 1, purgeDueAt: 2,
+  };
+
+  it('renders binding missing separately from Edge cleanup pending', () => {
+    expect(render(cleanupTag(missing)).container.textContent).toContain('清理待定位');
+    expect(render(cleanupTag(offboard)).container.textContent).toContain('Edge 清理中');
+    expect(render(cleanupTag(null)).container.textContent).toContain('—');
+  });
+
+  it('prioritizes the unresolved-binding warning for mixed revocations', () => {
+    expect(cleanupNotice([offboard, missing])).toEqual({
+      level: 'warning',
+      text: '归属已撤销；1 个环境清理待定位，确认真实账号绑定前不能重新分配；另有 1 个环境正在执行 Edge 清理',
+    });
+    expect(cleanupNotice([offboard])).toEqual({
+      level: 'info', text: '归属已撤销；1 个环境正在执行 Edge 清理',
+    });
+    expect(cleanupNotice([])).toBeNull();
+    expect(cleanupNotice(undefined)).toBeNull();
+  });
+
+  it('does not let a late save response close a newer user drawer', () => {
+    expect(closeSavedScope('user-a', 'user-a')).toBeNull();
+    expect(closeSavedScope('user-b', 'user-a')).toBe('user-b');
+    expect(closeSavedScope(null, 'user-a')).toBeNull();
   });
 });

@@ -30,7 +30,7 @@ import {
 } from '../api/queries';
 import { errorText } from '../api/errorText';
 import { QueryError } from '../components/QueryGate';
-import type { ClientEnvScopeRow, ClientEnvironmentView, ClientUserView } from '../types/api';
+import type { ClientCleanupReceipt, ClientEnvScopeRow, ClientEnvironmentView, ClientUserView } from '../types/api';
 
 /**
  * 客户端用户管理页（change edge-client-customer-auth）。
@@ -84,6 +84,43 @@ export const CLIENT_ENV_PLATFORM_OPTIONS = [
   { label: 'Facebook', value: 'facebook' },
   { label: '视频号', value: 'wechat_channels' },
 ];
+
+export function cleanupTag(cleanup: ClientCleanupReceipt | null) {
+  if (!cleanup) return <Typography.Text type="secondary">—</Typography.Text>;
+  if (cleanup.kind === 'binding_missing') {
+    return (
+      <Tooltip title="客户访问权已经收回，但 Cloud 尚缺精确账号绑定，不能声称 Edge 密文或数据已清理。">
+        <Tag color="orange">清理待定位</Tag>
+      </Tooltip>
+    );
+  }
+  if (cleanup.state === 'tombstoned') return <Tag color="green">清理已确认（保留期）</Tag>;
+  if (cleanup.state === 'purged') return <Tag>已清除</Tag>;
+  return <Tag color="blue">Edge 清理中</Tag>;
+}
+
+export function cleanupNotice(cleanup: ClientCleanupReceipt[] | undefined):
+  { level: 'warning' | 'info'; text: string } | null {
+  const receipts = cleanup ?? [];
+  const missing = receipts.filter((item) => item.kind === 'binding_missing').length;
+  const offboards = receipts.length - missing;
+  if (missing) {
+    const suffix = offboards ? `；另有 ${offboards} 个环境正在执行 Edge 清理` : '';
+    return {
+      level: 'warning',
+      text: `归属已撤销；${missing} 个环境清理待定位，确认真实账号绑定前不能重新分配${suffix}`,
+    };
+  }
+  if (offboards) {
+    return { level: 'info', text: `归属已撤销；${offboards} 个环境正在执行 Edge 清理` };
+  }
+  return null;
+}
+
+/** A late scope-save response may close only the drawer it started from, never a newer user's drawer. */
+export function closeSavedScope(currentUserId: string | null, savedUserId: string): string | null {
+  return currentUserId === savedUserId ? null : currentUserId;
+}
 
 function fmtTime(ms: number | null): string {
   if (!ms) return '从未';
@@ -160,6 +197,13 @@ export function ClientUsersPage() {
     [users.data, scopeUserId],
   );
 
+  const reportMutation = (fallback: string, cleanup: ClientCleanupReceipt[] | undefined) => {
+    const notice = cleanupNotice(cleanup);
+    if (!notice) message.success(fallback);
+    else if (notice.level === 'warning') message.warning(notice.text);
+    else message.info(notice.text);
+  };
+
   const openCreate = () => {
     setCreateName('');
     setCreateOpen(true);
@@ -214,7 +258,7 @@ export function ClientUsersPage() {
     updateUser.mutate(
       { userId: u.userId, status: next },
       {
-        onSuccess: () => message.success(next === 'disabled' ? '已停用' : '已启用'),
+        onSuccess: (res) => reportMutation(next === 'disabled' ? '已停用' : '已启用', res.cleanup),
         onError: (e) => message.error(errorText(e, '操作失败')),
       },
     );
@@ -456,12 +500,13 @@ export function ClientUsersPage() {
         onClose={() => setScopeUserId(null)}
         onSave={(environments) => {
           if (!scopeUserId) return;
+          const targetUserId = scopeUserId;
           setScope.mutate(
-            { userId: scopeUserId, environments },
+            { userId: targetUserId, environments },
             {
-              onSuccess: () => {
-                message.success('已保存环境归属');
-                setScopeUserId(null);
+              onSuccess: (res) => {
+                reportMutation('已保存环境归属', res.cleanup);
+                setScopeUserId((current) => closeSavedScope(current, targetUserId));
               },
               onError: (e) => message.error(errorText(e, '保存失败')),
             },
@@ -552,12 +597,12 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
    * 「加入选中（N）」计数与实际可加入项一致（不残留空点）。
    */
   const effectiveSelected = useMemo(() => {
-    const keys = new Set(unassignedRows.map((e) => e.envKey));
+    const keys = new Set(unassignedRows.filter((e) => !e.cleanup).map((e) => e.envKey));
     return selectedAddKeys.filter((k) => keys.has(k));
   }, [selectedAddKeys, unassignedRows]);
 
   const addSelected = () => {
-    const toAdd = unassignedRows.filter((e) => effectiveSelected.includes(e.envKey));
+    const toAdd = unassignedRows.filter((e) => !e.cleanup && effectiveSelected.includes(e.envKey));
     if (!toAdd.length) {
       message.warning('请先勾选要加入的环境');
       return;
@@ -584,6 +629,10 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
     }
     if (assignedKeys.has(envKey)) {
       message.warning('该环境已在归属列表中');
+      return;
+    }
+    if (envMeta.get(envKey)?.cleanup) {
+      message.warning('该环境仍有撤权清理责任，暂不能重新分配');
       return;
     }
     setRows((prev) => [
@@ -623,14 +672,15 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
     envKeyCol,
     labelCol,
     platformCol,
-    { title: '已分配给', key: 'assignees', width: 130, render: (_: unknown, e) => assigneeCell(envMeta.get(e.envKey)) },
+    { title: '当前归属', key: 'assignees', width: 130, render: (_: unknown, e) => assigneeCell(envMeta.get(e.envKey)) },
+    { title: '撤权清理', key: 'cleanup', width: 150, render: (_: unknown, e) => cleanupTag(e.cleanup) },
   ];
   const assignedColumns: ColumnsType<DraftRow> = [
     envKeyCol,
     labelCol,
     platformCol,
     { title: '来源', dataIndex: 'source', width: 100, render: (s: string) => sourceTag(s) },
-    { title: '共享', key: 'assignees', width: 120, render: (_: unknown, r) => assigneeCell(envMeta.get(r.envKey)) },
+    { title: '当前归属', key: 'assignees', width: 120, render: (_: unknown, r) => assigneeCell(envMeta.get(r.envKey)) },
     {
       title: '操作',
       key: 'op',
@@ -674,8 +724,8 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
           <Alert
             type="info"
             showIcon
-            message="从环境列表勾选加入该端用户的可见范围。同一个环境可分配给多个端用户；被多个端用户共享的显示「多人」。"
-            description="envKey = 环境的 AdsPower profileId。「待分配」= 尚未归属该端用户；「已分配」= 已归属该端用户。保存时按「已分配」列表整批替换，只影响该端用户。"
+            message="从环境列表勾选加入该端用户的可见范围；每个 active 环境只能有一个权威归属。"
+            description="envKey = AdsPower profileId。撤权清理中或清理待定位的环境会保留在待分配池中展示真态，但在清理完成前不可勾选。"
           />
           <Segmented
             value={filter}
@@ -696,6 +746,10 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
                 rowSelection={{
                   selectedRowKeys: effectiveSelected,
                   onChange: (keys) => setSelectedAddKeys(keys as string[]),
+                  getCheckboxProps: (row) => ({
+                    disabled: !!row.cleanup,
+                    title: row.cleanup ? '归属已撤销，但清理尚未完成，暂不能重新分配' : undefined,
+                  }),
                 }}
                 pagination={{ pageSize: 8, size: 'small', hideOnSinglePage: true }}
                 locale={{

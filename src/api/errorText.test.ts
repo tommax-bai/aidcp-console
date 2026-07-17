@@ -26,6 +26,15 @@ describe('errorText（#31 服务端错误码 → 中文）', () => {
     expect(errorText(new Error('account_not_found'))).toBe('账号不存在');
   });
 
+  it('撤权清理冲突显示可操作中文，不暴露机器码', () => {
+    expect(errorText(new ApiError(409, 'cleanup_in_progress'))).toBe(
+      '该环境归属已撤销，但清理仍待定位，暂不能重新分配',
+    );
+    expect(errorText(new ApiError(409, 'offboard_in_progress'))).toBe(
+      '该环境正在执行撤权清理，完成并清除保留记录前不能重新分配',
+    );
+  });
+
   it('非 Error 值回落 fallback', () => {
     expect(errorText('boom', '失败')).toBe('失败');
     expect(errorText(null)).toBe('操作失败');
