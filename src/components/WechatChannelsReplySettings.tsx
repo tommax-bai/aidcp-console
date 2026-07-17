@@ -913,6 +913,7 @@ export function WechatChannelsReplySettings({
   const renderStrategy = () => {
     if (!snapshot) return null;
     const runtime = snapshot.runtime;
+    const circuitOpen = runtime.circuitOpen || runtime.circuitOpenedAt !== null;
     const policy = snapshot.policy;
     return (
       <div className="reply-config__stack">
@@ -927,6 +928,17 @@ export function WechatChannelsReplySettings({
             message="读取开关与写入总闸立即生效，不属于 draft/published 配置。"
             className="reply-config__section-alert"
           />
+          {circuitOpen ? (
+            <Alert
+              type="error"
+              showIcon
+              message="账号写熔断中，当前不会发送"
+              description={`已连续失败 ${runtime.consecutiveFailures} 次，熔断开始于 ${
+                runtime.circuitOpenedAt === null ? '未知时间' : formatTime(runtime.circuitOpenedAt)
+              }。排除故障后，将“账号写总闸”从暂停切换为开启并保存；该动作会清除熔断并恢复发送。`}
+              className="reply-config__section-alert"
+            />
+          ) : null}
           <div className="reply-config__switch-grid">
             <SettingSwitch
               label="收取互动"
@@ -1367,10 +1379,14 @@ export function WechatChannelsReplySettings({
     { key: 'audit', label: '审计', children: renderAudit() },
   ] : [];
 
+  const runtimeCircuitOpen = snapshot
+    ? snapshot.runtime.circuitOpen || snapshot.runtime.circuitOpenedAt !== null
+    : false;
   const publishSummary = snapshot ? [
     `运行模式：${MODE_LABEL[snapshot.policy.mode]}`,
     `配置发送开关：${snapshot.policy.sendReplies ? '允许发送' : '关闭'}`,
-    `即时账号写总闸：${snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`,
+    `即时账号写总闸：${runtimeCircuitOpen ? '熔断中（发送已阻断）' :
+      snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`,
     `评论：${snapshot.policy.channels.comment.enabled ? '启用' : '关闭'}，${snapshot.policy.channels.comment.allowAutoSend ? '允许低风险自动' : '人工路径'}`,
     `私信：${snapshot.policy.channels.dm.enabled ? '启用' : '关闭'}，${snapshot.policy.channels.dm.allowAutoSend ? '允许低风险自动' : '人工路径'}`,
     `允许自动发送的启用规则：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend).length} 条`,

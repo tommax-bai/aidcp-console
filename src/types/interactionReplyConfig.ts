@@ -83,6 +83,9 @@ export interface RuntimeControls {
   dmSendTextEnabled: boolean;
   dmSendImageEnabled: false;
   writePaused: boolean;
+  circuitOpen: boolean;
+  circuitOpenedAt: number | null;
+  consecutiveFailures: number;
   updatedAt: number;
   updatedBy: string;
 }

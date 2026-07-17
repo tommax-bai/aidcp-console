@@ -350,6 +350,28 @@ describe('WechatChannelsReplySettings', () => {
     await waitFor(() => expect(screen.getByText('当前聚合版本').parentElement?.textContent).toContain('v2'));
   });
 
+  it('renders system circuit separately from the manual write gate and shows the recovery path', async () => {
+    const server = createServer();
+    const store = frozenInteractionFixtures('acct_wc_demo');
+    Object.assign(store.runtime.data, {
+      writePaused: false,
+      circuitOpen: true,
+      circuitOpenedAt: 1784044790000,
+      consecutiveFailures: 3,
+    });
+    server.stores.set('acct_wc_demo', store);
+    renderDrawer();
+    await waitForConfig();
+    expect(screen.getByText('账号写熔断中，当前不会发送')).toBeTruthy();
+    expect(screen.getByText(/清除熔断并恢复发送/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '发布' }));
+    const publishTitle = await screen.findByText('发布回复配置');
+    const dialog = publishTitle.closest('.ant-modal') as HTMLElement;
+    expect(within(dialog).queryByText('即时账号写总闸：允许写入')).toBeNull();
+    expect(within(dialog).getByText('即时账号写总闸：熔断中（发送已阻断）')).toBeTruthy();
+  });
+
   it('publishes only through reply-config/publish and displays the returned published version', async () => {
     const server = createServer();
     renderDrawer();
