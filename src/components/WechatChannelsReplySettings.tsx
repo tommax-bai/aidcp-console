@@ -936,6 +936,7 @@ export function WechatChannelsReplySettings({
   const renderStrategy = () => {
     if (!snapshot) return null;
     const runtime = snapshot.runtime;
+    const circuitOpen = runtime.circuitOpen || runtime.circuitOpenedAt !== null;
     const policy = snapshot.policy;
     const processingMode = replyProcessingModeOf(policy);
     const canonicalProcessingMode = isCanonicalReplyProcessingPolicy(policy);
@@ -953,6 +954,17 @@ export function WechatChannelsReplySettings({
             description="它不改变下方长期回复策略；关闭账号或渠道发送后，仍可按读取开关继续收取互动和保留草稿。"
             className="reply-config__section-alert"
           />
+          {circuitOpen ? (
+            <Alert
+              type="error"
+              showIcon
+              message="账号写熔断中，当前不会发送"
+              description={`已连续失败 ${runtime.consecutiveFailures} 次，熔断开始于 ${
+                runtime.circuitOpenedAt === null ? '未知时间' : formatTime(runtime.circuitOpenedAt)
+              }。排除故障后，将“账号写总闸”从暂停切换为开启并保存；该动作会清除熔断并恢复发送。`}
+              className="reply-config__section-alert"
+            />
+          ) : null}
           <div className="reply-config__switch-grid">
             <SettingSwitch
               label="收取互动"
@@ -1402,10 +1414,14 @@ export function WechatChannelsReplySettings({
     { key: 'audit', label: '审计', children: renderAudit() },
   ] : [];
 
+  const runtimeCircuitOpen = snapshot
+    ? snapshot.runtime.circuitOpen || snapshot.runtime.circuitOpenedAt !== null
+    : false;
   const publishProcessingMode = snapshot ? replyProcessingModeOf(snapshot.policy) : null;
   const publishSummary = snapshot && publishProcessingMode ? [
     `回复处理方式：${replyProcessingModeMetaOf(publishProcessingMode).label}`,
-    `即时账号写总闸：${snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`,
+    `即时账号写总闸：${runtimeCircuitOpen ? '熔断中（发送已阻断）' :
+      snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`,
     `评论：${channelProcessingSummary(snapshot.policy.channels.comment.enabled, snapshot.policy.channels.comment.allowAutoSend, publishProcessingMode)}`,
     `私信：${channelProcessingSummary(snapshot.policy.channels.dm.enabled, snapshot.policy.channels.dm.allowAutoSend, publishProcessingMode)}`,
     `启用规则：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend && !rule.actions.polish).length} 条继承自动范围，${snapshot.rules.filter((rule) => rule.enabled && (!rule.actions.allowAutoSend || rule.actions.polish)).length} 条必须人工`,
