@@ -12,6 +12,7 @@ import type {
   LikeRate,
   PanelInteraction,
   ModelConfig,
+  InteractionPermissionOverview,
   RoleConfigCatalog,
   CategoryConfigCatalog,
   PersonaConfigCatalog,
@@ -52,6 +53,14 @@ export function useModelConfig() {
   return useQuery({
     queryKey: ['config', 'model'],
     queryFn: () => apiGet<ModelConfig>('/api/config/model'),
+  });
+}
+
+/** 视频号互动权限只读概览（change wechat-panel-permission-visibility）。 */
+export function useInteractionPermissions() {
+  return useQuery({
+    queryKey: ['config', 'interaction-permissions'],
+    queryFn: () => apiGet<InteractionPermissionOverview>('/api/config/interaction-permissions'),
   });
 }
 

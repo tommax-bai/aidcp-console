@@ -747,6 +747,25 @@ export interface ModelConfig {
   canEditCredential: boolean;
 }
 
+/** 视频号互动权限固定目录行（GET /api/config/interaction-permissions，只读）。 */
+export interface InteractionPermissionView {
+  key:
+    | 'interaction.config.view'
+    | 'interaction.config.edit'
+    | 'interaction.config.publish'
+    | 'interaction.config.preview'
+    | 'interaction.dm.view_full'
+    | 'interaction.audit.view';
+  name: string;
+  description: string;
+  /** 同时存在于后台登录用户与 grants 配置中的有效用户名。 */
+  users: string[];
+}
+
+export interface InteractionPermissionOverview {
+  permissions: InteractionPermissionView[];
+}
+
 // 角色级模型/温度配置（change console-role-model-config）。与 cloud RoleConfigRowView 手动对齐。
 
 // ModelEffectiveSource / ThinkingModeApi 已上移 aidcp-enums 单源（见文件头 import + 复出）。

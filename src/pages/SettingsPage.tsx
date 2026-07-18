@@ -1,15 +1,83 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, Card, Form, Input, Select, Skeleton, Space, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudServerOutlined, KeyOutlined, SafetyCertificateOutlined, SaveOutlined } from '@ant-design/icons';
+import { ApiOutlined, CloudServerOutlined, KeyOutlined, SafetyCertificateOutlined, SaveOutlined, TeamOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useModelConfig } from '../api/queries';
+import { useInteractionPermissions, useModelConfig } from '../api/queries';
 import { useConfigMutation } from '../hooks/useConfigMutation';
 import { QueryError } from '../components/QueryGate';
 import type { ModelConfig } from '../types/api';
 import { labelOf } from '../types/aidcp-enums';
 
 type Credential = ModelConfig['credentials'][number];
+
+function InteractionPermissionCard() {
+  const { data, isLoading, isError, refetch } = useInteractionPermissions();
+
+  return (
+    <Card
+      size="small"
+      title={
+        <Space>
+          <TeamOutlined />
+          <span>视频号权限设置</span>
+        </Space>
+      }
+      extra={<Tag color="blue">只读</Tag>}
+    >
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Typography.Text type="secondary">
+          展示当前 Cloud 配置中六项视频号互动权限及有效后台用户。本页面暂不提供权限修改。
+        </Typography.Text>
+
+        {isLoading ? <Skeleton active paragraph={{ rows: 6 }} /> : null}
+        {isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="视频号权限加载失败"
+            description="未使用本地默认值冒充 Cloud 权限配置，其他设置不受影响。"
+            action={<Button size="small" onClick={() => void refetch()}>重试</Button>}
+          />
+        ) : null}
+
+        {data ? (
+          <div className="interaction-permission-list">
+            {data.permissions.map((permission) => (
+              <div
+                key={permission.key}
+                data-testid={`interaction-permission-${permission.key}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(220px, 1fr) minmax(240px, 1.2fr)',
+                  gap: 'var(--aidcp-space-4)',
+                  padding: 'var(--aidcp-space-3)',
+                  borderBottom: '1px solid var(--aidcp-border)',
+                }}
+              >
+                <div>
+                  <Typography.Text strong>{permission.name}</Typography.Text>
+                  <div>
+                    <Typography.Text code copyable>{permission.key}</Typography.Text>
+                  </div>
+                  <Typography.Text type="secondary">{permission.description}</Typography.Text>
+                </div>
+                <div>
+                  <Typography.Text type="secondary">有权限的用户</Typography.Text>
+                  <div style={{ marginTop: 'var(--aidcp-space-2)' }}>
+                    {permission.users.length > 0
+                      ? permission.users.map((username) => <Tag key={username} color="green">{username}</Tag>)
+                      : <Typography.Text type="secondary">暂无已授权用户</Typography.Text>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Space>
+    </Card>
+  );
+}
 
 const SOURCE_LABEL: Record<Credential['source'], string> = {
   db: '服务端密文',
@@ -148,6 +216,8 @@ export function SettingsPage() {
         message="保存规则"
         description="模型与厂商保存后立即生效；API Key 和账单 AccessKey 保存为密文，运行时读取新凭据需要重启 cloud。"
       />
+
+      <InteractionPermissionCard />
 
       <Card
         size="small"
