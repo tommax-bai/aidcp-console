@@ -325,8 +325,13 @@ export interface PanelPublish {
   id: number;
   title: string | null;
   status: string;
+  platform: string;
   platformPostId: string | null;
   publishedAt: number;
+  publishMode: 'immediate' | 'draft' | 'scheduled';
+  publishTime: number | null;
+  scheduledAt: number | null;
+  scheduledPlatformId: string | null;
   /** 发布账号（change publish-history-account-and-detail）。 */
   accountId: string;
   /** 账号展示名（label ?? account_id）。 */
@@ -539,6 +544,7 @@ export type ContentQueueJourneyStatus =
   | 'generating'
   | 'waiting_approval'
   | 'dispatching'
+  | 'scheduled'
   | 'published'
   | 'submitted'
   | 'failed'

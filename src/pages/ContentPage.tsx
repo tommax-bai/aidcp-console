@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import dayjs from 'dayjs';
 import {
   Alert,
   App,
@@ -7,6 +8,7 @@ import {
   Button,
   Card,
   Collapse,
+  DatePicker,
   Descriptions,
   Divider,
   Empty,
@@ -46,6 +48,7 @@ import { labelOf } from '../types/aidcp-enums';
 
 const PUBLISH_STATUS_LABEL: Record<string, string> = {
   published: '已发布',
+  scheduled: '已定时，待公开',
   submitted: '已提交，待链接确认',
   failed: '失败',
   pending_approval: '待审',
@@ -127,6 +130,7 @@ const JOURNEY_STATUS_LABEL: Record<ContentQueueJourneyStatus, string> = {
   generating: '生成中',
   waiting_approval: '等待审批',
   dispatching: '平台下发中',
+  scheduled: '已定时待公开',
   published: '已发布',
   submitted: '已提交待确认',
   failed: '失败',
@@ -139,6 +143,7 @@ const JOURNEY_STATUS_COLOR: Record<ContentQueueJourneyStatus, string> = {
   generating: 'processing',
   waiting_approval: 'warning',
   dispatching: 'processing',
+  scheduled: 'cyan',
   published: 'success',
   submitted: 'gold',
   failed: 'error',
@@ -400,7 +405,7 @@ function buildQueueDraftSummary(snapshot: SnapshotRecord, resolveAccountName?: (
 function recentAlertType(status: ContentQueueJourneyStatus): 'success' | 'info' | 'warning' | 'error' {
   if (status === 'published') return 'success';
   if (status === 'failed') return 'error';
-  if (status === 'submitted') return 'warning';
+  if (status === 'submitted' || status === 'scheduled') return 'warning';
   return 'info';
 }
 
@@ -489,7 +494,15 @@ function lifecycleTag(row: Pick<PanelPublish, 'status' | 'contentVersion'>) {
       <Tag color="blue">待审</Tag>
     );
   }
-  const color = row.status === 'published' ? 'green' : row.status === 'submitted' ? 'gold' : row.status === 'failed' ? 'red' : 'default';
+  const color = row.status === 'published'
+    ? 'green'
+    : row.status === 'scheduled'
+      ? 'cyan'
+      : row.status === 'submitted'
+        ? 'gold'
+        : row.status === 'failed'
+          ? 'red'
+          : 'default';
   return <Tag color={color}>{labelOf(PUBLISH_STATUS_LABEL, row.status)}</Tag>;
 }
 
@@ -979,6 +992,8 @@ export function ContentPage() {
   const [sourceViewing, setSourceViewing] = useState<PanelPublishSourceReference | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [editPublishMode, setEditPublishMode] = useState<'immediate' | 'scheduled'>('immediate');
+  const [editPublishTime, setEditPublishTime] = useState<number | null>(null);
 
   const accounts = useAccounts();
   // 只看待审走服务端 status 过滤（change parallel-rewrite-drafts）：老 pending 不被全局 50 窗口挤出；
@@ -993,6 +1008,8 @@ export function ContentPage() {
     setViewing(row);
     setEditTitle(row.title ?? '');
     setEditContent(row.content ?? '');
+    setEditPublishMode(row.publishMode === 'scheduled' ? 'scheduled' : 'immediate');
+    setEditPublishTime(row.publishMode === 'scheduled' ? row.publishTime : null);
   };
 
   const refreshContent = () => {
@@ -1034,16 +1051,34 @@ export function ContentPage() {
 
   const busy = candidateTask.isPending;
   const hasTextEdits = !!viewing && (editTitle !== (viewing.title ?? '') || editContent !== (viewing.content ?? ''));
+  const originalPublishMode = viewing?.publishMode === 'scheduled' ? 'scheduled' : 'immediate';
+  const hasScheduleEdits = !!viewing && (
+    editPublishMode !== originalPublishMode ||
+    (editPublishMode === 'scheduled' && editPublishTime !== viewing.publishTime)
+  );
+  const hasEdits = hasTextEdits || hasScheduleEdits;
+  const scheduleValid = editPublishMode === 'immediate' || (
+    editPublishTime !== null &&
+    editPublishTime >= Date.now() + 60 * 60 * 1000 &&
+    editPublishTime <= Date.now() + 14 * 24 * 60 * 60 * 1000
+  );
+  const editPatch = () => ({
+    title: editTitle,
+    content: editContent,
+    publishMode: editPublishMode,
+    publishTime: editPublishMode === 'scheduled' ? editPublishTime : null,
+  });
 
   const onSaveDraft = () => {
-    if (!viewing || !hasTextEdits) return;
-    candidateTask.mutate({ action: 'modify_candidate', targetConstraints: { title: editTitle, content: editContent } });
+    if (!viewing || !hasEdits || !scheduleValid) return;
+    candidateTask.mutate({ action: 'modify_candidate', targetConstraints: editPatch() });
   };
 
   const onSaveAndApprove = () => {
     if (!viewing) return;
-    if (hasTextEdits) {
-      candidateTask.mutate({ action: 'modify_candidate', targetConstraints: { title: editTitle, content: editContent } });
+    if (!scheduleValid) return;
+    if (hasEdits) {
+      candidateTask.mutate({ action: 'modify_candidate', targetConstraints: editPatch() });
       return;
     }
     candidateTask.mutate({ action: 'approve_candidate', targetConstraints: {} });
@@ -1358,11 +1393,11 @@ export function ContentPage() {
         footer={
           isEditable ? (
             <Space>
-              <Button onClick={onSaveDraft} loading={busy} disabled={!hasTextEdits}>
+              <Button onClick={onSaveDraft} loading={busy} disabled={!hasEdits || !scheduleValid}>
                 创建修改任务
               </Button>
-              <Button type="primary" loading={busy} onClick={onSaveAndApprove}>
-                {hasTextEdits ? '先提交修改任务' : '创建批准任务'}
+              <Button type="primary" loading={busy} onClick={onSaveAndApprove} disabled={!scheduleValid}>
+                {hasEdits ? '先提交修改任务' : '创建批准任务'}
               </Button>
               <Button danger loading={busy} onClick={onReject}>
                 创建驳回任务
@@ -1425,6 +1460,39 @@ export function ContentPage() {
                     placeholder="正文"
                   />
                 </div>
+                {viewing.platform === 'xiaohongshu' ? (
+                  <div>
+                    <Typography.Text type="secondary">发布时机</Typography.Text>
+                    <div style={{ marginTop: 6 }}>
+                      <Space wrap>
+                        <Segmented<'immediate' | 'scheduled'>
+                          value={editPublishMode}
+                          options={[
+                            { label: '审核后立即发布', value: 'immediate' },
+                            { label: '定时发布', value: 'scheduled' },
+                          ]}
+                          onChange={setEditPublishMode}
+                        />
+                        {editPublishMode === 'scheduled' ? (
+                          <DatePicker
+                            showTime={{ format: 'HH:mm' }}
+                            format="YYYY-MM-DD HH:mm"
+                            minuteStep={1}
+                            value={editPublishTime === null ? null : dayjs(editPublishTime)}
+                            minDate={dayjs().add(1, 'hour')}
+                            maxDate={dayjs().add(14, 'day')}
+                            status={scheduleValid ? undefined : 'error'}
+                            onChange={(value) => setEditPublishTime(value ? value.valueOf() : null)}
+                            placeholder="选择 1 小时至 14 天内时间"
+                          />
+                        ) : null}
+                      </Space>
+                    </div>
+                    <Typography.Text type={scheduleValid ? 'secondary' : 'danger'}>
+                      定时设置在标题、正文、配图、话题与发布选项完成后应用；小红书仅接受当前时间后 1 小时至 14 天。
+                    </Typography.Text>
+                  </div>
+                ) : null}
                 <Typography.Text type="secondary">
                   配图可删（不可增/换，删空将作为纯文字帖）；可见范围 / 话题本期在此不可改。修改、批准、驳回都会先生成结构化确认卡；有未提交改动时必须先完成修改任务，再另行批准。
                 </Typography.Text>
@@ -1463,6 +1531,12 @@ export function ContentPage() {
                     )}
                   </Typography.Text>
                   <Typography.Text type="secondary">发布时间：{new Date(viewing.publishedAt).toLocaleString()}</Typography.Text>
+                  {viewing.publishMode === 'scheduled' && viewing.publishTime !== null ? (
+                    <Typography.Text type="secondary">
+                      计划公开：{new Date(viewing.publishTime).toLocaleString()}
+                      {viewing.status === 'scheduled' ? '（待平台公开与对账）' : ''}
+                    </Typography.Text>
+                  ) : null}
                 </Space>
 
                 {/* 来源 */}

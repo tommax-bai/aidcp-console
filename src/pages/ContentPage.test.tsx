@@ -74,8 +74,13 @@ function makePending(overrides: Partial<PanelPublish> = {}): PanelPublish {
     id: 1,
     title: '测试草稿标题',
     status: 'pending_approval',
+    platform: 'xiaohongshu',
     platformPostId: null,
     publishedAt: new Date('2026-07-03T10:00:00').getTime(),
+    publishMode: 'immediate',
+    publishTime: null,
+    scheduledAt: null,
+    scheduledPlatformId: null,
     accountId: 'acc-1',
     accountLabel: '测试账号',
     content: '正文内容',
@@ -358,6 +363,32 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     await openEditDrawer();
     expect((screen.getByRole('button', { name: '创建修改任务' }) as HTMLButtonElement).disabled).toBe(true);
     expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+  });
+
+  it('定时设置排在标题/正文之后；切回立即发布通过同一候选稿 CAS 保存并清空时间', async () => {
+    const publishTime = Date.now() + 2 * 60 * 60 * 1000;
+    state.published = { items: [makePending({ publishMode: 'scheduled', publishTime })] };
+    await openEditDrawer();
+
+    const titleInput = screen.getByPlaceholderText('标题');
+    const bodyInput = screen.getByPlaceholderText('正文');
+    const timingLabel = screen.getByText('发布时机');
+    expect(titleInput.compareDocumentPosition(bodyInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bodyInput.compareDocumentPosition(timingLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/定时设置在标题、正文、配图、话题与发布选项完成后应用/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText('审核后立即发布'));
+    fireEvent.click(screen.getByText('创建修改任务'));
+    expect(await screen.findByText(/成功状态以平台验证结果为准/)).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/api/delegated-tasks/draft', expect.objectContaining({
+      action: 'modify_candidate',
+      targetConstraints: expect.objectContaining({
+        candidateId: '1',
+        candidateVersion: 0,
+        publishMode: 'immediate',
+        publishTime: null,
+      }),
+    }));
   });
 
   it('已发布行点整行 → 笔记详情浮层：正文保留换行、配图渲染、详情页链接', async () => {
