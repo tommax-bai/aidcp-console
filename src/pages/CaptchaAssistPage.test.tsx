@@ -10,7 +10,6 @@ const incident: CaptchaAssistIncident = {
   edgeId: 'edge-1',
   accountId: 'acc-1',
   machineLabel: 'ads-k1e0awu5',
-  remoteAddr: 'https://rdp.example/ads-k1e0awu5',
   kind: 'captcha',
   status: 'ready',
   riskStatus: 'restricted',
@@ -200,5 +199,78 @@ describe('CaptchaAssistPage', () => {
     const ts = body.trajectory!.samples.map((s) => s.t);
     expect(ts.every((t, i) => i === 0 || t >= ts[i - 1])).toBe(true);
     expect(body.trajectory!.samples.every((s) => s.x >= 0 && s.x <= 1 && s.y >= 0 && s.y <= 1)).toBe(true);
+  });
+
+  // ── change captcha-assist-text-answer：键入答案 ─────────────────────────────
+  function staticFetch() {
+    return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/click')) {
+        return new Response(JSON.stringify({ ok: true, sent: 1, incident: { ...incident, status: 'click_pending' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ incident }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+  }
+
+  it('无落点时答案框 disabled；点中 1 个落点后可用（不变量长在控件上）', async () => {
+    vi.stubGlobal('fetch', staticFetch());
+    const view = renderPage();
+    await screen.findByText('待处理');
+    const answer = screen.getByLabelText('验证码答案') as HTMLInputElement;
+    expect(answer.disabled).toBe(true);
+
+    pinFirstPoint(view);
+    await waitFor(() => expect((screen.getByLabelText('验证码答案') as HTMLInputElement).disabled).toBe(false));
+  });
+
+  it('键入答案 + 提交：body 带 text/submit，且答案绝不出现在任何 fetch URL', async () => {
+    const fetchMock = staticFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const view = renderPage();
+    await screen.findByText('待处理');
+    pinFirstPoint(view);
+    const answer = await screen.findByLabelText('验证码答案');
+    fireEvent.change(answer, { target: { value: 'A7q9' } });
+    fireEvent.click(screen.getByRole('button', { name: /提交/ }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/click'))).toBe(true));
+    const clickCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/click'))!;
+    const body = JSON.parse(String((clickCall[1] as RequestInit).body)) as { text?: string; submit?: string; points: unknown[] };
+    expect(body.text).toBe('A7q9');
+    expect(body.submit).toBe('enter'); // 「回车提交」默认开
+    expect(body.points).toEqual([{ x: 0.25, y: 0.75 }]);
+    // 答案绝不进 URL（design D10）：所有 fetch 的 URL 都不含答案明文。
+    for (const [url] of fetchMock.mock.calls) {
+      expect(String(url)).not.toContain('A7q9');
+    }
+  });
+
+  it('打字期画面冻结：点 1 个点 + 键入后，新帧到达仍出「画面已更新」提示', async () => {
+    const fetchMock = makeLiveFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const view = renderPage();
+    await screen.findByText('待处理');
+    pinFirstPoint(view); // pin snap-1
+    const answer = await screen.findByLabelText('验证码答案');
+    fireEvent.change(answer, { target: { value: '12' } });
+    // 手动刷新拉到 snap-2：打字期仍冻结在 snap-1，出「画面已更新」提示。
+    fireEvent.click(screen.getByRole('button', { name: /刷新/ }));
+    await screen.findByText('画面已更新，挑战可能已变');
+  });
+
+  it('纯点击提交体与今天逐字节一致（零回归：无 text/submit 字段）', async () => {
+    const fetchMock = staticFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const view = renderPage();
+    await screen.findByText('待处理');
+    pinFirstPoint(view);
+    fireEvent.click(screen.getByRole('button', { name: /提交/ }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/click'))).toBe(true));
+    const clickCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/click'))!;
+    // 无答案 ⇒ 提交体只含 snapshotId + points，绝不出现 text/submit（与轨迹同「全有或全无」纪律）。
+    expect(JSON.parse(String((clickCall[1] as RequestInit).body))).toEqual({ snapshotId: 'snap-1', points: [{ x: 0.25, y: 0.75 }] });
   });
 });

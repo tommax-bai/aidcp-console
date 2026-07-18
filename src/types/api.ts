@@ -256,13 +256,22 @@ export type CaptchaAssistIncidentStatus =
   | 'failed'
   | 'expired';
 
+/** 键入取证（change captcha-assist-text-answer）；手抄镜像 cloud CaptchaAssistTypeReportPayload，**绝不含答案本身**。 */
+export interface CaptchaAssistTypeReport {
+  focus: 'editable' | 'opaque' | 'none';
+  focusTag?: string;
+  cleared?: 'verified' | 'attempted';
+  typed: number;
+  verified?: 'match' | 'mismatch' | 'unverifiable';
+  submitted: boolean;
+}
+
 export interface CaptchaAssistIncident {
   incidentId: string;
   edgeId: string;
   accountId?: string;
   accountName?: string;
   machineLabel?: string;
-  remoteAddr?: string;
   kind: 'captcha' | 'unknown';
   status: CaptchaAssistIncidentStatus;
   riskStatus?: string;
@@ -272,16 +281,25 @@ export interface CaptchaAssistIncident {
   url?: string;
   snapshot?: CaptchaAssistSnapshot;
   lastResult?: {
-    status: 'cleared' | 'still_blocked' | 'stale_snapshot' | 'not_blocked' | 'invalid_target' | 'failed';
+    // change captcha-assist-text-answer：+= no_target（点空了，与坐标越界 invalid_target 区分）。
+    status: 'cleared' | 'still_blocked' | 'stale_snapshot' | 'not_blocked' | 'invalid_target' | 'no_target' | 'failed';
     reason?: string;
     checkedAt: number;
     snapshotId?: string;
+    /** 本次回执的输入模式：'click' 纯点击 / 'click_type' 含键入。 */
+    inputMode?: 'click' | 'click_type';
+    /** 键入取证；渲染成人话，绝不含答案。 */
+    typeReport?: CaptchaAssistTypeReport;
+    /** 版本偏斜：下发了 text 但边缘只点击了（客户端太旧、键入未执行）。 */
+    textNotExecuted?: boolean;
   };
   lastDispatch?: {
     type: 'capture' | 'click';
     requestedAt: number;
     sent: number;
     actor: string;
+    /** 本次下发的答案字符数（change captcha-assist-text-answer）：只记多少个，never what。 */
+    textLen?: number;
   };
   /** 实时抓帧窗口截止（change captcha-assist-live-snapshot）：`Date.now() < liveUntil` 视为实时中，用于亮「实时」指示。 */
   liveUntil?: number;
