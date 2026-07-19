@@ -33,4 +33,17 @@ describe('promptPersonaSourceSummary', () => {
     expect(summary.description).toContain('未绑定人设');
     expect(summary.description).toContain('运行会被拒绝');
   });
+
+  it('marks persona-independent role without pretending it uses a sample persona', () => {
+    const summary = promptPersonaSourceSummary({
+      personaSource: 'none',
+      personaSourceLabel: '不使用人设',
+      accountId: 'acct-ignored',
+    });
+
+    expect(summary.label).toBe('不使用人设');
+    expect(summary.alertType).toBe('info');
+    expect(summary.description).toContain('不读取账号人设');
+    expect(summary.description).toContain('明示占位');
+  });
 });

@@ -22,6 +22,14 @@ export function promptPersonaSourceSummary(
     };
   }
 
+  if (view.personaSource === 'none') {
+    return {
+      label: view.personaSourceLabel ?? '不使用人设',
+      description: '该角色的模型指令不读取账号人设；页面、消息、图片等运行时输入在当前预览中使用明示占位。',
+      alertType: 'info',
+    };
+  }
+
   if (view.personaSource === 'account' || view.accountId) {
     return {
       label: view.personaSourceLabel ?? '所选账号人设',

@@ -161,9 +161,9 @@ export function RolesPage() {
   const previewAccount = previewAccountId ? accounts.find((a) => a.accountId === previewAccountId) : undefined;
   const previewPersonaHint = previewAccountId
     ? previewAccount?.personaBound
-      ? `查看 Prompt 时使用账号「${accountLabel(previewAccountId)}」的真实人设；实时卡片/正文仍为示例占位。`
-      : `账号「${accountLabel(previewAccountId)}」未绑定人设，运行会被拒绝；查看 Prompt 时仅按示例人设渲染。`
-    : '未选择账号，查看 Prompt 时使用示例人设；实时卡片/正文仍为示例占位。';
+      ? `消费人设的角色会使用账号「${accountLabel(previewAccountId)}」的真实人设；不读取人设的角色不受该选择影响。实时卡片/正文仍为示例占位。`
+      : `账号「${accountLabel(previewAccountId)}」未绑定人设，消费人设的角色运行会被拒绝、预览仅用示例人设；不读取人设的角色不受影响。`
+    : '未选择账号：消费人设的角色使用示例人设；不读取人设的角色会明确标注。实时卡片/正文仍为示例占位。';
 
   // 文本厂商下拉项（取自模型配置真态；未载入时回退仅 dashscope）。
   const providerOptions = (modelCfg?.providers ?? [{ id: 'dashscope', displayName: '阿里百炼 DashScope', baseUrl: '' }]).map(
