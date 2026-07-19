@@ -10,18 +10,19 @@
  * 与测试里 `new ApiError(...)` 命中同一个类（否则 instanceof 恒 false、拒因映射被跳过）。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { App as AntdApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContentPage, visualCategoryPresentation } from './ContentPage';
-import { ApiError, apiPost, apiPut } from '../api/client';
+import { ApiError, apiGet, apiPost, apiPut } from '../api/client';
 import type {
   ContentQueue,
   ContentQueueJourney,
   ContentQueueStageState,
   DelegatedTaskDraftReceipt,
+  DelegatedTaskView,
   PanelContentVisualCategoryBrief,
   PanelPublish,
 } from '../types/api';
@@ -52,6 +53,8 @@ const state = vi.hoisted(() => ({
   published: { items: [] as unknown[] },
   queue: { status: 'idle', snapshot: null } as ContentQueue,
   accounts: { accounts: [] as unknown[] },
+  delegatedTasks: { tasks: [] as DelegatedTaskView[] },
+  delegatedTasksError: null as Error | null,
 }));
 
 vi.mock('../api/client', async () => {
@@ -62,6 +65,9 @@ vi.mock('../api/client', async () => {
       if (path.startsWith('/api/accounts')) return Promise.resolve(state.accounts);
       if (path.startsWith('/api/content/published')) return Promise.resolve(state.published);
       if (path === '/api/content/queue') return Promise.resolve(state.queue);
+      if (path.startsWith('/api/delegated-tasks')) {
+        return state.delegatedTasksError ? Promise.reject(state.delegatedTasksError) : Promise.resolve(state.delegatedTasks);
+      }
       return Promise.reject(new Error(`unexpected apiGet ${path}`));
     }),
     apiPost: vi.fn(),
@@ -143,6 +149,28 @@ function candidateTaskReceipt(action: string): DelegatedTaskDraftReceipt & { aut
   };
 }
 
+function delegatedTask(overrides: Partial<DelegatedTaskView> = {}): DelegatedTaskView {
+  return {
+    id: '11111111-1111-4111-8111-111111111111',
+    accountId: 'acc-1',
+    accountName: '工程师大白',
+    platform: 'xiaohongshu',
+    action: 'publish_post',
+    actionFamily: 'publish',
+    targetSuccessCount: 1,
+    maxAttempts: 2,
+    deadlineAt: Date.now() + 86_400_000,
+    sourceConstraints: { title: '排队来源标题' },
+    approvalMode: 'review',
+    priority: 'normal',
+    status: 'queued',
+    progress: { successCount: 0, attemptCount: 0, skippedCount: 0, failureCount: 0 },
+    createdAt: new Date('2026-07-19T10:00:00+08:00').getTime(),
+    version: 2,
+    ...overrides,
+  };
+}
+
 function renderPage(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -170,6 +198,9 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     state.published = { items: [makePending()] };
     state.queue = { status: 'idle', snapshot: null };
     state.accounts = { accounts: [] };
+    state.delegatedTasks = { tasks: [] };
+    state.delegatedTasksError = null;
+    vi.mocked(apiGet).mockClear();
     vi.mocked(apiPut).mockReset();
     vi.mocked(apiPost).mockReset();
     // 候选稿动作直接确认入队：单次 draft 创建即返回 queued，无 /confirm 二次确认调用。
@@ -214,6 +245,65 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
 
     expect(await screen.findByText('customDebug')).toBeTruthy();
     expect(await screen.findByText(/keep-me/)).toBeTruthy();
+  });
+
+  it('发布队列独立展示尚未开跑的发布任务，并对旧 Cloud 回包二次过滤', async () => {
+    state.published = { items: [] };
+    state.queue = {
+      status: 'running',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [journey({ title: '当前活跃稿件' })], recent: [] },
+    };
+    state.delegatedTasks = {
+      tasks: [
+        delegatedTask(),
+        delegatedTask({
+          id: '22222222-2222-4222-8222-222222222222',
+          status: 'executing',
+          sourceConstraints: { title: '执行中不应重复出现' },
+        }),
+        delegatedTask({
+          id: '33333333-3333-4333-8333-333333333333',
+          action: 'comment_batch',
+          actionFamily: 'comment',
+          sourceConstraints: { title: '评论任务不应出现' },
+        }),
+      ],
+    };
+
+    renderPage();
+
+    await screen.findByText('排队来源标题');
+    const panel = await screen.findByRole('region', { name: '排队中的发布任务' });
+    expect(within(panel).getByText('排队来源标题')).toBeTruthy();
+    expect(within(panel).getByText('工程师大白 · 发布稿件')).toBeTruthy();
+    expect(within(panel).getByText('排队中')).toBeTruthy();
+    expect(within(panel).getByText('任务 11111111')).toBeTruthy();
+    expect(screen.queryByText('执行中不应重复出现')).toBeNull();
+    expect(screen.queryByText('评论任务不应出现')).toBeNull();
+    expect(screen.getByText('当前活跃稿件')).toBeTruthy();
+    expect(vi.mocked(apiGet).mock.calls.some(([path]) => (
+      path.includes('/api/delegated-tasks?')
+      && path.includes('actionFamily=publish')
+      && path.includes('statuses=queued%2Cplanning%2Cdeferred')
+      && path.includes('limit=200')
+    ))).toBe(true);
+  });
+
+  it('排队任务查询失败时保留活跃稿件并显示独立错误', async () => {
+    state.published = { items: [] };
+    state.queue = {
+      status: 'running',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [journey({ title: '错误隔离活跃稿件' })], recent: [] },
+    };
+    state.delegatedTasksError = new Error('queue unavailable');
+
+    renderPage();
+
+    expect(await screen.findByText('排队任务加载失败')).toBeTruthy();
+    expect(screen.getByText('错误隔离活跃稿件')).toBeTruthy();
+    expect(screen.getByText('活跃稿件 1')).toBeTruthy();
   });
 
   it('并行多轮：可切换查看每一轮详情，账号显示昵称不裸 id（2026-07-09 用户反馈）', async () => {

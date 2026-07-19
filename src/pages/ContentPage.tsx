@@ -29,7 +29,7 @@ import { CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
 import { errorText } from '../api/errorText';
-import { usePublished, useContentQueue, useAccounts } from '../api/queries';
+import { usePublished, useContentQueue, useAccounts, useDelegatedTasks } from '../api/queries';
 import { ProfileLink } from '../components';
 import { QueryError } from '../components/QueryGate';
 import type {
@@ -42,6 +42,7 @@ import type {
   ContentQueueJourney,
   ContentQueueJourneyStatus,
   ContentQueueStageState,
+  DelegatedTaskView,
 } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 import { labelOf } from '../types/aidcp-enums';
@@ -173,6 +174,36 @@ const LIFECYCLE_STAGE_STATE_COLOR: Record<ContentQueueStageState, string> = {
   failed: 'red',
   skipped: 'default',
 };
+
+const QUEUED_PUBLISH_STATUSES = ['queued', 'planning', 'deferred'] as const;
+type QueuedPublishStatus = (typeof QUEUED_PUBLISH_STATUSES)[number];
+
+const QUEUED_PUBLISH_ACTIONS = new Set(['publish_post', 'publish_from_inspiration', 'generate_candidates']);
+const QUEUED_PUBLISH_ACTION_LABEL: Record<string, string> = {
+  publish_post: '发布稿件',
+  publish_from_inspiration: '参考灵感发布',
+  generate_candidates: '生成候选稿',
+};
+const QUEUED_PUBLISH_STATUS_LABEL: Record<QueuedPublishStatus, string> = {
+  queued: '排队中',
+  planning: '准备中',
+  deferred: '暂缓',
+};
+const QUEUED_PUBLISH_STATUS_COLOR: Record<QueuedPublishStatus, string> = {
+  queued: 'blue',
+  planning: 'processing',
+  deferred: 'orange',
+};
+
+function isQueuedPublishTask(task: DelegatedTaskView): task is DelegatedTaskView & { status: QueuedPublishStatus } {
+  return QUEUED_PUBLISH_ACTIONS.has(task.action)
+    && QUEUED_PUBLISH_STATUSES.includes(task.status as QueuedPublishStatus);
+}
+
+function queuedTaskSourceTitle(task: DelegatedTaskView): string | null {
+  const value = task.sourceConstraints?.title;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
 
 const QUEUE_STAGE_DEFINITIONS: QueueStageDefinition[] = [
   {
@@ -409,11 +440,75 @@ function recentAlertType(status: ContentQueueJourneyStatus): 'success' | 'info' 
   return 'info';
 }
 
+function QueuedPublishTasksPanel(props: {
+  tasks: Array<DelegatedTaskView & { status: QueuedPublishStatus }>;
+  loading: boolean;
+  failed: boolean;
+}) {
+  const { tasks, loading, failed } = props;
+  return (
+    <section className="publish-queued-tasks" aria-label="排队中的发布任务">
+      <div className="publish-queued-tasks__head">
+        <Typography.Text strong>排队任务</Typography.Text>
+        <Tag color={tasks.length > 0 ? 'blue' : 'default'}>{tasks.length}</Tag>
+      </div>
+      {failed ? (
+        <Alert
+          showIcon
+          type="error"
+          message="排队任务加载失败"
+          description="活跃稿件仍可查看，请稍后刷新重试。"
+        />
+      ) : loading ? (
+        <Typography.Text type="secondary">正在加载排队任务…</Typography.Text>
+      ) : tasks.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无排队任务" />
+      ) : (
+        <div className="publish-queued-tasks__list">
+          {tasks.map((task) => {
+            const sourceTitle = queuedTaskSourceTitle(task);
+            const actionLabel = labelOf(QUEUED_PUBLISH_ACTION_LABEL, task.action);
+            return (
+              <div key={task.id} className="publish-queued-task">
+                <Typography.Text strong ellipsis={{ tooltip: sourceTitle ?? actionLabel }}>
+                  {sourceTitle ?? actionLabel}
+                </Typography.Text>
+                <Typography.Text type="secondary" className="publish-queued-task__account">
+                  {task.accountName} · {actionLabel}
+                </Typography.Text>
+                <Space wrap size={[4, 4]}>
+                  <Tag color={QUEUED_PUBLISH_STATUS_COLOR[task.status]}>
+                    {labelOf(QUEUED_PUBLISH_STATUS_LABEL, task.status)}
+                  </Tag>
+                  {task.priority === 'high' ? <Tag color="red">高优先级</Tag> : null}
+                  <Typography.Text type="secondary">任务 {task.id.slice(0, 8)}</Typography.Text>
+                </Space>
+                {task.status === 'deferred' && task.nextEligibleAt ? (
+                  <Typography.Text type="secondary" className="publish-queued-task__time">
+                    下次尝试 {dayjs(task.nextEligibleAt).format('MM-DD HH:mm')}
+                  </Typography.Text>
+                ) : task.createdAt ? (
+                  <Typography.Text type="secondary" className="publish-queued-task__time">
+                    创建于 {dayjs(task.createdAt).format('MM-DD HH:mm')}
+                  </Typography.Text>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function LifecycleJourneyOverview(props: {
   journey: ContentQueueJourney;
   resolveAccountName: (id: string) => string;
+  queuedTasks: Array<DelegatedTaskView & { status: QueuedPublishStatus }>;
+  queuedTasksLoading: boolean;
+  queuedTasksFailed: boolean;
 }) {
-  const { journey, resolveAccountName } = props;
+  const { journey, resolveAccountName, queuedTasks, queuedTasksLoading, queuedTasksFailed } = props;
   return (
     <div className="publish-queue-overview">
       {!journey.active ? (
@@ -425,25 +520,32 @@ function LifecycleJourneyOverview(props: {
           className="publish-queue-result-alert"
         />
       ) : null}
-      <div className={`publish-queue-draft${journey.active ? '' : ' publish-queue-draft--recent'}`}>
-        <div className="publish-queue-draft__main">
-          <Typography.Text type="secondary" className="publish-queue-draft__eyebrow">
-            {journey.active ? '活跃稿件' : '最近结果'}
-          </Typography.Text>
-          <Typography.Title level={5} className="publish-queue-draft__title" title={journey.title}>
-            {journey.title}
-          </Typography.Title>
-          {journey.sourceTitle && journey.sourceTitle !== journey.title ? (
-            <Typography.Text type="secondary" className="publish-queue-draft__source" title={journey.sourceTitle}>
-              来源：{journey.sourceTitle}
+      <div className="publish-queue-summary-grid">
+        <div className={`publish-queue-draft${journey.active ? '' : ' publish-queue-draft--recent'}`}>
+          <div className="publish-queue-draft__main">
+            <Typography.Text type="secondary" className="publish-queue-draft__eyebrow">
+              {journey.active ? '活跃稿件' : '最近结果'}
             </Typography.Text>
-          ) : null}
+            <Typography.Title level={5} className="publish-queue-draft__title" title={journey.title}>
+              {journey.title}
+            </Typography.Title>
+            {journey.sourceTitle && journey.sourceTitle !== journey.title ? (
+              <Typography.Text type="secondary" className="publish-queue-draft__source" title={journey.sourceTitle}>
+                来源：{journey.sourceTitle}
+              </Typography.Text>
+            ) : null}
+          </div>
+          <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
+            <Tag>{resolveAccountName(journey.accountId)}</Tag>
+            <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{labelOf(JOURNEY_STATUS_LABEL, journey.status)}</Tag>
+            {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
+          </Space>
         </div>
-        <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
-          <Tag>{resolveAccountName(journey.accountId)}</Tag>
-          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{labelOf(JOURNEY_STATUS_LABEL, journey.status)}</Tag>
-          {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
-        </Space>
+        <QueuedPublishTasksPanel
+          tasks={queuedTasks}
+          loading={queuedTasksLoading}
+          failed={queuedTasksFailed}
+        />
       </div>
 
       <div className="publish-queue-stage-strip publish-queue-stage-strip--lifecycle" aria-label="发布生命周期八阶段">
@@ -1000,6 +1102,11 @@ export function ContentPage() {
   // 客户端过滤仍兜底（旧 cloud 忽略参数时回落全量）。
   const published = usePublished(accountFilter, pendingOnly ? 'pending_approval' : undefined);
   const queue = useContentQueue();
+  const delegatedPublishTasks = useDelegatedTasks({
+    actionFamily: 'publish',
+    statuses: [...QUEUED_PUBLISH_STATUSES],
+    limit: 200,
+  });
 
   const isEditable = viewing?.status === 'pending_approval';
   const columns = buildColumns(setSourceViewing);
@@ -1105,6 +1212,9 @@ export function ContentPage() {
     })),
   ];
   const queueStatus = queue.data?.status ?? '—';
+  // 新 Cloud 在服务端先过滤再 limit；旧 Cloud 可能忽略查询参数，因此 Console 仍 fail-closed 二次过滤。
+  const queuedPublishTasks = (delegatedPublishTasks.data?.tasks ?? []).filter(isQueuedPublishTask);
+  const queuedTasksVisible = queuedPublishTasks.length > 0 || delegatedPublishTasks.isLoading || delegatedPublishTasks.isError;
   const lifecycle = queue.data?.lifecycle;
   const lifecycleActive = lifecycle?.active ?? [];
   const lifecycleRecent = lifecycle?.recent ?? [];
@@ -1138,7 +1248,7 @@ export function ContentPage() {
   // 「进行中」判定：有在跑轮 / 有生成快照 / 状态正在生成。都没有 = 空闲，卡片主体收起、只留标题栏
   //（消除「标题写『进行中』、状态却『空闲』」的文案冲突）。
   const queueActive = lifecycle ? lifecycleActive.length > 0 : queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
-  const queueHasDetails = lifecycle ? selectedJourney !== null : queueActive;
+  const queueHasDetails = (lifecycle ? selectedJourney !== null : queueActive) || queuedTasksVisible;
   const visibleQueueStatus = lifecycle?.status ?? queueStatus;
 
   return (
@@ -1147,11 +1257,14 @@ export function ContentPage() {
         size="small"
         title="发布队列"
         className={queueHasDetails ? undefined : 'publish-queue-card--collapsed'}
-        extra={
-          <Tag color={(lifecycle ? LIFECYCLE_STATUS_COLOR : QUEUE_STATUS_COLOR)[visibleQueueStatus] ?? 'default'}>
-            {(lifecycle ? LIFECYCLE_STATUS_LABEL : QUEUE_STATUS_LABEL)[visibleQueueStatus] ?? visibleQueueStatus}
-          </Tag>
-        }
+        extra={(
+          <Space size={4}>
+            <Tag color={(lifecycle ? LIFECYCLE_STATUS_COLOR : QUEUE_STATUS_COLOR)[visibleQueueStatus] ?? 'default'}>
+              {(lifecycle ? LIFECYCLE_STATUS_LABEL : QUEUE_STATUS_LABEL)[visibleQueueStatus] ?? visibleQueueStatus}
+            </Tag>
+            {queuedPublishTasks.length > 0 ? <Tag color="blue">排队任务 {queuedPublishTasks.length}</Tag> : null}
+          </Space>
+        )}
       >
         {lifecycle ? (
           selectedJourney ? (
@@ -1175,7 +1288,13 @@ export function ContentPage() {
                   </Space>
                 </div>
               ) : null}
-              <LifecycleJourneyOverview journey={selectedJourney} resolveAccountName={resolveAccountName} />
+              <LifecycleJourneyOverview
+                journey={selectedJourney}
+                resolveAccountName={resolveAccountName}
+                queuedTasks={queuedPublishTasks}
+                queuedTasksLoading={delegatedPublishTasks.isLoading}
+                queuedTasksFailed={delegatedPublishTasks.isError}
+              />
               {queueSnapshot ? (
                 <Collapse
                   size="small"
@@ -1197,9 +1316,22 @@ export function ContentPage() {
                 />
               ) : null}
             </>
+          ) : queuedTasksVisible ? (
+            <QueuedPublishTasksPanel
+              tasks={queuedPublishTasks}
+              loading={delegatedPublishTasks.isLoading}
+              failed={delegatedPublishTasks.isError}
+            />
           ) : null
         ) : queueActive ? (
           <>
+        {queuedTasksVisible ? (
+          <QueuedPublishTasksPanel
+            tasks={queuedPublishTasks}
+            loading={delegatedPublishTasks.isLoading}
+            failed={delegatedPublishTasks.isError}
+          />
+        ) : null}
         {/* 并行多轮切换（change parallel-rewrite-drafts；2026-07-09 用户反馈：每轮详情可切换，不只最新一轮）。 */}
         {queueRuns.length > 0 ? (
           <div className="publish-queue-runs" style={{ marginBottom: 8 }}>
@@ -1332,6 +1464,12 @@ export function ContentPage() {
           />
         ) : null}
           </>
+        ) : queuedTasksVisible ? (
+          <QueuedPublishTasksPanel
+            tasks={queuedPublishTasks}
+            loading={delegatedPublishTasks.isLoading}
+            failed={delegatedPublishTasks.isError}
+          />
         ) : null}
       </Card>
 

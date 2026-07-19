@@ -28,6 +28,7 @@ import type {
   PanelBotChatsResponse,
   CuratedContentList,
   CuratedFacets,
+  DelegatedTaskView,
   ContentScheduleGlobalView,
   ContentScheduleCatalog,
   ClientUserView,
@@ -200,6 +201,25 @@ export function useContentQueue() {
   return useQuery({
     queryKey: ['content', 'queue'],
     queryFn: () => apiGet<ContentQueue>('/api/content/queue'),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useDelegatedTasks(filter: {
+  actionFamily?: 'comment' | 'publish' | 'candidate_control';
+  statuses?: string[];
+  limit?: number;
+} = {}) {
+  return useQuery({
+    queryKey: ['delegated-tasks', filter.actionFamily ?? 'all', filter.statuses?.join(',') ?? 'all', filter.limit ?? 50],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filter.actionFamily) params.set('actionFamily', filter.actionFamily);
+      if (filter.statuses?.length) params.set('statuses', filter.statuses.join(','));
+      if (filter.limit) params.set('limit', String(filter.limit));
+      const qs = params.toString();
+      return apiGet<{ tasks: DelegatedTaskView[] }>(`/api/delegated-tasks${qs ? `?${qs}` : ''}`);
+    },
     refetchInterval: 10_000,
   });
 }

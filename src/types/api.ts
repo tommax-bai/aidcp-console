@@ -666,13 +666,21 @@ export interface DelegatedTaskView {
   accountName: string;
   platform: 'xiaohongshu' | 'facebook';
   action: string;
+  /** Older Cloud versions may omit the additive task evidence below. */
+  actionFamily?: 'comment' | 'publish' | 'candidate_control';
   targetSuccessCount: number;
   maxAttempts: number;
   deadlineAt: number;
+  notBefore?: number;
+  sourceConstraints?: Record<string, unknown>;
   approvalMode: 'review' | 'auto_approve' | 'draft_only';
   priority: 'normal' | 'high';
   status: string;
   progress: DelegatedTaskProgress;
+  currentStep?: string | null;
+  nextEligibleAt?: number | null;
+  createdAt?: number;
+  updatedAt?: number;
   version: number;
   terminalOutcome?: { code: string; message: string; submittedUnknown?: boolean } | null;
 }
