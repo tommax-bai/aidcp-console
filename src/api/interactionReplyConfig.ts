@@ -6,6 +6,7 @@ import type {
   InitializeResponse,
   PolicyResponse,
   PolicyUpdate,
+  PreviewContextsResponse,
   PreviewRequest,
   PreviewResponse,
   ProfileResponse,
@@ -142,6 +143,19 @@ export function saveReplyProfiles(accountId: string, body: ProfileWrite): Promis
 
 export function previewReply(accountId: string, body: PreviewRequest, signal?: AbortSignal): Promise<PreviewResponse> {
   return apiPost(`${basePath(accountId)}/reply-preview`, body, { signal });
+}
+
+export async function loadReplyPreviewContexts(
+  accountId: string,
+  channel: 'comment' | 'dm',
+  signal?: AbortSignal,
+): Promise<PreviewContextsResponse> {
+  const response = await apiGet<PreviewContextsResponse>(
+    `${basePath(accountId)}/reply-preview-contexts?channel=${encodeURIComponent(channel)}&limit=20`,
+    { signal },
+  );
+  assertAccount(accountId, response.data.accountId);
+  return response;
 }
 
 export function publishReplyConfig(accountId: string, body: PublishRequest): Promise<PublishResponse> {

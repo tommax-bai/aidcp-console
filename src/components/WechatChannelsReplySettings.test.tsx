@@ -13,6 +13,9 @@ interface ServerOptions {
   editDenied?: boolean;
   publishDenied?: boolean;
   previewDenied?: boolean;
+  previewContextsEmpty?: boolean;
+  previewContextsError?: boolean;
+  previewContextDmDenied?: boolean;
   auditDenied?: boolean;
   conflictOnPolicy?: boolean;
   stateConflictOnPolicy?: boolean;
@@ -105,6 +108,38 @@ function createServer(options: ServerOptions = {}) {
       if (endpoint === 'reply-templates') return json(store.templates);
       if (endpoint === 'reply-rules') return json(store.rules);
       if (endpoint === 'reply-profile') return json(store.profiles);
+      if (endpoint === 'reply-preview-contexts') {
+        const channel = requestUrl.searchParams.get('channel') === 'dm' ? 'dm' : 'comment';
+        if (options.previewContextDmDenied && channel === 'dm') {
+          return interactionError('INTERACTION_PERMISSION_DENIED', 403);
+        }
+        if (options.previewContextsError) return interactionError('INTERACTION_UPSTREAM_UNAVAILABLE', 503);
+        return json({
+          data: {
+            accountId,
+            items: options.previewContextsEmpty ? [] : channel === 'comment' ? [{
+              threadId: `thread_real_${accountId}`,
+              messageId: `message_real_${accountId}`,
+              channel: 'comment',
+              messageType: 'text',
+              userMessage: '这双靴子还有吗',
+              userName: accountId === 'acct_wc_demo' ? '清' : accountId,
+              videoTitle: '血小板的cos，[偷笑][偷笑]',
+              receivedAt: 1784044800000,
+            }] : [{
+              threadId: `thread_dm_${accountId}`,
+              messageId: `message_dm_${accountId}`,
+              channel: 'dm',
+              messageType: 'text',
+              userMessage: '你好',
+              userName: '私信用户',
+              videoTitle: null,
+              receivedAt: 1784044700000,
+            }],
+          },
+          meta: { requestId: 'preview-contexts', asOf: 1784044800000 },
+        });
+      }
       if (endpoint === 'reply-config/audit') {
         if (options.auditDenied) return interactionError('INTERACTION_PERMISSION_DENIED', 403);
         const cursor = requestUrl.searchParams.get('cursor');
@@ -592,6 +627,79 @@ describe('WechatChannelsReplySettings', () => {
     expect(screen.getByRole('textbox', { name: '模拟互动内容' })).toBeTruthy();
   });
 
+  it('selects the newest real interaction by default and sends its actual video title to preview', async () => {
+    const server = createServer();
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('模拟视频标题') as HTMLInputElement).value)
+        .toBe('血小板的cos，[偷笑][偷笑]');
+    });
+    expect((screen.getByLabelText('模拟用户昵称') as HTMLInputElement).value).toBe('清');
+    expect((screen.getByLabelText('模拟互动内容') as HTMLTextAreaElement).value).toBe('这双靴子还有吗');
+    expect((screen.getByRole('radio', { name: '真实互动' }) as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '运行无副作用预览' }));
+    await waitFor(() => expect(server.calls.some((call) => call.path.endsWith('/reply-preview') && call.method === 'POST')).toBe(true));
+    const call = server.calls.find((item) => item.path.endsWith('/reply-preview') && item.method === 'POST');
+    expect(call?.body).toMatchObject({
+      channel: 'comment',
+      messageType: 'text',
+      userMessage: '这双靴子还有吗',
+      videoTitle: '血小板的cos，[偷笑][偷笑]',
+      userName: '清',
+    });
+    expect(server.calls.some((item) => item.path.includes('/interactions/sync') || item.path.includes('/send'))).toBe(false);
+  });
+
+  it('keeps manual simulation available when real contexts are empty or an operator edits populated input', async () => {
+    createServer();
+    const view = renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+    await waitFor(() => expect((screen.getByLabelText('模拟视频标题') as HTMLInputElement).value).toContain('血小板'));
+    fireEvent.change(screen.getByLabelText('模拟视频标题'), { target: { value: '手工标题' } });
+    expect((screen.getByRole('radio', { name: '手工模拟' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByLabelText('选择真实互动')).toBeNull();
+
+    view.unmount();
+    createServer({ previewContextsEmpty: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+    expect(await screen.findByText('当前账号暂无可用的真实入站互动，已保留手工模拟。')).toBeTruthy();
+    expect((screen.getByRole('radio', { name: '手工模拟' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('模拟视频标题') as HTMLInputElement).value).toBe('');
+  });
+
+  it('keeps manual simulation available when real context loading fails', async () => {
+    createServer({ previewContextsError: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+
+    expect(await screen.findByText('真实互动读取失败，仍可使用手工模拟。')).toBeTruthy();
+    expect((screen.getByRole('radio', { name: '手工模拟' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('模拟视频标题') as HTMLInputElement).value).toBe('');
+  });
+
+  it('fails closed for real DM context text while keeping comment context available', async () => {
+    createServer({ previewContextDmDenied: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+    fireEvent.click(screen.getByRole('radio', { name: '私信' }));
+    const dmPermissionMessage = '当前后台账号缺少私信预览权限（interaction.config.preview 与 interaction.dm.view_full），Cloud 预览链路未运行。';
+    expect(await screen.findByText(dmPermissionMessage)).toBeTruthy();
+    expect(screen.queryByText('私信用户')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: '评论' }));
+    await waitFor(() => expect((screen.getByLabelText('模拟视频标题') as HTMLInputElement).value).toContain('血小板'));
+    expect(screen.queryByText(dmPermissionMessage)).toBeNull();
+  });
+
   it('flags unknown template variables immediately and blocks the create request', async () => {
     const server = createServer();
     renderDrawer();
@@ -727,5 +835,7 @@ describe('WechatChannelsReplySettings', () => {
     expect(slowSignals.length).toBeGreaterThan(0);
     expect(slowSignals.every((signal) => signal?.aborted)).toBe(true);
     expect(screen.queryByText('互动回复设置 · 慢账号')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+    await waitFor(() => expect((screen.getByLabelText('模拟用户昵称') as HTMLInputElement).value).toBe('acct_fast'));
   });
 });

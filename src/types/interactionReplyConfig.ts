@@ -210,6 +210,22 @@ export interface PreviewRequest {
   userName: string | null;
 }
 
+export interface PreviewContext {
+  threadId: string;
+  messageId: string;
+  channel: InteractionChannel;
+  messageType: InteractionMessageType;
+  userMessage: string | null;
+  userName: string | null;
+  videoTitle: string | null;
+  receivedAt: number;
+}
+
+export type PreviewContextsResponse = InternalApiEnvelope<{
+  accountId: string;
+  items: PreviewContext[];
+}>;
+
 export interface PreviewResult {
   accountId: string;
   configVersion: number;

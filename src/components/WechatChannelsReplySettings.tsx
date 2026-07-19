@@ -50,6 +50,7 @@ import {
   initializeReplyConfig,
   loadReplyAudit,
   loadReplyConfig,
+  loadReplyPreviewContexts,
   previewReply,
   publishReplyConfig,
   saveReplyPolicy,
@@ -70,6 +71,7 @@ import type {
   InteractionMessageType,
   PreviewAction,
   PreviewConfigUse,
+  PreviewContext,
   PreviewResult,
   ReplyConfigSnapshot,
   ReplyIntent,
@@ -283,6 +285,9 @@ interface PreviewInput {
   userName: string;
 }
 
+type PreviewSource = 'interaction' | 'manual';
+type PreviewContextState = 'idle' | 'loading' | 'ready' | 'permission' | 'error';
+
 const DEFAULT_PREVIEW: PreviewInput = {
   use: 'draft',
   channel: 'comment',
@@ -304,6 +309,7 @@ export function WechatChannelsReplySettings({
   const { message } = App.useApp();
   const requestController = useRef<AbortController | null>(null);
   const auditPageController = useRef<AbortController | null>(null);
+  const previewContextController = useRef<AbortController | null>(null);
   const activeAccountId = useRef<string | null>(null);
   const dirtyRef = useRef<DirtyState>(CLEAN_DIRTY);
   const [snapshot, setSnapshot] = useState<ReplyConfigSnapshot | null>(null);
@@ -330,6 +336,10 @@ export function WechatChannelsReplySettings({
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishIssues, setPublishIssues] = useState<ValidationIssue[]>([]);
   const [previewInput, setPreviewInput] = useState<PreviewInput>(DEFAULT_PREVIEW);
+  const [previewSource, setPreviewSource] = useState<PreviewSource>('interaction');
+  const [previewContexts, setPreviewContexts] = useState<PreviewContext[]>([]);
+  const [previewContextState, setPreviewContextState] = useState<PreviewContextState>('idle');
+  const [selectedPreviewMessageId, setSelectedPreviewMessageId] = useState<string | null>(null);
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -339,6 +349,8 @@ export function WechatChannelsReplySettings({
   const resetScopedState = useCallback(() => {
     auditPageController.current?.abort();
     auditPageController.current = null;
+    previewContextController.current?.abort();
+    previewContextController.current = null;
     setSnapshot(null);
     setAuditItems([]);
     setAuditNextCursor(null);
@@ -361,6 +373,10 @@ export function WechatChannelsReplySettings({
     setPublishOpen(false);
     setPublishIssues([]);
     setPreviewInput(DEFAULT_PREVIEW);
+    setPreviewSource('interaction');
+    setPreviewContexts([]);
+    setPreviewContextState('idle');
+    setSelectedPreviewMessageId(null);
     setPreviewResult(null);
     setPreviewError(null);
   }, []);
@@ -421,8 +437,59 @@ export function WechatChannelsReplySettings({
     return () => {
       requestController.current?.abort();
       auditPageController.current?.abort();
+      previewContextController.current?.abort();
     };
   }, [account?.accountId, loadAccount, open, resetScopedState]);
+
+  const applyPreviewContext = useCallback((context: PreviewContext) => {
+    setPreviewSource('interaction');
+    setSelectedPreviewMessageId(context.messageId);
+    setPreviewInput((current) => ({
+      ...current,
+      channel: context.channel,
+      messageType: context.messageType,
+      userMessage: context.userMessage ?? '',
+      videoTitle: context.videoTitle ?? '',
+      userName: context.userName ?? '',
+    }));
+    setPreviewResult(null);
+    setPreviewError(null);
+  }, []);
+
+  useEffect(() => {
+    const accountId = account?.accountId;
+    if (!open || !accountId) return;
+    previewContextController.current?.abort();
+    const controller = new AbortController();
+    previewContextController.current = controller;
+    const channel = previewInput.channel;
+    setPreviewContextState('loading');
+    setPreviewContexts([]);
+    setSelectedPreviewMessageId(null);
+    void loadReplyPreviewContexts(accountId, channel, controller.signal).then((response) => {
+      if (controller.signal.aborted || activeAccountId.current !== accountId) return;
+      const contexts = response.data.items;
+      setPreviewContexts(contexts);
+      setPreviewContextState('ready');
+      if (contexts[0]) applyPreviewContext(contexts[0]);
+      else setPreviewSource('manual');
+    }).catch((error: unknown) => {
+      if (isAbort(error) || activeAccountId.current !== accountId) return;
+      setPreviewContexts([]);
+      setSelectedPreviewMessageId(null);
+      setPreviewSource('manual');
+      if (isPermissionDenied(error)) {
+        setPreviewContextState('permission');
+        if (channel === 'dm') setDmPreviewDenied(true);
+        else setPreviewDenied(true);
+      } else {
+        setPreviewContextState('error');
+      }
+    }).finally(() => {
+      if (previewContextController.current === controller) previewContextController.current = null;
+    });
+    return () => controller.abort();
+  }, [account?.accountId, applyPreviewContext, open, previewInput.channel]);
 
   const refreshAfterWrite = useCallback(async (accountId: string, saved: DirtySection | 'templates' | 'rules') => {
     const controller = new AbortController();
@@ -567,10 +634,48 @@ export function WechatChannelsReplySettings({
     markDirty(section);
   };
 
-  const changePreviewInput = (patch: Partial<PreviewInput>) => {
+  const changePreviewInput = (patch: Partial<PreviewInput>, manual = true) => {
+    if (manual && previewSource === 'interaction') {
+      setPreviewSource('manual');
+      setSelectedPreviewMessageId(null);
+    }
     setPreviewInput((current) => ({ ...current, ...patch }));
     setPreviewResult(null);
     setPreviewError(null);
+  };
+
+  const changePreviewChannel = (channel: InteractionChannel) => {
+    if (channel === 'comment') setDmPreviewDenied(false);
+    setPreviewSource('interaction');
+    setSelectedPreviewMessageId(null);
+    setPreviewInput((current) => ({
+      ...current,
+      channel,
+      messageType: 'text',
+      userMessage: '',
+      videoTitle: '',
+      userName: '',
+    }));
+    setPreviewResult(null);
+    setPreviewError(null);
+  };
+
+  const changePreviewSource = (source: PreviewSource) => {
+    if (source === 'interaction') {
+      const selected = previewContexts.find((context) => context.messageId === selectedPreviewMessageId)
+        ?? previewContexts[0];
+      if (selected) applyPreviewContext(selected);
+      return;
+    }
+    setPreviewSource('manual');
+    setSelectedPreviewMessageId(null);
+    setPreviewResult(null);
+    setPreviewError(null);
+  };
+
+  const selectPreviewContext = (messageId: string) => {
+    const context = previewContexts.find((item) => item.messageId === messageId);
+    if (context) applyPreviewContext(context);
   };
 
   const saveRuntime = () => {
@@ -1313,13 +1418,13 @@ export function WechatChannelsReplySettings({
         <Form layout="vertical" requiredMark={false}>
           <div className="reply-config__form-grid">
             <Form.Item label="使用配置">
-              <Radio.Group aria-label="使用配置" value={previewInput.use} onChange={(event) => changePreviewInput({ use: event.target.value as PreviewConfigUse })}>
+              <Radio.Group aria-label="使用配置" value={previewInput.use} onChange={(event) => changePreviewInput({ use: event.target.value as PreviewConfigUse }, false)}>
                 <Radio value="draft">当前草稿</Radio>
                 <Radio value="published">已发布版本</Radio>
               </Radio.Group>
             </Form.Item>
             <Form.Item label="渠道">
-              <Radio.Group aria-label="预览渠道" value={previewInput.channel} onChange={(event) => changePreviewInput({ channel: event.target.value as InteractionChannel })}>
+              <Radio.Group aria-label="预览渠道" value={previewInput.channel} onChange={(event) => changePreviewChannel(event.target.value as InteractionChannel)}>
                 <Radio value="comment">评论</Radio>
                 <Radio value="dm">私信</Radio>
               </Radio.Group>
@@ -1340,6 +1445,40 @@ export function WechatChannelsReplySettings({
               <Input aria-label="模拟用户昵称" value={previewInput.userName} onChange={(event) => changePreviewInput({ userName: event.target.value })} />
             </Form.Item>
           </div>
+          <Form.Item label="预览数据来源">
+            <Radio.Group
+              aria-label="预览数据来源"
+              value={previewSource}
+              onChange={(event) => changePreviewSource(event.target.value as PreviewSource)}
+            >
+              <Radio value="interaction" disabled={previewContextState !== 'loading' && previewContexts.length === 0}>真实互动</Radio>
+              <Radio value="manual">手工模拟</Radio>
+            </Radio.Group>
+          </Form.Item>
+          {previewSource === 'interaction' ? (
+            <Form.Item label="选择真实互动">
+              <Select
+                aria-label="选择真实互动"
+                value={selectedPreviewMessageId ?? undefined}
+                loading={previewContextState === 'loading'}
+                placeholder={previewContextState === 'loading' ? '正在读取最近互动' : '请选择一条真实互动'}
+                options={previewContexts.map((context) => ({
+                  value: context.messageId,
+                  label: `${context.videoTitle?.trim() || '未获取视频标题'} · ${context.userName?.trim() || '未获取用户昵称'} · ${formatTime(context.receivedAt)}`,
+                }))}
+                onChange={selectPreviewContext}
+              />
+            </Form.Item>
+          ) : null}
+          {previewContextState === 'ready' && previewContexts.length === 0 ? (
+            <Alert type="info" showIcon message="当前账号暂无可用的真实入站互动，已保留手工模拟。" />
+          ) : null}
+          {previewContextState === 'error' ? (
+            <Alert type="warning" showIcon message="真实互动读取失败，仍可使用手工模拟。" />
+          ) : null}
+          {previewSource === 'interaction' && selectedPreviewMessageId ? (
+            <Alert type="success" showIcon message="以下字段已由所选真实互动填充；直接编辑任一字段会切换为手工模拟。" />
+          ) : null}
           {previewInput.channel === 'comment' ? (
             <Form.Item label="模拟视频标题">
               <Input aria-label="模拟视频标题" value={previewInput.videoTitle} onChange={(event) => changePreviewInput({ videoTitle: event.target.value })} />
