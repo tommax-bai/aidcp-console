@@ -76,9 +76,9 @@ describe('AppShell top navigation active route matching', () => {
 });
 
 describe('AppShell grouped navigation model', () => {
-  it('keeps six stable labelled groups and assigns all fourteen visible destinations exactly once', () => {
+  it('keeps six stable labelled groups and assigns all fifteen visible destinations exactly once', () => {
     expect(NAV_GROUPS.map((group) => group.label)).toEqual(['总览', '账号', '内容', '互动', 'AI 配置', '系统']);
-    expect(NAV_ROUTES).toHaveLength(14);
+    expect(NAV_ROUTES).toHaveLength(15);
 
     const knownGroupIds = new Set(NAV_GROUPS.map((group) => group.id));
     expect(NAV_ROUTES.every((route) => knownGroupIds.has(route.navGroup))).toBe(true);
@@ -93,7 +93,7 @@ describe('AppShell grouped navigation model', () => {
     expect(labelsByGroup).toEqual({
       overview: ['数据'],
       accounts: ['账号', '视频号策略', '群组'],
-      content: ['内容', '精选', '排期'],
+      content: ['内容', '发布队列', '精选', '排期'],
       interaction: ['互动联系人', '通知路由'],
       'ai-config': ['人设', '角色'],
       system: ['安全', '用量', '端用户'],
@@ -112,6 +112,10 @@ describe('AppShell grouped navigation model', () => {
     expect(getActiveNavigation('/content-schedule')).toMatchObject({
       group: { id: 'content' },
       destination: { path: '/content-schedule' },
+    });
+    expect(getActiveNavigation('/publish-queue')).toMatchObject({
+      group: { id: 'content' },
+      destination: { path: '/publish-queue' },
     });
   });
 
@@ -149,8 +153,8 @@ describe('AppShell grouped navigation model', () => {
 
     fireEvent.mouseEnter(screen.getByRole('button', { name: '打开内容分组菜单' }));
     const menu = await screen.findByRole('menu');
-    expect(within(menu).getAllByRole('menuitem')).toHaveLength(3);
-    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '精选', '排期']);
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(4);
+    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '发布队列', '精选', '排期']);
     expect(within(menu).getByRole('link', { name: '精选' }).getAttribute('aria-current')).toBe('page');
   });
 
@@ -183,7 +187,7 @@ describe('AppShell grouped navigation model', () => {
     fireEvent.click(screen.getByRole('button', { name: '打开导航菜单，当前位置：内容，精选' }));
     const menu = await screen.findByRole('menu');
     expect(within(menu).getAllByRole('group')).toHaveLength(6);
-    expect(within(menu).getAllByRole('menuitem')).toHaveLength(14);
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(15);
     await waitFor(() => expect(within(menu).getByText('视频号策略')).toBeTruthy());
     expect(within(menu).getByText('端用户')).toBeTruthy();
   });

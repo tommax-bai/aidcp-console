@@ -12,6 +12,7 @@ import {
   KeyOutlined,
   NotificationOutlined,
   MessageOutlined,
+  OrderedListOutlined,
   RobotOutlined,
   SafetyOutlined,
   SettingOutlined,
@@ -19,7 +20,7 @@ import {
 } from '@ant-design/icons';
 import { AccountsPage } from './pages/AccountsPage';
 import { ClientUsersPage } from './pages/ClientUsersPage';
-import { ContentPage } from './pages/ContentPage';
+import { ContentPage, PublishQueuePage } from './pages/ContentPage';
 import { ContentSchedulePage } from './pages/ContentSchedulePage';
 import { CuratedContentPage } from './pages/CuratedContentPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -90,6 +91,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/wechat-strategies', element: <WechatStrategiesPage />, navLabel: '视频号策略', navIcon: <MessageOutlined />, navGroup: 'accounts', showInNav: true },
   { path: '/facebook-groups', element: <FacebookGroupsPage />, navLabel: '群组', navIcon: <ApartmentOutlined />, navGroup: 'accounts', showInNav: true },
   { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, navGroup: 'content', showInNav: true },
+  { path: '/publish-queue', element: <PublishQueuePage />, navLabel: '发布队列', navIcon: <OrderedListOutlined />, navGroup: 'content', showInNav: true },
   { path: '/curated', element: <CuratedContentPage />, navLabel: '精选', navIcon: <BulbOutlined />, navGroup: 'content', showInNav: true },
   { path: '/content-schedule', element: <ContentSchedulePage />, navLabel: '排期', navIcon: <ClockCircleOutlined />, navGroup: 'content', showInNav: true },
   { path: '/notification-contacts', element: <NotificationContactsPage />, navLabel: '互动联系人', navIcon: <ContactsOutlined />, navGroup: 'interaction', showInNav: true },

@@ -534,8 +534,92 @@ body {
 }
 
 /* ======================================================================
- * 发布内容页：进行中队列阶段总览
+ * 独立发布队列页：运营摘要 + 生命周期详情
  * ====================================================================== */
+.publish-queue-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--aidcp-space-4);
+  padding: var(--aidcp-space-2) 0;
+}
+.publish-queue-page__header .ant-typography {
+  margin-top: 0;
+}
+.publish-queue-page__header h2.ant-typography {
+  margin-bottom: var(--aidcp-space-1);
+  font-size: 24px;
+  letter-spacing: var(--aidcp-letter-spacing-tight);
+}
+.publish-queue-page__header p.ant-typography {
+  max-width: 720px;
+  margin-bottom: 0;
+}
+.publish-queue-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--aidcp-space-3);
+}
+.publish-queue-metric {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--aidcp-space-4) var(--aidcp-space-4) var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-lg);
+  background: var(--aidcp-card);
+  box-shadow: var(--aidcp-shadow-sm);
+}
+.publish-queue-metric::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  content: "";
+  background: #1677ff;
+}
+.publish-queue-metric--human::before {
+  background: #d48806;
+}
+.publish-queue-metric--queued::before {
+  background: #722ed1;
+}
+.publish-queue-metric__label.ant-typography,
+.publish-queue-metric__detail.ant-typography {
+  display: block;
+}
+.publish-queue-metric__label.ant-typography {
+  font-size: var(--aidcp-font-size-sm);
+  font-weight: var(--aidcp-font-weight-medium);
+}
+.publish-queue-metric__value.ant-typography {
+  margin: var(--aidcp-space-1) 0 0;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.publish-queue-metric__detail.ant-typography {
+  margin-top: var(--aidcp-space-1);
+  overflow: hidden;
+  font-size: var(--aidcp-font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publish-queue-empty-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: var(--aidcp-space-3);
+  align-items: stretch;
+}
+.publish-queue-empty-grid > .ant-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 168px;
+  margin: 0;
+  border: 1px dashed var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: #fafafa;
+}
 /* 空闲（无进行中任务）时收起卡片主体，只留标题栏（标题「发布队列」+ 右侧状态徽标）。 */
 .publish-queue-card--collapsed .ant-card-body {
   display: none;
@@ -758,6 +842,13 @@ body {
 }
 
 @media (max-width: 768px) {
+  .publish-queue-page__header {
+    flex-direction: column;
+  }
+  .publish-queue-metrics,
+  .publish-queue-empty-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .publish-queue-summary-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -778,6 +869,10 @@ body {
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
+  .publish-queue-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .publish-queue-empty-grid,
   .publish-queue-summary-grid {
     grid-template-columns: minmax(0, 1fr);
   }

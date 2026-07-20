@@ -10,12 +10,13 @@
  * 与测试里 `new ApiError(...)` 命中同一个类（否则 instanceof 恒 false、拒因映射被跳过）。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { ReactNode } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { App as AntdApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ContentPage, visualCategoryPresentation } from './ContentPage';
+import { ContentPage, PublishQueuePage, visualCategoryPresentation } from './ContentPage';
 import { ApiError, apiGet, apiPost, apiPut } from '../api/client';
 import type {
   ContentQueue,
@@ -171,19 +172,27 @@ function delegatedTask(overrides: Partial<DelegatedTaskView> = {}): DelegatedTas
   };
 }
 
-function renderPage(): void {
+function renderSurface(surface: ReactNode, initialEntry = '/content'): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <ConfigProvider locale={zhCN}>
       <AntdApp>
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <ContentPage />
+          <MemoryRouter initialEntries={[initialEntry]}>
+            {surface}
           </MemoryRouter>
         </QueryClientProvider>
       </AntdApp>
     </ConfigProvider>,
   );
+}
+
+function renderPage(initialEntry = '/content'): void {
+  renderSurface(<ContentPage />, initialEntry);
+}
+
+function renderQueuePage(): void {
+  renderSurface(<PublishQueuePage />, '/publish-queue');
 }
 
 /** 渲染 → 等待待审行 → 点整行打开详情浮层（对齐精选页交互；保存草稿按钮出现即编辑态就绪）。 */
@@ -210,6 +219,44 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     });
   });
 
+  it('内容页只加载稿件与账号，不再渲染或请求发布队列', async () => {
+    renderPage();
+
+    expect(await screen.findByText('测试草稿标题')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '发布队列' })).toBeNull();
+    const requestedPaths = vi.mocked(apiGet).mock.calls.map(([path]) => String(path));
+    expect(requestedPaths).not.toContain('/api/content/queue');
+    expect(requestedPaths.some((path) => path.startsWith('/api/delegated-tasks'))).toBe(false);
+  });
+
+  it('独立队列页汇总活跃 5、等待人工 1、排队任务 0，并把审批交回内容页', async () => {
+    const active = Array.from({ length: 5 }, (_, index) => journey({
+      journeyId: `publish:${index + 1}`,
+      runId: null,
+      recordId: 158 + index,
+      title: index === 0 ? '做Agent别光死磕大模型' : `活跃稿件 ${index + 1}`,
+      status: index === 0 ? 'waiting_approval' : 'generating',
+      statusSummary: index === 0 ? '等待人工审批' : '正在生成候审稿',
+    }, index === 0 ? { approval: 'waiting_human', dispatch: 'pending' } : {}));
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      lifecycle: { status: 'waiting_human', active, recent: [] },
+    };
+    state.delegatedTasks = { tasks: [] };
+
+    renderQueuePage();
+
+    expect(await screen.findByText('活跃稿件 5')).toBeTruthy();
+    expect(document.querySelector('.publish-queue-metric--active .publish-queue-metric__value')?.textContent).toBe('5');
+    expect(document.querySelector('.publish-queue-metric--human .publish-queue-metric__value')?.textContent).toBe('1');
+    expect(document.querySelector('.publish-queue-metric--queued .publish-queue-metric__value')?.textContent).toBe('0');
+    const approvalLink = await screen.findByRole('link', { name: '去内容页审批' });
+    expect(approvalLink.getAttribute('href')).toBe('/content?status=pending_approval');
+    expect(screen.getByText('平台下发')).toBeTruthy();
+    expect(screen.getAllByText('未开始').length).toBeGreaterThan(0);
+  });
+
   it('发布队列运行中快照按阶段摘要展示，并保留原始字段', async () => {
     state.published = { items: [] };
     state.queue = {
@@ -231,10 +278,10 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       },
     };
 
-    renderPage();
+    renderQueuePage();
 
     expect(await screen.findByText('生成中')).toBeTruthy();
-    expect(await screen.findByText('活跃稿件')).toBeTruthy();
+    expect((await screen.findAllByText('活跃稿件')).length).toBeGreaterThan(0);
     expect(screen.getByText('洗稿后标题')).toBeTruthy();
     expect(screen.getByText('来源：来稿标题')).toBeTruthy();
     expect(screen.getByText('参考图 2 张')).toBeTruthy();
@@ -271,7 +318,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       ],
     };
 
-    renderPage();
+    renderQueuePage();
 
     await screen.findByText('排队来源标题');
     const panel = await screen.findByRole('region', { name: '排队中的发布任务' });
@@ -319,7 +366,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       ],
     };
 
-    renderPage();
+    renderQueuePage();
 
     const panel = await screen.findByRole('region', { name: '排队中的发布任务' });
     await within(panel).findByText('同源等待稿');
@@ -341,9 +388,9 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     };
     state.delegatedTasksError = new Error('queue unavailable');
 
-    renderPage();
+    renderQueuePage();
 
-    expect(await screen.findByText('排队任务加载失败')).toBeTruthy();
+    expect((await screen.findAllByText('排队任务加载失败')).length).toBeGreaterThan(0);
     expect(screen.getByText('错误隔离活跃稿件')).toBeTruthy();
     expect(screen.getByText('活跃稿件 1')).toBeTruthy();
   });
@@ -371,7 +418,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       runs: [runOf('r1', 's1', '甲稿标题', 1), runOf('r2', 's2', '乙稿标题', 2)],
     };
 
-    renderPage();
+    renderQueuePage();
 
     // 默认跟随最新启动的一轮（r2）。
     expect(await screen.findByText('乙稿标题')).toBeTruthy();
@@ -392,7 +439,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       lifecycle: { status: 'running', active: [journey()], recent: [] },
     };
 
-    renderPage();
+    renderQueuePage();
 
     expect(await screen.findByText('执行中')).toBeTruthy();
     expect(screen.getByText('八阶段测试稿件')).toBeTruthy();
@@ -415,10 +462,10 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       snapshot: null,
       lifecycle: { status: 'waiting_human', active: [waiting], recent: [] },
     };
-    renderPage();
+    renderQueuePage();
 
-    expect((await screen.findAllByText('等待人工')).length).toBeGreaterThan(0);
-    expect(screen.getByText('等待审批')).toBeTruthy();
+    expect(await screen.findByText('等待审批')).toBeTruthy();
+    expect(screen.getAllByText('等待人工').length).toBeGreaterThan(0);
     expect(screen.getByText('人工审批')).toBeTruthy();
     expect(screen.getByText('平台下发')).toBeTruthy();
     expect(screen.getAllByText('未开始').length).toBeGreaterThan(0);
@@ -434,7 +481,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       snapshot: null,
       lifecycle: { status: 'running', active: [dispatching], recent: [] },
     };
-    renderPage();
+    renderQueuePage();
 
     expect(await screen.findByText('平台下发中')).toBeTruthy();
     expect(screen.getByText('平台下发')).toBeTruthy();
@@ -452,12 +499,13 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       snapshot: { stale: true },
       lifecycle: { status: 'idle', active: [], recent: [failed] },
     };
-    renderPage();
+    renderQueuePage();
 
     expect(await screen.findByText('无活跃稿件')).toBeTruthy();
     expect(screen.getByText('最近结果 · 失败')).toBeTruthy();
     expect(screen.getByText('平台下发失败，未确认发布')).toBeTruthy();
-    expect(screen.queryByText('活跃稿件')).toBeNull();
+    const activeMetric = screen.getByText('活跃稿件').closest('.publish-queue-metric');
+    expect(activeMetric?.textContent).toContain('0');
     expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
   });
 
