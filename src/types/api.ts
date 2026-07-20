@@ -686,6 +686,8 @@ export interface DelegatedTaskView {
   progress: DelegatedTaskProgress;
   currentStep?: string | null;
   nextEligibleAt?: number | null;
+  /** Cloud accepted cancellation but the worker still needs to settle at a safe boundary. */
+  cancelRequested?: boolean;
   createdAt?: number;
   updatedAt?: number;
   version: number;

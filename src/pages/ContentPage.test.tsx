@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App as AntdApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { MemoryRouter } from 'react-router-dom';
@@ -377,6 +377,127 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       && path.includes('statuses=queued%2Cplanning%2Cdeferred')
       && path.includes('limit=200')
     ))).toBe(true);
+  });
+
+  it('关闭取消确认时不发请求，任务保持在队列中', async () => {
+    state.delegatedTasks = { tasks: [delegatedTask()] };
+
+    renderQueuePage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '取消任务 排队来源标题' }));
+    expect(await screen.findByText('取消“排队来源标题”？')).toBeTruthy();
+    fireEvent.click(screen.getByText('暂不取消'));
+
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+    expect(screen.getByText('排队来源标题')).toBeTruthy();
+  });
+
+  it('确认取消只提交对应任务 id 与版本，终态回执后刷新并移出排队区', async () => {
+    const task = delegatedTask();
+    const cancelledTask = delegatedTask({ status: 'cancelled', version: task.version + 1 });
+    state.delegatedTasks = { tasks: [task] };
+    vi.mocked(apiPost).mockImplementationOnce(() => {
+      state.delegatedTasks = { tasks: [] };
+      return Promise.resolve({ task: cancelledTask }) as never;
+    });
+
+    renderQueuePage();
+    const cancelButton = await screen.findByRole('button', { name: '取消任务 排队来源标题' });
+    const delegatedReadsBefore = vi.mocked(apiGet).mock.calls.filter(([path]) => String(path).startsWith('/api/delegated-tasks')).length;
+    const queueReadsBefore = vi.mocked(apiGet).mock.calls.filter(([path]) => path === '/api/content/queue').length;
+
+    fireEvent.click(cancelButton);
+    fireEvent.click(await screen.findByText('确认取消'));
+
+    await waitFor(() => expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
+      `/api/delegated-tasks/${task.id}/cancel`,
+      { version: task.version },
+    ));
+    expect(await screen.findByText('排队任务已取消')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('排队来源标题')).toBeNull());
+    await waitFor(() => {
+      expect(vi.mocked(apiGet).mock.calls.filter(([path]) => String(path).startsWith('/api/delegated-tasks')).length).toBeGreaterThan(delegatedReadsBefore);
+      expect(vi.mocked(apiGet).mock.calls.filter(([path]) => path === '/api/content/queue').length).toBeGreaterThan(queueReadsBefore);
+    });
+  });
+
+  it('规划中取消请求只标记取消中，并在请求期间阻止重复提交', async () => {
+    const planningTask = delegatedTask({
+      status: 'planning',
+      sourceConstraints: { title: '规划中的稿件' },
+    });
+    const otherTask = delegatedTask({
+      id: '22222222-2222-4222-8222-222222222222',
+      sourceConstraints: { title: '另一个排队任务' },
+    });
+    const cancellingTask = delegatedTask({
+      status: 'planning',
+      sourceConstraints: { title: '规划中的稿件' },
+      cancelRequested: true,
+      version: planningTask.version + 1,
+    });
+    state.delegatedTasks = { tasks: [planningTask, otherTask] };
+    let resolveCancel!: (value: { task: DelegatedTaskView }) => void;
+    const pendingCancel = new Promise<{ task: DelegatedTaskView }>((resolve) => {
+      resolveCancel = resolve;
+    });
+    vi.mocked(apiPost).mockImplementationOnce(() => pendingCancel as never);
+
+    renderQueuePage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '取消任务 规划中的稿件' }));
+    fireEvent.click(await screen.findByText('确认取消'));
+    await waitFor(() => expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1));
+    const currentButton = screen.getByRole('button', { name: '取消任务 规划中的稿件' });
+    const otherButton = screen.getByRole('button', { name: '取消任务 另一个排队任务' }) as HTMLButtonElement;
+    await waitFor(() => expect(currentButton.classList.contains('ant-btn-loading')).toBe(true));
+    expect(otherButton.disabled).toBe(true);
+    fireEvent.click(otherButton);
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+
+    state.delegatedTasks = { tasks: [cancellingTask, otherTask] };
+    resolveCancel({ task: cancellingTask });
+
+    expect(await screen.findByText('取消请求已受理，任务将在安全边界停止')).toBeTruthy();
+    const planningCard = (await screen.findByText('规划中的稿件')).closest('.publish-queued-task');
+    expect(planningCard).toBeTruthy();
+    expect(within(planningCard as HTMLElement).getByText('取消中')).toBeTruthy();
+    expect(within(planningCard as HTMLElement).queryByRole('button', { name: '取消任务 规划中的稿件' })).toBeNull();
+    expect((screen.getByRole('button', { name: '取消任务 另一个排队任务' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('取消遇到版本冲突时刷新最新状态、不自动重试且不暴露机器码', async () => {
+    state.delegatedTasks = { tasks: [delegatedTask()] };
+    vi.mocked(apiPost).mockRejectedValueOnce(new ApiError(409, 'version_conflict'));
+
+    renderQueuePage();
+    const cancelButton = await screen.findByRole('button', { name: '取消任务 排队来源标题' });
+    const delegatedReadsBefore = vi.mocked(apiGet).mock.calls.filter(([path]) => String(path).startsWith('/api/delegated-tasks')).length;
+
+    fireEvent.click(cancelButton);
+    fireEvent.click(await screen.findByText('确认取消'));
+
+    expect(await screen.findByText('任务状态已变化，已刷新；请确认最新状态后重试')).toBeTruthy();
+    expect(screen.queryByText('version_conflict')).toBeNull();
+    expect(screen.getByText('排队来源标题')).toBeTruthy();
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(
+      vi.mocked(apiGet).mock.calls.filter(([path]) => String(path).startsWith('/api/delegated-tasks')).length,
+    ).toBeGreaterThan(delegatedReadsBefore));
+  });
+
+  it('取消失败时保留任务并显示说人话回退文案', async () => {
+    state.delegatedTasks = { tasks: [delegatedTask()] };
+    vi.mocked(apiPost).mockRejectedValueOnce(new ApiError(503, 'delegated_tasks_unavailable'));
+
+    renderQueuePage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '取消任务 排队来源标题' }));
+    fireEvent.click(await screen.findByText('确认取消'));
+
+    expect(await screen.findByText('取消任务失败，请稍后重试')).toBeTruthy();
+    expect(screen.queryByText('delegated_tasks_unavailable')).toBeNull();
+    expect(screen.getByText('排队来源标题')).toBeTruthy();
   });
 
   it('暂缓任务展示稳定等待原因与预计检查时间，未知步骤不猜测', async () => {

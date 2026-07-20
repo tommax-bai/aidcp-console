@@ -26,7 +26,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '../api/client';
+import { ApiError, apiPost } from '../api/client';
 import { errorText } from '../api/errorText';
 import { usePublished, useContentQueue, useAccounts, useDelegatedTasks } from '../api/queries';
 import { ProfileLink } from '../components';
@@ -443,8 +443,11 @@ function QueuedPublishTasksPanel(props: {
   tasks: Array<DelegatedTaskView & { status: QueuedPublishStatus }>;
   loading: boolean;
   failed: boolean;
+  cancelingTaskId: string | null;
+  cancellationPending: boolean;
+  onCancel: (task: DelegatedTaskView & { status: QueuedPublishStatus }) => void;
 }) {
-  const { tasks, loading, failed } = props;
+  const { tasks, loading, failed, cancelingTaskId, cancellationPending, onCancel } = props;
   return (
     <section className="publish-queued-tasks" aria-label="排队中的发布任务">
       <div className="publish-queued-tasks__head">
@@ -484,6 +487,30 @@ function QueuedPublishTasksPanel(props: {
                   </Tag>
                   {task.priority === 'high' ? <Tag color="red">高优先级</Tag> : null}
                   <Typography.Text type="secondary">任务 {task.id.slice(0, 8)}</Typography.Text>
+                  {task.cancelRequested ? (
+                    <Tag color="orange">取消中</Tag>
+                  ) : (
+                    <Popconfirm
+                      title={`取消“${sourceTitle ?? actionLabel}”？`}
+                      description="确认后将取消这个任务尚未执行的部分。"
+                      okText="确认取消"
+                      cancelText="暂不取消"
+                      okButtonProps={{ danger: true }}
+                      disabled={cancellationPending}
+                      onConfirm={() => onCancel(task)}
+                    >
+                      <Button
+                        danger
+                        type="link"
+                        size="small"
+                        aria-label={`取消任务 ${sourceTitle ?? actionLabel}`}
+                        loading={cancelingTaskId === task.id}
+                        disabled={cancellationPending && cancelingTaskId !== task.id}
+                      >
+                        取消任务
+                      </Button>
+                    </Popconfirm>
+                  )}
                 </Space>
                 {waitReason ? (
                   <Typography.Text type="secondary" className="publish-queued-task__reason">
@@ -1087,18 +1114,51 @@ function SourceReferenceModal({
 }
 
 /**
- * 独立发布队列：只读呈现生成、待人审、平台下发与尚未开跑任务。
+ * 独立发布队列：呈现生成、待人审、平台下发与尚未开跑任务，并允许取消对应排队任务。
  * 编辑、批准和驳回仍由 ContentPage 单点承载，避免授权语义在两个页面漂移。
  */
 export function PublishQueuePage() {
   const [selectedQueueItemId, setSelectedQueueItemId] = useState<string | null>(null);
   const [selectedActiveAccountId, setSelectedActiveAccountId] = useState<string | null>(null);
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
   const accounts = useAccounts();
   const queue = useContentQueue();
   const delegatedPublishTasks = useDelegatedTasks({
     actionFamily: 'publish',
     statuses: [...QUEUED_PUBLISH_STATUSES],
     limit: 200,
+  });
+  const refreshPublishQueue = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['delegated-tasks'] }),
+    queryClient.invalidateQueries({ queryKey: ['content', 'queue'] }),
+  ]);
+  const cancelPublishTask = useMutation({
+    mutationFn: (task: DelegatedTaskView & { status: QueuedPublishStatus }) => (
+      apiPost<{ task: DelegatedTaskView }>(`/api/delegated-tasks/${encodeURIComponent(task.id)}/cancel`, {
+        version: task.version,
+      })
+    ),
+    onSuccess: async ({ task }) => {
+      if (task.status === 'cancelled') {
+        message.success('排队任务已取消');
+      } else if (task.status === 'partially_completed') {
+        message.success('任务已停止，已取消尚未执行的部分');
+      } else if (task.cancelRequested) {
+        message.success('取消请求已受理，任务将在安全边界停止');
+      } else {
+        message.info('任务状态已更新，正在刷新最新结果');
+      }
+      await refreshPublishQueue();
+    },
+    onError: async (err) => {
+      if (err instanceof ApiError && err.message === 'version_conflict') {
+        await refreshPublishQueue();
+        message.error('任务状态已变化，已刷新；请确认最新状态后重试');
+        return;
+      }
+      message.error(errorText(err, '取消任务失败，请稍后重试'));
+    },
   });
 
   const queueStatus = queue.data?.status ?? '—';
@@ -1243,6 +1303,9 @@ export function PublishQueuePage() {
                 tasks={queuedPublishTasks}
                 loading={delegatedPublishTasks.isLoading}
                 failed={delegatedPublishTasks.isError}
+                cancelingTaskId={cancelPublishTask.isPending ? cancelPublishTask.variables?.id ?? null : null}
+                cancellationPending={cancelPublishTask.isPending}
+                onCancel={(task) => cancelPublishTask.mutate(task)}
               />
             </>
           ) : (
@@ -1252,6 +1315,9 @@ export function PublishQueuePage() {
                 tasks={queuedPublishTasks}
                 loading={delegatedPublishTasks.isLoading}
                 failed={delegatedPublishTasks.isError}
+                cancelingTaskId={cancelPublishTask.isPending ? cancelPublishTask.variables?.id ?? null : null}
+                cancellationPending={cancelPublishTask.isPending}
+                onCancel={(task) => cancelPublishTask.mutate(task)}
               />
             </div>
           )
@@ -1261,6 +1327,9 @@ export function PublishQueuePage() {
               tasks={queuedPublishTasks}
               loading={delegatedPublishTasks.isLoading}
               failed={delegatedPublishTasks.isError}
+              cancelingTaskId={cancelPublishTask.isPending ? cancelPublishTask.variables?.id ?? null : null}
+              cancellationPending={cancelPublishTask.isPending}
+              onCancel={(task) => cancelPublishTask.mutate(task)}
             />
             {queueRuns.length > 0 ? (
               <div className="publish-queue-runs" style={{ marginTop: 12, marginBottom: 8 }}>
@@ -1354,6 +1423,9 @@ export function PublishQueuePage() {
               tasks={queuedPublishTasks}
               loading={delegatedPublishTasks.isLoading}
               failed={delegatedPublishTasks.isError}
+              cancelingTaskId={cancelPublishTask.isPending ? cancelPublishTask.variables?.id ?? null : null}
+              cancellationPending={cancelPublishTask.isPending}
+              onCancel={(task) => cancelPublishTask.mutate(task)}
             />
           </div>
         )}
