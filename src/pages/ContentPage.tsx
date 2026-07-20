@@ -195,6 +195,13 @@ const QUEUED_PUBLISH_STATUS_COLOR: Record<QueuedPublishStatus, string> = {
   deferred: 'orange',
 };
 
+const QUEUED_PUBLISH_WAIT_REASON: Record<string, string> = {
+  waiting_ownership: '等待同一参照稿的在途任务释放',
+  waiting_safe_slot: '生成槽位暂满，任务仍在排队',
+  waiting_new_target: '等待新的可执行目标',
+  paused_by_user: '已由用户暂停',
+};
+
 function isQueuedPublishTask(task: DelegatedTaskView): task is DelegatedTaskView & { status: QueuedPublishStatus } {
   return QUEUED_PUBLISH_ACTIONS.has(task.action)
     && QUEUED_PUBLISH_STATUSES.includes(task.status as QueuedPublishStatus);
@@ -468,6 +475,9 @@ function QueuedPublishTasksPanel(props: {
           {tasks.map((task) => {
             const sourceTitle = queuedTaskSourceTitle(task);
             const actionLabel = labelOf(QUEUED_PUBLISH_ACTION_LABEL, task.action);
+            const waitReason = task.status === 'deferred' && task.currentStep
+              ? QUEUED_PUBLISH_WAIT_REASON[task.currentStep] ?? null
+              : null;
             return (
               <div key={task.id} className="publish-queued-task">
                 <Typography.Text strong ellipsis={{ tooltip: sourceTitle ?? actionLabel }}>
@@ -483,9 +493,14 @@ function QueuedPublishTasksPanel(props: {
                   {task.priority === 'high' ? <Tag color="red">高优先级</Tag> : null}
                   <Typography.Text type="secondary">任务 {task.id.slice(0, 8)}</Typography.Text>
                 </Space>
+                {waitReason ? (
+                  <Typography.Text type="secondary" className="publish-queued-task__reason">
+                    {waitReason}
+                  </Typography.Text>
+                ) : null}
                 {task.status === 'deferred' && task.nextEligibleAt ? (
                   <Typography.Text type="secondary" className="publish-queued-task__time">
-                    下次尝试 {dayjs(task.nextEligibleAt).format('MM-DD HH:mm')}
+                    预计再次检查 {dayjs(task.nextEligibleAt).format('MM-DD HH:mm')}
                   </Typography.Text>
                 ) : task.createdAt ? (
                   <Typography.Text type="secondary" className="publish-queued-task__time">

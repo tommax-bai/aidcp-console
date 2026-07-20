@@ -290,6 +290,48 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     ))).toBe(true);
   });
 
+  it('暂缓任务展示稳定等待原因与预计检查时间，未知步骤不猜测', async () => {
+    const nextEligibleAt = new Date('2026-07-20T11:40:00+08:00').getTime();
+    state.published = { items: [] };
+    state.queue = { status: 'idle', snapshot: null };
+    state.delegatedTasks = {
+      tasks: [
+        delegatedTask({
+          status: 'deferred',
+          currentStep: 'waiting_ownership',
+          nextEligibleAt,
+          sourceConstraints: { title: '同源等待稿' },
+        }),
+        delegatedTask({
+          id: '22222222-2222-4222-8222-222222222222',
+          status: 'deferred',
+          currentStep: 'waiting_safe_slot',
+          nextEligibleAt,
+          sourceConstraints: { title: '槽位等待稿' },
+        }),
+        delegatedTask({
+          id: '33333333-3333-4333-8333-333333333333',
+          status: 'deferred',
+          currentStep: 'future_unknown_step',
+          nextEligibleAt,
+          sourceConstraints: { title: '未知步骤稿' },
+        }),
+      ],
+    };
+
+    renderPage();
+
+    const panel = await screen.findByRole('region', { name: '排队中的发布任务' });
+    await within(panel).findByText('同源等待稿');
+    expect(within(panel).getByText('等待同一参照稿的在途任务释放')).toBeTruthy();
+    expect(within(panel).getByText('生成槽位暂满，任务仍在排队')).toBeTruthy();
+    expect(within(panel).getAllByText('预计再次检查 07-20 11:40')).toHaveLength(3);
+    expect(within(panel).queryByText(/下次尝试/)).toBeNull();
+    const unknownCard = within(panel).getByText('未知步骤稿').closest('.publish-queued-task');
+    expect(unknownCard).toBeTruthy();
+    expect(within(unknownCard as HTMLElement).queryByText(/等待|暂停|槽位/)).toBeNull();
+  });
+
   it('排队任务查询失败时保留活跃稿件并显示独立错误', async () => {
     state.published = { items: [] };
     state.queue = {

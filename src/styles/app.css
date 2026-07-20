@@ -603,6 +603,7 @@ body {
   background: var(--aidcp-card);
 }
 .publish-queued-task__account.ant-typography,
+.publish-queued-task__reason.ant-typography,
 .publish-queued-task__time.ant-typography {
   display: block;
   font-size: var(--aidcp-font-size-xs);
