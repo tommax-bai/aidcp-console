@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
-import { buildDownloadMenuItems, isActive } from './AppShell';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { AppShell, buildDownloadMenuItems, getActiveNavigation, isActive } from './AppShell';
 import type { DownloadsManifest } from '../types/api';
+import { NAV_GROUPS, NAV_ROUTES, navRoutesForGroup } from '../routes';
+
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({ logout: vi.fn() }),
+}));
+
+vi.mock('../api/queries', () => ({
+  useDownloads: () => ({ data: { version: null, items: [] }, isPending: false }),
+}));
 
 /**
  * 下载菜单（change downloads-manifest-from-host）。
@@ -62,5 +72,85 @@ describe('AppShell top navigation active route matching', () => {
   it('keeps nested routes active for their owning top-level tab', () => {
     expect(isActive('/content/drafts', '/content')).toBe(true);
     expect(isActive('/content-schedule/accounts', '/content-schedule')).toBe(true);
+  });
+});
+
+describe('AppShell grouped navigation model', () => {
+  it('keeps six stable labelled groups and assigns all fourteen visible destinations exactly once', () => {
+    expect(NAV_GROUPS.map((group) => group.label)).toEqual(['总览', '账号', '内容', '互动', 'AI 配置', '系统']);
+    expect(NAV_ROUTES).toHaveLength(14);
+
+    const knownGroupIds = new Set(NAV_GROUPS.map((group) => group.id));
+    expect(NAV_ROUTES.every((route) => knownGroupIds.has(route.navGroup))).toBe(true);
+    expect(NAV_GROUPS.flatMap((group) => navRoutesForGroup(group.id))).toEqual(NAV_ROUTES);
+  });
+
+  it('keeps the approved destination order inside every group', () => {
+    const labelsByGroup = Object.fromEntries(
+      NAV_GROUPS.map((group) => [group.id, navRoutesForGroup(group.id).map((route) => route.navLabel)]),
+    );
+
+    expect(labelsByGroup).toEqual({
+      overview: ['数据'],
+      accounts: ['账号', '视频号策略', '群组'],
+      content: ['内容', '精选', '排期'],
+      interaction: ['互动联系人', '通知路由'],
+      'ai-config': ['人设', '角色'],
+      system: ['安全', '用量', '端用户'],
+    });
+  });
+
+  it('derives both group and destination for direct and nested routes', () => {
+    expect(getActiveNavigation('/content')).toMatchObject({
+      group: { id: 'content' },
+      destination: { path: '/content' },
+    });
+    expect(getActiveNavigation('/content/drafts')).toMatchObject({
+      group: { id: 'content' },
+      destination: { path: '/content' },
+    });
+    expect(getActiveNavigation('/content-schedule')).toMatchObject({
+      group: { id: 'content' },
+      destination: { path: '/content-schedule' },
+    });
+  });
+
+  it('keeps settings independent while retaining System group context', () => {
+    const active = getActiveNavigation('/settings');
+    expect(active.group.id).toBe('system');
+    expect(active.destination).toBeUndefined();
+  });
+
+  it('renders six desktop groups and the current group destination row', () => {
+    render(
+      <MemoryRouter initialEntries={['/curated']}>
+        <Routes>
+          <Route path="*" element={<AppShell />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const primary = screen.getByRole('navigation', { name: '业务分组' });
+    expect(within(primary).getAllByRole('link')).toHaveLength(6);
+    const secondary = screen.getByRole('navigation', { name: '内容分组导航' });
+    expect(within(secondary).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '精选', '排期']);
+    expect(within(secondary).getByRole('link', { name: '精选' }).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('opens a labelled narrow menu containing all destinations under six groups', async () => {
+    render(
+      <MemoryRouter initialEntries={['/curated']}>
+        <Routes>
+          <Route path="*" element={<AppShell />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '打开导航菜单，当前位置：内容，精选' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('group')).toHaveLength(6);
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(14);
+    await waitFor(() => expect(within(menu).getByText('视频号策略')).toBeTruthy());
+    expect(within(menu).getByText('端用户')).toBeTruthy();
   });
 });

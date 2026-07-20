@@ -241,6 +241,9 @@ body {
   border-bottom: 1px solid var(--aidcp-border);
   box-shadow: var(--aidcp-shadow-sm);
 }
+.top-nav__primary {
+  background: var(--aidcp-background);
+}
 .top-nav__inner {
   max-width: var(--aidcp-container-max);
   margin: 0 auto;
@@ -304,7 +307,7 @@ body {
   padding: 3px;
   gap: 2px;
 }
-.pill--business {
+.pill--groups {
   margin: 0 auto;
 }
 
@@ -331,6 +334,131 @@ body {
   background: var(--aidcp-background);
   color: var(--aidcp-foreground);
   box-shadow: var(--aidcp-shadow-sm);
+}
+.pill__icon {
+  display: inline-flex;
+}
+
+/* ---- 当前分组二级导航 ---- */
+.top-nav__secondary {
+  border-top: 1px solid var(--aidcp-border);
+  background: var(--aidcp-background);
+}
+.top-nav__secondary-inner {
+  max-width: var(--aidcp-container-max);
+  min-height: 40px;
+  margin: 0 auto;
+  padding: 0 var(--aidcp-container-px);
+  display: flex;
+  align-items: center;
+  gap: var(--aidcp-space-3);
+}
+.top-nav__secondary-label {
+  flex: 0 0 auto;
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  font-weight: var(--aidcp-font-weight-semibold);
+  letter-spacing: 0.04em;
+}
+.top-nav__secondary-divider {
+  width: 1px;
+  height: 16px;
+  flex: 0 0 auto;
+  background: var(--aidcp-border);
+}
+.subnav {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.subnav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: var(--aidcp-radius-md);
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-sm);
+  font-weight: var(--aidcp-font-weight-medium);
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.subnav__link:hover {
+  color: var(--aidcp-foreground);
+  background: var(--aidcp-muted);
+}
+.subnav__link--active {
+  color: var(--aidcp-foreground);
+  background: var(--aidcp-muted);
+}
+.subnav__icon {
+  display: inline-flex;
+}
+
+/* ---- 窄屏分组导航 ---- */
+.top-nav__mobile-nav {
+  display: none;
+}
+.top-nav__menu-trigger {
+  width: min(100%, 300px);
+  height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--aidcp-border);
+  border-radius: 9999px;
+  background: var(--aidcp-muted);
+  color: var(--aidcp-foreground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font: inherit;
+}
+.top-nav__menu-trigger:hover {
+  border-color: var(--aidcp-muted-foreground);
+}
+.top-nav__menu-label {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--aidcp-font-size-sm);
+  line-height: 1;
+  white-space: nowrap;
+}
+.top-nav__menu-group {
+  flex: 0 0 auto;
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+}
+.top-nav__menu-separator {
+  flex: 0 0 auto;
+  color: var(--aidcp-muted-foreground);
+}
+.top-nav__menu-destination {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--aidcp-font-weight-semibold);
+}
+.top-nav__menu-chevron {
+  flex: 0 0 auto;
+  color: var(--aidcp-muted-foreground);
+  font-size: 10px;
+}
+.mobile-nav-menu__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mobile-nav-menu__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }
 
 /* 配置圆按钮 */
@@ -982,23 +1110,45 @@ body {
   line-height: 1.5;
 }
 
-/* 窄屏：主业务胶囊仅留图标。
-   10 个带中文标签的 tab 约需 ~1120px 视口才容得下；再窄先隐藏文字、只留图标，
-   而不是压缩按钮把中文标签挤成竖排字（配合上方 .pill__btn 的 nowrap / flex-shrink:0）。*/
-@media (max-width: 1160px) {
-  .pill--business .pill__btn span {
-    display: none;
-  }
-  /* 仅图标态收紧内距、去掉图标与文字间的空隙，胶囊更紧凑 */
-  .pill--business .pill__btn {
-    gap: 0;
+/* 紧凑桌面仍保留一级分组文字，只收紧内距。 */
+@media (max-width: 1080px) {
+  .pill--groups .pill__btn {
     padding: 6px 10px;
   }
 }
-/* 更窄：品牌副标题也隐藏，给顶栏腾地方 */
-@media (max-width: 860px) {
+
+/* 窄屏改用带文字的分组菜单，不退化成一排不可辨认的纯图标。 */
+@media (max-width: 960px) {
+  .top-nav__desktop-nav {
+    display: none;
+  }
+  .top-nav__mobile-nav {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 760px) {
   .brand__sub {
     display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .top-nav__inner {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .brand__text {
+    display: none;
+  }
+  .top-nav__actions {
+    gap: 4px;
+  }
+  .top-nav__menu-trigger {
+    padding: 0 10px;
   }
 }
 

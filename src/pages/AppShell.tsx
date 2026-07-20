@@ -1,7 +1,9 @@
-import { Dropdown } from 'antd';
+import { Dropdown, type MenuProps } from 'antd';
 import {
   DeploymentUnitOutlined,
+  DownOutlined,
   DownloadOutlined,
+  MenuOutlined,
   SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -10,19 +12,58 @@ import { useAuth } from '../auth/AuthContext';
 import { edgeDownloadUrl } from '../config/downloads';
 import { useDownloads } from '../api/queries';
 import type { DownloadsManifest } from '../types/api';
-import { NAV_ROUTES } from '../routes';
-
-/** 主业务入口（顶部居中胶囊导航）：从单一来源 NAV_ROUTES 派生（#37），文案 / 图标 / 顺序与路由表同源。 */
-const BUSINESS = NAV_ROUTES;
+import {
+  APP_ROUTES,
+  NAV_GROUPS,
+  NAV_ROUTES,
+  navRoutesForGroup,
+  type NavGroup,
+  type NavRoute,
+} from '../routes';
 
 /** 当前路径是否命中某入口（'/' 精确匹配，其余需落在路径边界内，子路由保持高亮）。 */
 export function isActive(pathname: string, key: string): boolean {
   return key === '/' ? pathname === '/' : pathname === key || pathname.startsWith(`${key}/`);
 }
 
+export interface ActiveNavigation {
+  group: NavGroup;
+  destination?: NavRoute;
+}
+
+/** Resolve one stable group and, when visible, one destination from the current URL. */
+export function getActiveNavigation(pathname: string): ActiveNavigation {
+  const route = APP_ROUTES.find((candidate) => isActive(pathname, candidate.path));
+  const group = NAV_GROUPS.find((candidate) => candidate.id === route?.navGroup) ?? NAV_GROUPS[0];
+  const destination = route?.showInNav ? NAV_ROUTES.find((candidate) => candidate.path === route.path) : undefined;
+  return { group, destination };
+}
+
+function buildMobileNavigationItems(): MenuProps['items'] {
+  return NAV_GROUPS.map((group) => ({
+    key: `group:${group.id}`,
+    type: 'group' as const,
+    label: (
+      <span className="mobile-nav-menu__group">
+        {group.icon}
+        <span>{group.label}</span>
+      </span>
+    ),
+    children: navRoutesForGroup(group.id).map((route) => ({
+      key: route.path,
+      icon: route.navIcon,
+      label: (
+        <Link className="mobile-nav-menu__link" to={route.path}>
+          {route.navLabel}
+        </Link>
+      ),
+    })),
+  }));
+}
+
 /**
- * 应用外壳（design PAGE 2）：视觉对齐 isales —— 顶部胶囊导航 + 居中内容（弃侧栏）。
- * 左品牌 / 中主业务胶囊 / 右下载客户端 + 设置圆按钮 + 用户菜单。
+ * 应用外壳（design PAGE 2）：顶部业务分组 + 当前分组二级导航 + 居中内容（弃侧栏）。
+ * 左品牌 / 中业务分组（窄屏为带文字菜单）/ 右下载客户端 + 设置圆按钮 + 用户菜单。
  * 注：原右侧「全局账号筛选器（§3.1）」已移除——归因已流通（V1 task 9.6），按账号切片改由各页面用真实 API 数据各自完成。
  */
 /**
@@ -55,69 +96,124 @@ export function AppShell() {
   const pathname = location.pathname;
   const downloads = useDownloads();
   const downloadMenuItems = buildDownloadMenuItems(downloads.data, downloads.isPending);
+  const activeNavigation = getActiveNavigation(pathname);
+  const activeGroupRoutes = navRoutesForGroup(activeNavigation.group.id);
+  const currentLocationLabel = activeNavigation.destination?.navLabel
+    ?? (isActive(pathname, '/settings') ? '设置' : activeNavigation.group.label);
+  const mobileNavigationItems = buildMobileNavigationItems();
 
   return (
     <div className="app-shell">
       <header className="top-nav" role="banner">
-        <div className="top-nav__inner">
-          {/* 左：品牌 */}
-          <Link to="/" className="brand">
-            <span className="brand__logo" aria-hidden="true">
-              <DeploymentUnitOutlined className="brand-glyph" />
-            </span>
-            <span className="brand__text">
-              <span className="brand__title">AIDCP</span>
-              <span className="brand__sub">运营管理后台</span>
-            </span>
-          </Link>
-
-          {/* 中：主业务胶囊 */}
-          <nav className="pill pill--business" aria-label="主业务">
-            {BUSINESS.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`pill__btn${isActive(pathname, item.path) ? ' pill__btn--active' : ''}`}
-              >
-                {item.navIcon}
-                <span>{item.navLabel}</span>
-              </Link>
-            ))}
-          </nav>
-
-          {/* 右：下载客户端 + 设置 + 用户 */}
-          <div className="top-nav__actions">
-            <Dropdown trigger={['click']} menu={{ items: downloadMenuItems }}>
-              <button
-                type="button"
-                className="user-trigger user-trigger--icon"
-                title="下载客户端"
-                aria-label="下载边缘客户端"
-              >
-                <DownloadOutlined />
-              </button>
-            </Dropdown>
-            <Link
-              to="/settings"
-              className={`pill__circle${isActive(pathname, '/settings') ? ' pill__circle--active' : ''}`}
-              title="设置"
-              aria-label="设置"
-            >
-              <SettingOutlined />
+        <div className="top-nav__primary">
+          <div className="top-nav__inner">
+            {/* 左：品牌 */}
+            <Link to="/" className="brand">
+              <span className="brand__logo" aria-hidden="true">
+                <DeploymentUnitOutlined className="brand-glyph" />
+              </span>
+              <span className="brand__text">
+                <span className="brand__title">AIDCP</span>
+                <span className="brand__sub">运营管理后台</span>
+              </span>
             </Link>
-            <Dropdown
-              trigger={['click']}
-              menu={{ items: [{ key: 'logout', label: '退出登录', onClick: logout }] }}
-            >
-              <button
-                type="button"
-                className="user-trigger user-trigger--icon"
-                title="管理"
-                aria-label="用户菜单"
+
+            {/* 中：稳定的一级业务分组 */}
+            <nav className="pill pill--groups top-nav__desktop-nav" aria-label="业务分组">
+              {NAV_GROUPS.map((group) => (
+                <Link
+                  key={group.id}
+                  to={group.defaultPath}
+                  className={`pill__btn${activeNavigation.group.id === group.id ? ' pill__btn--active' : ''}`}
+                  aria-current={activeNavigation.group.id === group.id ? 'location' : undefined}
+                >
+                  <span className="pill__icon" aria-hidden="true">{group.icon}</span>
+                  <span>{group.label}</span>
+                </Link>
+              ))}
+            </nav>
+
+            {/* 窄屏：保留当前地点文字，展开后按相同六分组展示全部入口。 */}
+            <div className="top-nav__mobile-nav">
+              <Dropdown
+                trigger={['click']}
+                placement="bottom"
+                menu={{
+                  items: mobileNavigationItems,
+                  selectedKeys: activeNavigation.destination ? [activeNavigation.destination.path] : [],
+                }}
               >
-                <UserOutlined />
-              </button>
-            </Dropdown>
+                <button
+                  type="button"
+                  className="top-nav__menu-trigger"
+                  aria-label={`打开导航菜单，当前位置：${activeNavigation.group.label}，${currentLocationLabel}`}
+                >
+                  <MenuOutlined aria-hidden="true" />
+                  <span className="top-nav__menu-label">
+                    <span className="top-nav__menu-group">{activeNavigation.group.label}</span>
+                    <span className="top-nav__menu-separator" aria-hidden="true">·</span>
+                    <span className="top-nav__menu-destination">{currentLocationLabel}</span>
+                  </span>
+                  <DownOutlined className="top-nav__menu-chevron" aria-hidden="true" />
+                </button>
+              </Dropdown>
+            </div>
+
+            {/* 右：下载客户端 + 设置 + 用户 */}
+            <div className="top-nav__actions">
+              <Dropdown trigger={['click']} menu={{ items: downloadMenuItems }}>
+                <button
+                  type="button"
+                  className="user-trigger user-trigger--icon"
+                  title="下载客户端"
+                  aria-label="下载边缘客户端"
+                >
+                  <DownloadOutlined />
+                </button>
+              </Dropdown>
+              <Link
+                to="/settings"
+                className={`pill__circle${isActive(pathname, '/settings') ? ' pill__circle--active' : ''}`}
+                title="设置"
+                aria-label="设置"
+              >
+                <SettingOutlined />
+              </Link>
+              <Dropdown
+                trigger={['click']}
+                menu={{ items: [{ key: 'logout', label: '退出登录', onClick: logout }] }}
+              >
+                <button
+                  type="button"
+                  className="user-trigger user-trigger--icon"
+                  title="管理"
+                  aria-label="用户菜单"
+                >
+                  <UserOutlined />
+                </button>
+              </Dropdown>
+            </div>
+          </div>
+        </div>
+
+        {/* 桌面二级导航：始终展示当前分组内的文字入口。 */}
+        <div className="top-nav__secondary top-nav__desktop-nav">
+          <div className="top-nav__secondary-inner">
+            <span className="top-nav__secondary-label">{activeNavigation.group.label}</span>
+            <span className="top-nav__secondary-divider" aria-hidden="true" />
+            <nav className="subnav" aria-label={`${activeNavigation.group.label}分组导航`}>
+              {activeGroupRoutes.map((route) => (
+                <Link
+                  key={route.path}
+                  to={route.path}
+                  className={`subnav__link${isActive(pathname, route.path) ? ' subnav__link--active' : ''}`}
+                  aria-current={isActive(pathname, route.path) ? 'page' : undefined}
+                >
+                  <span className="subnav__icon" aria-hidden="true">{route.navIcon}</span>
+                  <span>{route.navLabel}</span>
+                </Link>
+              ))}
+            </nav>
           </div>
         </div>
       </header>
