@@ -356,7 +356,7 @@ beforeEach(() => {
 });
 
 describe('WechatChannelsReplySettings', () => {
-  it('only shows the account-level reply entry for wechat_channels accounts', async () => {
+  it('shows group strategy lookup and separate runtime controls only for wechat_channels accounts', async () => {
     createServer();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -368,7 +368,9 @@ describe('WechatChannelsReplySettings', () => {
         </QueryClientProvider>
       </AntdApp>,
     );
-    expect(await screen.findAllByRole('button', { name: '回复设置' })).toHaveLength(1);
+    expect(await screen.findAllByRole('button', { name: '查看策略' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '运行控制' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '回复设置' })).toBeNull();
     expect(screen.getByText('视频号')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'FB配置' })).toHaveLength(1);
   });
@@ -507,6 +509,20 @@ describe('WechatChannelsReplySettings', () => {
     expect(screen.getByText('published v未发布')).toBeTruthy();
     expect(server.calls.some((call) => call.path.endsWith('/reply-config/publish'))).toBe(false);
     expect(server.calls.some((call) => call.path.includes('/send'))).toBe(false);
+  });
+
+  it('keeps account runtime controls usable when no legacy account reply config exists', async () => {
+    createServer({ missingConfig: true });
+    render(
+      <AntdApp>
+        <WechatChannelsReplySettings account={panelAccount()} runtimeOnly open onClose={() => undefined} />
+      </AntdApp>,
+    );
+
+    expect(await screen.findByText('即时运行控制（紧急停写）')).toBeTruthy();
+    expect(screen.getByText('运行控制 v1')).toBeTruthy();
+    expect(screen.queryByText('尚未创建互动回复配置')).toBeNull();
+    expect(screen.queryByText('回复处理策略草稿')).toBeNull();
   });
 
   it('keeps missing config unchanged when initialize permission is denied', async () => {

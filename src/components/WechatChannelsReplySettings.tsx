@@ -46,18 +46,30 @@ import dayjs from 'dayjs';
 import { ApiError } from '../api/client';
 import {
   archiveReplyTemplate,
+  archiveScopeReplyTemplate,
   deleteReplyRule,
+  deleteScopeReplyRule,
   initializeReplyConfig,
+  initializeScopeReplyConfig,
   loadReplyAudit,
   loadReplyConfig,
+  loadReplyRuntimeConfig,
   loadReplyPreviewContexts,
+  loadScopeReplyAudit,
+  loadScopeReplyConfig,
   previewReply,
+  previewScopeReply,
   publishReplyConfig,
+  publishScopeReplyConfig,
   saveReplyPolicy,
   saveReplyProfiles,
   saveReplyRule,
   saveReplyTemplate,
   saveRuntimeControls,
+  saveScopeReplyPolicy,
+  saveScopeReplyProfiles,
+  saveScopeReplyRule,
+  saveScopeReplyTemplate,
 } from '../api/interactionReplyConfig';
 import { errorText } from '../api/errorText';
 import { accountName } from '../types/accountDisplay';
@@ -76,6 +88,7 @@ import type {
   ReplyConfigSnapshot,
   ReplyIntent,
   ReplyProfile,
+  ReplyConfigScopeSummary,
   ReplyRule,
   ReplyTemplate,
   ReplyTone,
@@ -299,10 +312,16 @@ const DEFAULT_PREVIEW: PreviewInput = {
 
 export function WechatChannelsReplySettings({
   account,
+  scope = null,
+  previewAccount = null,
+  runtimeOnly = false,
   open,
   onClose,
 }: {
   account: PanelAccount | null;
+  scope?: ReplyConfigScopeSummary | null;
+  previewAccount?: PanelAccount | null;
+  runtimeOnly?: boolean;
   open: boolean;
   onClose: () => void;
 }) {
@@ -343,8 +362,12 @@ export function WechatChannelsReplySettings({
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
+  const scopeId = scope?.scopeId ?? null;
+  const targetId = scopeId ?? account?.accountId ?? null;
+  const targetAccount = scopeId ? previewAccount : account;
+
   dirtyRef.current = dirty;
-  activeAccountId.current = open ? (account?.accountId ?? null) : null;
+  activeAccountId.current = open ? targetId : null;
 
   const resetScopedState = useCallback(() => {
     auditPageController.current?.abort();
@@ -381,7 +404,7 @@ export function WechatChannelsReplySettings({
     setPreviewError(null);
   }, []);
 
-  const loadAccount = useCallback(async (accountId: string) => {
+  const loadAccount = useCallback(async (configTargetId: string) => {
     requestController.current?.abort();
     auditPageController.current?.abort();
     auditPageController.current = null;
@@ -395,19 +418,25 @@ export function WechatChannelsReplySettings({
     setAuditPageState('idle');
     setAuditState('loading');
 
-    const auditPromise = loadReplyAudit(accountId, controller.signal)
+    const auditPromise = (scopeId
+      ? loadScopeReplyAudit(scopeId, controller.signal)
+      : loadReplyAudit(configTargetId, controller.signal))
       .then((value) => ({ value, error: null as unknown }))
       .catch((error: unknown) => ({ value: null, error }));
     try {
-      const next = await loadReplyConfig(accountId, controller.signal);
-      if (activeAccountId.current !== accountId || controller.signal.aborted) return;
+      const next = runtimeOnly
+        ? await loadReplyRuntimeConfig(configTargetId, controller.signal)
+        : scopeId
+        ? await loadScopeReplyConfig(scopeId, previewAccount?.accountId, controller.signal)
+        : await loadReplyConfig(configTargetId, controller.signal);
+      if (activeAccountId.current !== configTargetId || controller.signal.aborted) return;
       setSnapshot(copySnapshot(next));
       setDirty(CLEAN_DIRTY);
       dirtyRef.current = CLEAN_DIRTY;
       setLoading(false);
     } catch (error) {
       if (isAbort(error)) return;
-      if (activeAccountId.current !== accountId) return;
+      if (activeAccountId.current !== configTargetId) return;
       controller.abort();
       setLoading(false);
       setLoadError(isPermissionDenied(error) ? 'permission' : isConfigMissing(error) ? 'missing' : 'error');
@@ -419,27 +448,27 @@ export function WechatChannelsReplySettings({
       if (auditResult.error) throw auditResult.error;
       const audit = auditResult.value;
       if (!audit) throw new Error('reply_audit_missing');
-      if (activeAccountId.current !== accountId || controller.signal.aborted) return;
+      if (activeAccountId.current !== configTargetId || controller.signal.aborted) return;
       setAuditItems(audit.data.items);
       setAuditNextCursor(audit.data.nextCursor);
       setAuditState('ready');
     } catch (error) {
-      if (isAbort(error) || activeAccountId.current !== accountId) return;
+      if (isAbort(error) || activeAccountId.current !== configTargetId) return;
       setAuditState(isPermissionDenied(error) ? 'permission' : 'error');
     }
-  }, []);
+  }, [previewAccount?.accountId, runtimeOnly, scopeId]);
 
   useEffect(() => {
     requestController.current?.abort();
     auditPageController.current?.abort();
     resetScopedState();
-    if (open && account?.accountId) void loadAccount(account.accountId);
+    if (open && targetId) void loadAccount(targetId);
     return () => {
       requestController.current?.abort();
       auditPageController.current?.abort();
       previewContextController.current?.abort();
     };
-  }, [account?.accountId, loadAccount, open, resetScopedState]);
+  }, [loadAccount, open, resetScopedState, targetId]);
 
   const applyPreviewContext = useCallback((context: PreviewContext) => {
     setPreviewSource('interaction');
@@ -457,8 +486,8 @@ export function WechatChannelsReplySettings({
   }, []);
 
   useEffect(() => {
-    const accountId = account?.accountId;
-    if (!open || !accountId) return;
+    const accountId = targetAccount?.accountId;
+    if (!open || !accountId || runtimeOnly) return;
     previewContextController.current?.abort();
     const controller = new AbortController();
     previewContextController.current = controller;
@@ -467,14 +496,14 @@ export function WechatChannelsReplySettings({
     setPreviewContexts([]);
     setSelectedPreviewMessageId(null);
     void loadReplyPreviewContexts(accountId, channel, controller.signal).then((response) => {
-      if (controller.signal.aborted || activeAccountId.current !== accountId) return;
+      if (controller.signal.aborted || activeAccountId.current !== targetId) return;
       const contexts = response.data.items;
       setPreviewContexts(contexts);
       setPreviewContextState('ready');
       if (contexts[0]) applyPreviewContext(contexts[0]);
       else setPreviewSource('manual');
     }).catch((error: unknown) => {
-      if (isAbort(error) || activeAccountId.current !== accountId) return;
+      if (isAbort(error) || activeAccountId.current !== targetId) return;
       setPreviewContexts([]);
       setSelectedPreviewMessageId(null);
       setPreviewSource('manual');
@@ -489,17 +518,21 @@ export function WechatChannelsReplySettings({
       if (previewContextController.current === controller) previewContextController.current = null;
     });
     return () => controller.abort();
-  }, [account?.accountId, applyPreviewContext, open, previewInput.channel]);
+  }, [applyPreviewContext, open, previewInput.channel, runtimeOnly, targetAccount?.accountId, targetId]);
 
-  const refreshAfterWrite = useCallback(async (accountId: string, saved: DirtySection | 'templates' | 'rules') => {
+  const refreshAfterWrite = useCallback(async (configTargetId: string, saved: DirtySection | 'templates' | 'rules') => {
     const controller = new AbortController();
     requestController.current?.abort();
     auditPageController.current?.abort();
     auditPageController.current = null;
     setAuditPageState('idle');
     requestController.current = controller;
-    const next = await loadReplyConfig(accountId, controller.signal);
-    if (activeAccountId.current !== accountId || controller.signal.aborted) return;
+    const next = runtimeOnly
+      ? await loadReplyRuntimeConfig(configTargetId, controller.signal)
+      : scopeId
+      ? await loadScopeReplyConfig(scopeId, previewAccount?.accountId, controller.signal)
+      : await loadReplyConfig(configTargetId, controller.signal);
+    if (activeAccountId.current !== configTargetId || controller.signal.aborted) return;
     setSnapshot((previous) => {
       if (!previous) return copySnapshot(next);
       const currentDirty = dirtyRef.current;
@@ -516,21 +549,23 @@ export function WechatChannelsReplySettings({
     setConflictVersion(null);
 
     try {
-      const audit = await loadReplyAudit(accountId, controller.signal);
-      if (activeAccountId.current === accountId && !controller.signal.aborted) {
+      const audit = scopeId
+        ? await loadScopeReplyAudit(scopeId, controller.signal)
+        : await loadReplyAudit(configTargetId, controller.signal);
+      if (activeAccountId.current === configTargetId && !controller.signal.aborted) {
         setAuditItems(audit.data.items);
         setAuditNextCursor(audit.data.nextCursor);
         setAuditState('ready');
       }
     } catch (error) {
-      if (!isAbort(error) && activeAccountId.current === accountId) {
+      if (!isAbort(error) && activeAccountId.current === configTargetId) {
         setAuditState(isPermissionDenied(error) ? 'permission' : 'error');
       }
     }
-  }, []);
+  }, [previewAccount?.accountId, runtimeOnly, scopeId]);
 
   const loadMoreAudit = useCallback(async () => {
-    const accountId = account?.accountId;
+    const accountId = targetId;
     const cursor = auditNextCursor;
     if (!accountId || !cursor || auditPageState === 'loading') return;
 
@@ -539,7 +574,9 @@ export function WechatChannelsReplySettings({
     auditPageController.current = controller;
     setAuditPageState('loading');
     try {
-      const audit = await loadReplyAudit(accountId, controller.signal, cursor);
+      const audit = scopeId
+        ? await loadScopeReplyAudit(scopeId, controller.signal, cursor)
+        : await loadReplyAudit(accountId, controller.signal, cursor);
       if (activeAccountId.current !== accountId || controller.signal.aborted) return;
       setAuditItems((current) => {
         const seen = new Set(current.map((item) => item.eventId));
@@ -553,7 +590,7 @@ export function WechatChannelsReplySettings({
     } finally {
       if (auditPageController.current === controller) auditPageController.current = null;
     }
-  }, [account?.accountId, auditNextCursor, auditPageState]);
+  }, [auditNextCursor, auditPageState, scopeId, targetId]);
 
   const handleMutationError = useCallback((error: unknown, permission: PermissionKind, fallback: string) => {
     if (isPermissionDenied(error)) {
@@ -572,14 +609,16 @@ export function WechatChannelsReplySettings({
   }, [message]);
 
   const initializeMissingConfig = useCallback(async () => {
-    if (!account || pendingAction !== null) return;
-    const accountId = account.accountId;
+    if (!targetId || pendingAction !== null) return;
+    const accountId = targetId;
     setPendingAction('initialize');
     setEditDenied(false);
     try {
-      const response = await initializeReplyConfig(accountId, { expectedVersion: 0 });
+      const response = scopeId
+        ? await initializeScopeReplyConfig(scopeId, { expectedVersion: 0 })
+        : await initializeReplyConfig(accountId, { expectedVersion: 0 });
       if (activeAccountId.current !== accountId) return;
-      message.success(`已创建安全草稿 v${response.data.initializedVersion}，尚未发布`);
+      message.success(`已创建安全草稿 v${response.data.initializedVersion ?? 1}，尚未发布`);
       await loadAccount(accountId);
     } catch (error) {
       if (activeAccountId.current !== accountId || isAbort(error)) return;
@@ -595,7 +634,7 @@ export function WechatChannelsReplySettings({
     } finally {
       if (activeAccountId.current === accountId) setPendingAction(null);
     }
-  }, [account, loadAccount, message, pendingAction]);
+  }, [loadAccount, message, pendingAction, scopeId, targetId]);
 
   const runWrite = useCallback(async (
     action: string,
@@ -603,7 +642,7 @@ export function WechatChannelsReplySettings({
     saved: DirtySection | 'templates' | 'rules',
     write: () => Promise<unknown>,
   ) => {
-    const accountId = account?.accountId;
+    const accountId = targetId;
     if (!accountId) return false;
     setPendingAction(action);
     let wrote = false;
@@ -622,7 +661,7 @@ export function WechatChannelsReplySettings({
     } finally {
       if (activeAccountId.current === accountId) setPendingAction(null);
     }
-  }, [account?.accountId, handleMutationError, message, refreshAfterWrite]);
+  }, [handleMutationError, message, refreshAfterWrite, targetId]);
 
   const markDirty = (section: DirtySection) => {
     setDirty((current) => ({ ...current, [section]: true }));
@@ -679,7 +718,7 @@ export function WechatChannelsReplySettings({
   };
 
   const saveRuntime = () => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !account || scopeId) return;
     const runtime = snapshot.runtime;
     void runWrite('runtime', '运行时开关已保存', 'runtime', () =>
       saveRuntimeControls(account.accountId, {
@@ -695,9 +734,12 @@ export function WechatChannelsReplySettings({
   };
 
   const savePolicy = () => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !targetId) return;
     void runWrite('policy', '回复策略草稿已保存', 'policy', () =>
-      saveReplyPolicy(account.accountId, {
+      scopeId ? saveScopeReplyPolicy(scopeId, {
+        expectedVersion: snapshot.head.currentVersion,
+        policy: snapshot.policy,
+      }) : saveReplyPolicy(targetId, {
         expectedVersion: snapshot.head.currentVersion,
         policy: snapshot.policy,
       }),
@@ -705,9 +747,12 @@ export function WechatChannelsReplySettings({
   };
 
   const saveProfiles = () => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !targetId) return;
     void runWrite('profiles', '品牌语气草稿已保存', 'profiles', () =>
-      saveReplyProfiles(account.accountId, {
+      scopeId ? saveScopeReplyProfiles(scopeId, {
+        expectedVersion: snapshot.head.currentVersion,
+        profiles: snapshot.profiles,
+      }) : saveReplyProfiles(targetId, {
         expectedVersion: snapshot.head.currentVersion,
         profiles: snapshot.profiles,
       }),
@@ -741,7 +786,7 @@ export function WechatChannelsReplySettings({
   };
 
   const submitTemplate = async () => {
-    if (!snapshot || !account || !templateEditor) return;
+    if (!snapshot || !targetId || !templateEditor) return;
     const template = templateEditor.template;
     const variableInspection = inspectTemplateVariables(template.content);
     if (!template.name.trim() || !template.content.trim()) {
@@ -754,8 +799,12 @@ export function WechatChannelsReplySettings({
     }
     const next = { ...template, name: template.name.trim(), variables: variableInspection.variables };
     const success = await runWrite('template', '模板草稿已保存', 'templates', () =>
-      saveReplyTemplate(
-        account.accountId,
+      scopeId ? saveScopeReplyTemplate(
+        scopeId,
+        { expectedVersion: snapshot.head.currentVersion, template: next },
+        templateEditor.mode !== 'create',
+      ) : saveReplyTemplate(
+        targetId,
         { expectedVersion: snapshot.head.currentVersion, template: next },
         templateEditor.mode !== 'create',
       ),
@@ -764,7 +813,7 @@ export function WechatChannelsReplySettings({
   };
 
   const handleArchiveTemplate = async (template: ReplyTemplate) => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !targetId) return;
     const references = snapshot.rules.filter(
       (rule) => rule.enabled && rule.actions.templateId === template.templateId,
     );
@@ -773,7 +822,9 @@ export function WechatChannelsReplySettings({
       return;
     }
     await runWrite('template-archive', '模板已归档', 'templates', () =>
-      archiveReplyTemplate(account.accountId, template.templateId, snapshot.head.currentVersion),
+      scopeId
+        ? archiveScopeReplyTemplate(scopeId, template.templateId, snapshot.head.currentVersion)
+        : archiveReplyTemplate(targetId, template.templateId, snapshot.head.currentVersion),
     );
   };
 
@@ -811,7 +862,7 @@ export function WechatChannelsReplySettings({
   };
 
   const submitRule = async () => {
-    if (!snapshot || !account || !ruleEditor) return;
+    if (!snapshot || !targetId || !ruleEditor) return;
     const rule = ruleEditor.rule;
     const template = snapshot.templates.find(
       (item) => item.templateId === rule.actions.templateId && item.enabled && !item.archived,
@@ -838,8 +889,12 @@ export function WechatChannelsReplySettings({
       return;
     }
     const success = await runWrite('rule', '匹配规则草稿已保存', 'rules', () =>
-      saveReplyRule(
-        account.accountId,
+      scopeId ? saveScopeReplyRule(
+        scopeId,
+        { expectedVersion: snapshot.head.currentVersion, rule: candidate },
+        ruleEditor.mode === 'edit',
+      ) : saveReplyRule(
+        targetId,
         { expectedVersion: snapshot.head.currentVersion, rule: candidate },
         ruleEditor.mode === 'edit',
       ),
@@ -848,14 +903,16 @@ export function WechatChannelsReplySettings({
   };
 
   const handleDeleteRule = async (rule: ReplyRule) => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !targetId) return;
     await runWrite('rule-delete', '规则已删除', 'rules', () =>
-      deleteReplyRule(account.accountId, rule.ruleId, snapshot.head.currentVersion),
+      scopeId
+        ? deleteScopeReplyRule(scopeId, rule.ruleId, snapshot.head.currentVersion)
+        : deleteReplyRule(targetId, rule.ruleId, snapshot.head.currentVersion),
     );
   };
 
   const runPreview = async () => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !targetAccount || !targetId) return;
     setPendingAction('preview');
     setPreviewError(null);
     setPreviewResult(null);
@@ -863,7 +920,7 @@ export function WechatChannelsReplySettings({
     const controller = new AbortController();
     requestController.current = controller;
     try {
-      const response = await previewReply(account.accountId, {
+      const request = {
         expectedVersion: snapshot.head.currentVersion,
         use: previewInput.use,
         channel: previewInput.channel,
@@ -871,12 +928,15 @@ export function WechatChannelsReplySettings({
         userMessage: previewInput.userMessage.trim() || null,
         videoTitle: previewInput.channel === 'comment' ? (previewInput.videoTitle.trim() || null) : null,
         userName: previewInput.userName.trim() || null,
-      }, controller.signal);
-      if (activeAccountId.current !== account.accountId) return;
-      if (response.data.accountId !== account.accountId) throw new Error('reply_preview_scope_mismatch');
+      };
+      const response = scopeId
+        ? await previewScopeReply(scopeId, targetAccount.accountId, request, controller.signal)
+        : await previewReply(targetAccount.accountId, request, controller.signal);
+      if (activeAccountId.current !== targetId) return;
+      if (response.data.accountId !== targetAccount.accountId) throw new Error('reply_preview_scope_mismatch');
       setPreviewResult(response.data);
     } catch (error) {
-      if (activeAccountId.current !== account.accountId) return;
+      if (activeAccountId.current !== targetId) return;
       if (isPermissionDenied(error)) {
         if (previewInput.channel === 'dm') setDmPreviewDenied(true);
         else setPreviewDenied(true);
@@ -890,25 +950,27 @@ export function WechatChannelsReplySettings({
         setPreviewError(errorText(error, '模拟预览失败，请稍后重试。'));
       }
     } finally {
-      if (activeAccountId.current === account.accountId) setPendingAction(null);
+      if (activeAccountId.current === targetId) setPendingAction(null);
     }
   };
 
   const submitPublish = async () => {
-    if (!snapshot || !account) return;
+    if (!snapshot || !targetId) return;
     setPendingAction('publish');
     setPublishIssues([]);
     let published = false;
     try {
-      const response = await publishReplyConfig(account.accountId, { expectedVersion: snapshot.head.currentVersion });
-      if (activeAccountId.current !== account.accountId) return;
-      if (response.data.head.accountId !== account.accountId) throw new Error('reply_publish_scope_mismatch');
+      const response = scopeId
+        ? await publishScopeReplyConfig(scopeId, { expectedVersion: snapshot.head.currentVersion })
+        : await publishReplyConfig(targetId, { expectedVersion: snapshot.head.currentVersion });
+      if (activeAccountId.current !== targetId) return;
+      if (response.data.head.accountId !== targetId) throw new Error('reply_publish_scope_mismatch');
       published = true;
-      await refreshAfterWrite(account.accountId, 'policy');
+      await refreshAfterWrite(targetId, 'policy');
       setPublishOpen(false);
       message.success(`配置 v${response.data.head.publishedVersion ?? response.data.head.currentVersion} 已发布`);
     } catch (error) {
-      if (activeAccountId.current !== account.accountId || isAbort(error)) return;
+      if (activeAccountId.current !== targetId || isAbort(error)) return;
       if (published) {
         message.warning('Cloud 已返回发布成功，但重新读取真态失败，请点击刷新确认');
       } else if (isPermissionDenied(error)) {
@@ -923,7 +985,7 @@ export function WechatChannelsReplySettings({
         message.error(issues.length ? 'Cloud 校验未通过，本次未发布' : errorText(error, '配置发布失败'));
       }
     } finally {
-      if (activeAccountId.current === account.accountId) setPendingAction(null);
+      if (activeAccountId.current === targetId) setPendingAction(null);
     }
   };
 
@@ -1048,7 +1110,15 @@ export function WechatChannelsReplySettings({
     const canonicalProcessingMode = isCanonicalReplyProcessingPolicy(policy);
     return (
       <div className="reply-config__stack">
-        <Card
+        {scopeId ? (
+          <Alert
+            type="info"
+            showIcon
+            message="账号运行开关仍按账号独立控制"
+            description="这里仅编辑当前分组策略；账号的读取、发送总闸、熔断和风险状态不会被分组合并。"
+          />
+        ) : (
+          <Card
           size="small"
           title={<Space><ApiOutlined />即时运行控制（紧急停写）</Space>}
           extra={<Typography.Text type="secondary">独立版本 v{runtime.version} · {runtime.updatedBy} · {formatTime(runtime.updatedAt)}</Typography.Text>}
@@ -1124,13 +1194,15 @@ export function WechatChannelsReplySettings({
             </Button>
             {dirty.runtime ? <Tag color="gold">有未保存修改</Tag> : <Tag color="green">已读取服务端真态</Tag>}
           </Space>
-        </Card>
+          </Card>
+        )}
 
-        <Card size="small" title="回复处理策略草稿">
+        {runtimeOnly ? null : (
+          <Card size="small" title="回复处理策略草稿">
           <Alert
             type="info"
             showIcon
-            message="这里只选择一次账号的回复处理方式"
+            message="这里配置当前分组统一使用的回复处理方式"
             description="保存后仍需发布才影响新互动；即时发送开关和 Cloud 硬门禁会在发送时继续独立检查。"
           />
           <Form layout="vertical" requiredMark={false}>
@@ -1217,7 +1289,8 @@ export function WechatChannelsReplySettings({
             </Button>
             {dirty.policy ? <Tag color="gold">有未保存修改</Tag> : <Tag color="green">已保存 draft</Tag>}
           </Space>
-        </Card>
+          </Card>
+        )}
       </div>
     );
   };
@@ -1407,6 +1480,14 @@ export function WechatChannelsReplySettings({
 
   const renderPreview = () => (
     <div className="reply-config__stack">
+      {scopeId && !previewAccount ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="当前策略没有可用于预览的账号"
+          description="策略仍可编辑和发布；分组加入账号后再运行模拟预览。"
+        />
+      ) : null}
       <Alert
         type="success"
         showIcon
@@ -1487,7 +1568,7 @@ export function WechatChannelsReplySettings({
           <Form.Item label="模拟互动内容">
             <Input.TextArea aria-label="模拟互动内容" rows={4} value={previewInput.userMessage} maxLength={4000} showCount onChange={(event) => changePreviewInput({ userMessage: event.target.value })} />
           </Form.Item>
-          <Button type="primary" icon={<EyeOutlined />} aria-label="运行无副作用预览" onClick={() => void runPreview()} loading={pendingAction === 'preview'} disabled={previewDenied || (previewInput.channel === 'dm' && dmPreviewDenied)}>
+          <Button type="primary" icon={<EyeOutlined />} aria-label="运行无副作用预览" onClick={() => void runPreview()} loading={pendingAction === 'preview'} disabled={!targetAccount || previewDenied || (previewInput.channel === 'dm' && dmPreviewDenied)}>
             运行无副作用预览
           </Button>
         </Form>
@@ -1506,7 +1587,7 @@ export function WechatChannelsReplySettings({
   const renderAudit = () => {
     if (auditState === 'loading') return <Skeleton active />;
     if (auditState === 'permission') return <Result status="403" title="无审计查看权限" subTitle="需要 interaction.audit.view；配置正文未泄露。" />;
-    if (auditState === 'error') return <Alert type="error" showIcon message="审计信息加载失败" action={<Button size="small" onClick={() => account && void loadAccount(account.accountId)}>重试</Button>} />;
+    if (auditState === 'error') return <Alert type="error" showIcon message="审计信息加载失败" action={<Button size="small" onClick={() => targetId && void loadAccount(targetId)}>重试</Button>} />;
     return (
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <List
@@ -1544,7 +1625,9 @@ export function WechatChannelsReplySettings({
     );
   };
 
-  const tabItems = snapshot ? [
+  const tabItems = snapshot ? (runtimeOnly ? [
+    { key: 'strategy', label: '账号运行控制', children: renderStrategy() },
+  ] : [
     { key: 'strategy', label: '基本策略', children: renderStrategy() },
     { key: 'templates', label: `回复模板 (${snapshot.templates.filter((item) => !item.archived).length})`, children: renderTemplates() },
     { key: 'rules', label: `匹配规则 (${snapshot.rules.length})`, children: renderRules() },
@@ -1552,7 +1635,7 @@ export function WechatChannelsReplySettings({
     { key: 'risk', label: '风险门禁', children: renderRisk() },
     { key: 'preview', label: '模拟预览', children: renderPreview() },
     { key: 'audit', label: '审计', children: renderAudit() },
-  ] : [];
+  ]) : [];
 
   const runtimeCircuitOpen = snapshot
     ? snapshot.runtime.circuitOpen || snapshot.runtime.circuitOpenedAt !== null
@@ -1560,8 +1643,8 @@ export function WechatChannelsReplySettings({
   const publishProcessingMode = snapshot ? replyProcessingModeOf(snapshot.policy) : null;
   const publishSummary = snapshot && publishProcessingMode ? [
     `回复处理方式：${replyProcessingModeMetaOf(publishProcessingMode).label}`,
-    `即时账号写总闸：${runtimeCircuitOpen ? '熔断中（发送已阻断）' :
-      snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`,
+    ...(scopeId ? [] : [`即时账号写总闸：${runtimeCircuitOpen ? '熔断中（发送已阻断）' :
+      snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`]),
     `评论：${channelProcessingSummary(snapshot.policy.channels.comment.enabled, snapshot.policy.channels.comment.allowAutoSend, publishProcessingMode)}`,
     `私信：${channelProcessingSummary(snapshot.policy.channels.dm.enabled, snapshot.policy.channels.dm.allowAutoSend, publishProcessingMode)}`,
     `启用规则：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend && !rule.actions.polish).length} 条继承自动范围，${snapshot.rules.filter((rule) => rule.enabled && (!rule.actions.allowAutoSend || rule.actions.polish)).length} 条必须人工`,
@@ -1572,33 +1655,39 @@ export function WechatChannelsReplySettings({
       <Drawer
         className="reply-config-drawer"
         rootClassName="reply-config-drawer-root"
-        title={account ? `互动回复设置 · ${accountName(account)}` : '互动回复设置'}
+        title={scope
+          ? `视频号策略 · ${scope.source.type === 'default' ? '默认策略（未分组账号）' : scope.source.groupLabel}`
+          : account ? `${runtimeOnly ? '账号运行控制' : '互动回复设置'} · ${accountName(account)}` : '互动回复设置'}
         width={1080}
         open={open}
         destroyOnClose
         onClose={onClose}
         extra={snapshot ? (
           <Space wrap>
-            <Tag color="blue">schema v1</Tag>
-            <Tag>draft v{snapshot.head.draftVersion ?? '—'}</Tag>
-            <Tag color={snapshot.head.publishedVersion ? 'green' : 'gold'}>published v{snapshot.head.publishedVersion ?? '未发布'}</Tag>
+            {runtimeOnly ? <Tag color="blue">运行控制 v{snapshot.runtime.version}</Tag> : (
+              <>
+                <Tag color="blue">schema {scopeId ? 'v2' : 'v1'}</Tag>
+                <Tag>draft v{snapshot.head.draftVersion ?? '—'}</Tag>
+                <Tag color={snapshot.head.publishedVersion ? 'green' : 'gold'}>published v{snapshot.head.publishedVersion ?? '未发布'}</Tag>
+              </>
+            )}
             {hasDirty ? <Tag color="gold">页面有未保存修改</Tag> : null}
-            <Tooltip title="重新读取会清除当前账号所有未保存页面状态">
-              <Button icon={<ReloadOutlined />} aria-label="刷新" disabled={loading || pendingAction !== null} onClick={() => account && void loadAccount(account.accountId)}>刷新</Button>
+            <Tooltip title="重新读取会清除当前页面所有未保存状态">
+              <Button icon={<ReloadOutlined />} aria-label="刷新" disabled={loading || pendingAction !== null} onClick={() => targetId && void loadAccount(targetId)}>刷新</Button>
             </Tooltip>
-            <Button type="primary" icon={<CloudUploadOutlined />} aria-label="发布" disabled={publishDenied} onClick={() => { setPublishIssues([]); setPublishOpen(true); }}>发布</Button>
+            {runtimeOnly ? null : <Button type="primary" icon={<CloudUploadOutlined />} aria-label="发布" disabled={publishDenied} onClick={() => { setPublishIssues([]); setPublishOpen(true); }}>发布</Button>}
           </Space>
         ) : null}
       >
         {loading ? <Skeleton active paragraph={{ rows: 12 }} /> : null}
         {!loading && loadError === 'permission' ? (
-          <Result status="403" title="无配置查看权限" subTitle="需要 interaction.config.view；没有读取或展示该账号配置。" />
+          <Result status="403" title="无配置查看权限" subTitle="需要 interaction.config.view；没有读取或展示该配置。" />
         ) : null}
         {!loading && loadError === 'missing' ? (
           <Result
             status="info"
             title="尚未创建互动回复配置"
-            subTitle="可以显式创建安全草稿 v1；不会发布配置，不会创建模板或规则，也不会开启回复、自动发送或即时账号写入。"
+            subTitle={`可以显式创建安全草稿 ${scopeId ? 'v2' : 'v1'}；不会发布配置，不会创建模板或规则，也不会开启回复、自动发送或即时账号写入。`}
             extra={(
               <Space wrap>
                 <Button
@@ -1607,7 +1696,7 @@ export function WechatChannelsReplySettings({
                   disabled={editDenied || pendingAction !== null && pendingAction !== 'initialize'}
                   onClick={() => void initializeMissingConfig()}
                 >创建安全草稿</Button>
-                <Button disabled={pendingAction !== null} onClick={() => account && void loadAccount(account.accountId)}>重新检查</Button>
+                <Button disabled={pendingAction !== null} onClick={() => targetId && void loadAccount(targetId)}>重新检查</Button>
               </Space>
             )}
           >
@@ -1615,7 +1704,7 @@ export function WechatChannelsReplySettings({
           </Result>
         ) : null}
         {!loading && loadError === 'error' ? (
-          <Result status="error" title="互动回复设置加载失败" subTitle="未使用默认值冒充服务端配置。" extra={<Button type="primary" onClick={() => account && void loadAccount(account.accountId)}>重试</Button>} />
+          <Result status="error" title="互动回复设置加载失败" subTitle="未使用默认值冒充服务端配置。" extra={<Button type="primary" onClick={() => targetId && void loadAccount(targetId)}>重试</Button>} />
         ) : null}
         {!loading && snapshot ? (
           <div className="reply-config__stack">
@@ -1627,19 +1716,20 @@ export function WechatChannelsReplySettings({
                 showIcon
                 message={`版本冲突：远端当前为 v${conflictVersion}`}
                 description="本次保存/发布没有显示成功。刷新会清除未保存页面状态，再基于最新版本编辑。"
-                action={<Button size="small" danger onClick={() => account && void loadAccount(account.accountId)}>读取最新版本</Button>}
+                action={<Button size="small" danger onClick={() => targetId && void loadAccount(targetId)}>读取最新版本</Button>}
               />
             ) : null}
-            <Card size="small" className="reply-config__head-card">
+            {runtimeOnly ? null : <Card size="small" className="reply-config__head-card">
               <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }}>
-                <Descriptions.Item label="账号平台"><Tag color="green">视频号</Tag></Descriptions.Item>
+                <Descriptions.Item label={scopeId ? '策略作用域' : '账号平台'}><Tag color="green">{scopeId ? (scope?.source.type === 'default' ? '未分组默认' : `分组：${scope?.source.groupLabel}`) : '视频号'}</Tag></Descriptions.Item>
+                {scopeId ? <Descriptions.Item label="覆盖账号">{scope?.memberCount ?? 0} 个</Descriptions.Item> : null}
                 <Descriptions.Item label="草稿版本">v{snapshot.head.draftVersion ?? '—'}</Descriptions.Item>
                 <Descriptions.Item label="生效版本">v{snapshot.head.publishedVersion ?? '—'}</Descriptions.Item>
                 <Descriptions.Item label="当前聚合版本">v{snapshot.head.currentVersion}</Descriptions.Item>
                 <Descriptions.Item label="最后修改">{snapshot.head.updatedBy} · {formatTime(snapshot.head.updatedAt)}</Descriptions.Item>
                 <Descriptions.Item label="最近发布">{publishedAudit ? `${publishedAudit.actor} · ${formatTime(publishedAudit.createdAt)} · v${publishedAudit.configVersion}` : '尚无发布审计'}</Descriptions.Item>
               </Descriptions>
-            </Card>
+            </Card>}
             <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
           </div>
         ) : null}

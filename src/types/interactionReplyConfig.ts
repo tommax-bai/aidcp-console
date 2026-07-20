@@ -336,3 +336,79 @@ export interface ProfileWrite {
 export interface PublishRequest {
   expectedVersion: number;
 }
+
+/** v2: 视频号回复策略按账号分组（或未分组默认项）聚合。 */
+export type ReplyConfigScopeType = 'group' | 'default';
+export type ReplyConfigResolutionMode = 'legacy' | 'shadow' | 'scoped';
+
+export interface ReplyConfigSource {
+  type: ReplyConfigScopeType;
+  groupLabel: string | null;
+}
+
+export interface ReplyConfigScopeHead {
+  scopeId: string;
+  platform: 'wechat_channels';
+  source: ReplyConfigSource;
+  memberCount: number;
+  currentVersion: number;
+  draftVersion: number | null;
+  publishedVersion: number | null;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+export interface ReplyConfigScopeSummary extends Omit<ReplyConfigScopeHead, 'scopeId' | 'updatedAt' | 'updatedBy'> {
+  scopeId: string | null;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+export interface ReplyConfigScopeSnapshot {
+  accountId: '';
+  configScopeId: string;
+  configSource: ReplyConfigSource;
+  platform: 'wechat_channels';
+  configVersion: number;
+  state: 'draft' | 'published';
+  policy: ReplyPolicy;
+  templates: ReplyTemplate[];
+  rules: ReplyRule[];
+  profiles: ReplyProfile[];
+  createdAt: number;
+  createdBy: string;
+  publishedAt: number | null;
+  publishedBy: string | null;
+}
+
+export type ReplyConfigScopeListResponse = InternalApiEnvelope<{ items: ReplyConfigScopeSummary[] }>;
+export type ReplyConfigScopeDetailResponse = InternalApiEnvelope<{
+  head: ReplyConfigScopeHead;
+  snapshot: ReplyConfigScopeSnapshot | null;
+}>;
+export type ReplyConfigScopeWriteResponse = InternalApiEnvelope<{
+  head: ReplyConfigScopeHead;
+  snapshot?: ReplyConfigScopeSnapshot;
+  initializedVersion?: number;
+  publishedAt?: number;
+  publishedBy?: string;
+  memberCount?: number;
+}>;
+export type ReplyConfigScopeAuditResponse = InternalApiEnvelope<{
+  scopeId: string;
+  items: AuditItem[];
+  nextCursor: string | null;
+}>;
+
+export interface EffectiveReplyConfigResponseData {
+  accountId: string;
+  mode: ReplyConfigResolutionMode;
+  status: 'missing' | 'draft_only' | 'published' | 'unknown';
+  reason: 'group_config_missing' | 'default_config_missing' | 'account_not_found' | null;
+  source: ReplyConfigSource;
+  currentVersion: number | null;
+  draftVersion: number | null;
+  publishedVersion: number | null;
+}
+
+export type EffectiveReplyConfigResponse = InternalApiEnvelope<EffectiveReplyConfigResponseData>;

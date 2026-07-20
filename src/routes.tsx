@@ -11,6 +11,7 @@ import {
   IdcardOutlined,
   KeyOutlined,
   NotificationOutlined,
+  MessageOutlined,
   RobotOutlined,
   SafetyOutlined,
   TeamOutlined,
@@ -29,6 +30,7 @@ import { QuotasPage } from './pages/QuotasPage';
 import { RolesPage } from './pages/RolesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TokenUsagePage } from './pages/TokenUsagePage';
+import { WechatStrategiesPage } from './pages/WechatStrategiesPage';
 
 /**
  * 应用路由 + 顶部导航的单一来源（change console-cloud-panel-hardening #37）。
@@ -57,6 +59,7 @@ export interface AppRoute {
 export const APP_ROUTES: AppRoute[] = [
   { path: '/', element: <DashboardPage />, navLabel: '数据', navIcon: <DashboardOutlined />, showInNav: true },
   { path: '/accounts', element: <AccountsPage />, navLabel: '账号', navIcon: <TeamOutlined />, showInNav: true },
+  { path: '/wechat-strategies', element: <WechatStrategiesPage />, navLabel: '视频号策略', navIcon: <MessageOutlined />, showInNav: true },
   { path: '/facebook-groups', element: <FacebookGroupsPage />, navLabel: '群组', navIcon: <ApartmentOutlined />, showInNav: true },
   { path: '/content-schedule', element: <ContentSchedulePage />, navLabel: '排期', navIcon: <ClockCircleOutlined />, showInNav: true },
   { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, showInNav: true },

@@ -1,19 +1,50 @@
 import { useState } from 'react';
-import { App, Button, Card, Popconfirm, Space } from 'antd';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { App, Button, Card, Popconfirm, Space, Tag, Tooltip } from 'antd';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiPost, apiPut } from '../api/client';
+import { loadEffectiveReplyConfig } from '../api/interactionReplyConfig';
 import { useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import { AccountsTable, RiskControls, FacebookSearchConfig, WechatChannelsReplySettings } from '../components';
 import { accountName } from '../types/accountDisplay';
 import type { PanelAccount } from '../types/api';
 
+function WechatStrategyActions({ account, onRuntime }: { account: PanelAccount; onRuntime: () => void }) {
+  const navigate = useNavigate();
+  const effective = useQuery({
+    queryKey: ['effective-reply-config', account.accountId],
+    queryFn: ({ signal }) => loadEffectiveReplyConfig(account.accountId, signal),
+  });
+  const data = effective.data?.data;
+  const scopedSource = data?.source.type === 'default' ? '默认策略' : data?.source.groupLabel ?? '分组策略';
+  const source = data?.mode === 'legacy' ? '账号旧策略' : data?.mode === 'shadow' ? '影子比对' : scopedSource;
+  const status = data?.status === 'published' ? '已生效' : data?.status === 'draft_only' ? '仅草稿' : '未配置';
+  const detail = data?.reason === 'group_config_missing'
+    ? '该账号的分组策略缺失，不会回退默认策略'
+    : data?.reason === 'default_config_missing' ? '未分组账号的默认策略缺失' : data?.mode === 'legacy'
+      ? `当前仍执行账号旧策略；目标来源为${scopedSource}`
+      : data?.mode === 'shadow' ? `当前仍执行账号旧策略；正在与${scopedSource}影子比对` : `${source} · ${status}`;
+
+  return (
+    <Space size={4}>
+      <Tooltip title={effective.isError ? '策略来源读取失败' : detail}>
+        <Tag color={data?.status === 'published' ? 'green' : data?.status === 'draft_only' ? 'gold' : undefined}>
+          {effective.isLoading ? '策略读取中' : effective.isError ? '策略未知' : source}
+        </Tag>
+      </Tooltip>
+      <Button size="small" onClick={() => navigate(`/wechat-strategies?accountId=${encodeURIComponent(account.accountId)}`)}>查看策略</Button>
+      <Button size="small" onClick={onRuntime}>运行控制</Button>
+    </Space>
+  );
+}
+
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
 export function AccountsPage() {
   const { data, isLoading, isError, refetch } = useAccounts();
   const { message } = App.useApp();
   const qc = useQueryClient();
-  const [replyAccount, setReplyAccount] = useState<PanelAccount | null>(null);
+  const [runtimeAccount, setRuntimeAccount] = useState<PanelAccount | null>(null);
 
   const cmd = useMutation({
     mutationFn: (v: { accountId: string; command: 'pause' | 'resume' }) =>
@@ -79,7 +110,7 @@ export function AccountsPage() {
       <RiskControls account={a} />
       {a.platform === 'facebook' ? <FacebookSearchConfig account={a} /> : null}
       {a.platform === 'wechat_channels' ? (
-        <Button size="small" onClick={() => setReplyAccount(a)}>回复设置</Button>
+        <WechatStrategyActions account={a} onRuntime={() => setRuntimeAccount(a)} />
       ) : null}
     </Space>
   );
@@ -98,9 +129,10 @@ export function AccountsPage() {
         />
       </Card>
       <WechatChannelsReplySettings
-        account={replyAccount}
-        open={replyAccount !== null}
-        onClose={() => setReplyAccount(null)}
+        account={runtimeAccount}
+        runtimeOnly
+        open={runtimeAccount !== null}
+        onClose={() => setRuntimeAccount(null)}
       />
     </div>
   );
