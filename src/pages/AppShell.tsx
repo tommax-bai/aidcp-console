@@ -1,5 +1,6 @@
 import { Dropdown, type MenuProps } from 'antd';
 import {
+  CheckOutlined,
   DeploymentUnitOutlined,
   DownOutlined,
   DownloadOutlined,
@@ -61,8 +62,28 @@ function buildMobileNavigationItems(): MenuProps['items'] {
   }));
 }
 
+function buildGroupNavigationItems(group: NavGroup, pathname: string): MenuProps['items'] {
+  return navRoutesForGroup(group.id).map((route) => {
+    const active = isActive(pathname, route.path);
+    return {
+      key: route.path,
+      label: (
+        <Link
+          className="group-nav-menu__link"
+          to={route.path}
+          aria-current={active ? 'page' : undefined}
+        >
+          <span className="group-nav-menu__icon" aria-hidden="true">{route.navIcon}</span>
+          <span className="group-nav-menu__label">{route.navLabel}</span>
+          {active ? <CheckOutlined className="group-nav-menu__check" aria-hidden="true" /> : null}
+        </Link>
+      ),
+    };
+  });
+}
+
 /**
- * 应用外壳（design PAGE 2）：顶部业务分组 + 当前分组二级导航 + 居中内容（弃侧栏）。
+ * 应用外壳（design PAGE 2）：单行顶部业务分组 + 悬浮子菜单 + 居中内容（弃侧栏）。
  * 左品牌 / 中业务分组（窄屏为带文字菜单）/ 右下载客户端 + 设置圆按钮 + 用户菜单。
  * 注：原右侧「全局账号筛选器（§3.1）」已移除——归因已流通（V1 task 9.6），按账号切片改由各页面用真实 API 数据各自完成。
  */
@@ -97,7 +118,6 @@ export function AppShell() {
   const downloads = useDownloads();
   const downloadMenuItems = buildDownloadMenuItems(downloads.data, downloads.isPending);
   const activeNavigation = getActiveNavigation(pathname);
-  const activeGroupRoutes = navRoutesForGroup(activeNavigation.group.id);
   const currentLocationLabel = activeNavigation.destination?.navLabel
     ?? (isActive(pathname, '/settings') ? '设置' : activeNavigation.group.label);
   const mobileNavigationItems = buildMobileNavigationItems();
@@ -120,17 +140,54 @@ export function AppShell() {
 
             {/* 中：稳定的一级业务分组 */}
             <nav className="pill pill--groups top-nav__desktop-nav" aria-label="业务分组">
-              {NAV_GROUPS.map((group) => (
-                <Link
-                  key={group.id}
-                  to={group.defaultPath}
-                  className={`pill__btn${activeNavigation.group.id === group.id ? ' pill__btn--active' : ''}`}
-                  aria-current={activeNavigation.group.id === group.id ? 'location' : undefined}
-                >
-                  <span className="pill__icon" aria-hidden="true">{group.icon}</span>
-                  <span>{group.label}</span>
-                </Link>
-              ))}
+              {NAV_GROUPS.map((group) => {
+                const routes = navRoutesForGroup(group.id);
+                const groupIsActive = activeNavigation.group.id === group.id;
+                const groupClassName = `pill__btn${groupIsActive ? ' pill__btn--active' : ''}`;
+
+                if (routes.length === 1) {
+                  return (
+                    <Link
+                      key={group.id}
+                      to={routes[0].path}
+                      className={groupClassName}
+                      aria-current={groupIsActive ? 'page' : undefined}
+                    >
+                      <span className="pill__icon" aria-hidden="true">{group.icon}</span>
+                      <span>{group.label}</span>
+                    </Link>
+                  );
+                }
+
+                return (
+                  <Dropdown
+                    key={group.id}
+                    trigger={['hover', 'click']}
+                    placement="bottom"
+                    mouseEnterDelay={0.12}
+                    mouseLeaveDelay={0.2}
+                    overlayClassName="group-nav-dropdown"
+                    menu={{
+                      items: buildGroupNavigationItems(group, pathname),
+                      selectedKeys: activeNavigation.destination?.navGroup === group.id
+                        ? [activeNavigation.destination.path]
+                        : [],
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={groupClassName}
+                      aria-label={`打开${group.label}分组菜单`}
+                      aria-current={groupIsActive ? 'location' : undefined}
+                      aria-haspopup="menu"
+                    >
+                      <span className="pill__icon" aria-hidden="true">{group.icon}</span>
+                      <span>{group.label}</span>
+                      <DownOutlined className="pill__chevron" aria-hidden="true" />
+                    </button>
+                  </Dropdown>
+                );
+              })}
             </nav>
 
             {/* 窄屏：保留当前地点文字，展开后按相同六分组展示全部入口。 */}
@@ -196,26 +253,6 @@ export function AppShell() {
           </div>
         </div>
 
-        {/* 桌面二级导航：始终展示当前分组内的文字入口。 */}
-        <div className="top-nav__secondary top-nav__desktop-nav">
-          <div className="top-nav__secondary-inner">
-            <span className="top-nav__secondary-label">{activeNavigation.group.label}</span>
-            <span className="top-nav__secondary-divider" aria-hidden="true" />
-            <nav className="subnav" aria-label={`${activeNavigation.group.label}分组导航`}>
-              {activeGroupRoutes.map((route) => (
-                <Link
-                  key={route.path}
-                  to={route.path}
-                  className={`subnav__link${isActive(pathname, route.path) ? ' subnav__link--active' : ''}`}
-                  aria-current={isActive(pathname, route.path) ? 'page' : undefined}
-                >
-                  <span className="subnav__icon" aria-hidden="true">{route.navIcon}</span>
-                  <span>{route.navLabel}</span>
-                </Link>
-              ))}
-            </nav>
-          </div>
-        </div>
       </header>
 
       <main className="app-main">

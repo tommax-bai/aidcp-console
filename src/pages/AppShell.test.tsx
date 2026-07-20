@@ -121,7 +121,7 @@ describe('AppShell grouped navigation model', () => {
     expect(active.destination).toBeUndefined();
   });
 
-  it('renders six desktop groups and the current group destination row', () => {
+  it('renders one direct Overview link and five menu-backed desktop groups without a second row', () => {
     render(
       <MemoryRouter initialEntries={['/curated']}>
         <Routes>
@@ -131,10 +131,44 @@ describe('AppShell grouped navigation model', () => {
     );
 
     const primary = screen.getByRole('navigation', { name: '业务分组' });
-    expect(within(primary).getAllByRole('link')).toHaveLength(6);
-    const secondary = screen.getByRole('navigation', { name: '内容分组导航' });
-    expect(within(secondary).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '精选', '排期']);
-    expect(within(secondary).getByRole('link', { name: '精选' }).getAttribute('aria-current')).toBe('page');
+    expect(within(primary).getAllByRole('link')).toHaveLength(1);
+    expect(within(primary).getByRole('link', { name: '总览' }).getAttribute('href')).toBe('/');
+    expect(within(primary).getAllByRole('button')).toHaveLength(5);
+    expect(within(primary).getByRole('button', { name: '打开内容分组菜单' }).getAttribute('aria-current')).toBe('location');
+    expect(screen.queryByRole('navigation', { name: '内容分组导航' })).toBeNull();
+  });
+
+  it('opens a compact current-group destination menu on hover and marks the current destination', async () => {
+    render(
+      <MemoryRouter initialEntries={['/curated']}>
+        <Routes>
+          <Route path="*" element={<AppShell />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '打开内容分组菜单' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(3);
+    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '精选', '排期']);
+    expect(within(menu).getByRole('link', { name: '精选' }).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('opens a multi-destination group by click for touch and keyboard activation paths', async () => {
+    render(
+      <MemoryRouter initialEntries={['/quotas']}>
+        <Routes>
+          <Route path="*" element={<AppShell />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const trigger = screen.getByRole('button', { name: '打开系统分组菜单' });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['安全', '用量', '端用户']);
+    expect(within(menu).getByRole('link', { name: '安全' }).getAttribute('aria-current')).toBe('page');
   });
 
   it('opens a labelled narrow menu containing all destinations under six groups', async () => {

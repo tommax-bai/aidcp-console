@@ -39,25 +39,24 @@ export interface NavGroup {
   id: NavGroupId;
   label: string;
   icon: ReactNode;
-  defaultPath: string;
 }
 
 /** Stable first-level information architecture. Destinations stay in APP_ROUTES below. */
 export const NAV_GROUPS: NavGroup[] = [
-  { id: 'overview', label: '总览', icon: <DashboardOutlined />, defaultPath: '/' },
-  { id: 'accounts', label: '账号', icon: <TeamOutlined />, defaultPath: '/accounts' },
-  { id: 'content', label: '内容', icon: <FileTextOutlined />, defaultPath: '/content' },
-  { id: 'interaction', label: '互动', icon: <ContactsOutlined />, defaultPath: '/notification-contacts' },
-  { id: 'ai-config', label: 'AI 配置', icon: <RobotOutlined />, defaultPath: '/persona' },
-  { id: 'system', label: '系统', icon: <SettingOutlined />, defaultPath: '/quotas' },
+  { id: 'overview', label: '总览', icon: <DashboardOutlined /> },
+  { id: 'accounts', label: '账号', icon: <TeamOutlined /> },
+  { id: 'content', label: '内容', icon: <FileTextOutlined /> },
+  { id: 'interaction', label: '互动', icon: <ContactsOutlined /> },
+  { id: 'ai-config', label: 'AI 配置', icon: <RobotOutlined /> },
+  { id: 'system', label: '系统', icon: <SettingOutlined /> },
 ];
 
 /**
  * 应用路由 + 顶部导航的单一来源（change console-cloud-panel-hardening #37）。
  *
  * 收口原先两份手工清单：`App.tsx` 的 createBrowserRouter children 与 `AppShell.tsx` 的导航数组。
- * App.tsx 从本数组 map 出受保护路由；AppShell.tsx 从本数组派生桌面二级导航与窄屏分组菜单。
- * 各分组内的数组顺序即二级导航展示顺序；路由表按 path 精确匹配、与顺序无关。
+ * App.tsx 从本数组 map 出受保护路由；AppShell.tsx 从本数组派生桌面分组浮层与窄屏分组菜单。
+ * 各分组内的数组顺序即浮层菜单展示顺序；路由表按 path 精确匹配、与顺序无关。
  * 登录路由 `/login` 结构上在 AppShell / RequireAuth 之外，仍单列于 App.tsx，不入本表。
  * 设置 `/settings` 在本表内（供路由表派生），但 showInNav=false——它在 AppShell 右上以独立圆按钮呈现，
  * 不进业务胶囊。
@@ -84,7 +83,7 @@ export interface NavRoute extends AppRoute {
   showInNav: true;
 }
 
-/** 受保护路由（AppShell 下）+ 导航元数据。数组顺序 = 各分组内二级导航顺序。 */
+/** 受保护路由（AppShell 下）+ 导航元数据。数组顺序 = 各分组内菜单顺序。 */
 export const APP_ROUTES: AppRoute[] = [
   { path: '/', element: <DashboardPage />, navLabel: '数据', navIcon: <DashboardOutlined />, navGroup: 'overview', showInNav: true },
   { path: '/accounts', element: <AccountsPage />, navLabel: '账号', navIcon: <TeamOutlined />, navGroup: 'accounts', showInNav: true },
