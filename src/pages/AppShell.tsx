@@ -173,7 +173,7 @@ export function AppShell() {
                 return (
                   <Dropdown
                     key={group.id}
-                    trigger={['hover', 'click']}
+                    trigger={['hover']}
                     placement="bottomLeft"
                     mouseEnterDelay={0.12}
                     mouseLeaveDelay={0.2}
@@ -194,6 +194,7 @@ export function AppShell() {
                       aria-current={groupIsActive ? 'location' : undefined}
                       aria-haspopup="menu"
                       aria-expanded={groupIsOpen}
+                      onClick={() => setOpenGroupId(group.id)}
                     >
                       <span className="pill__icon" aria-hidden="true">{group.icon}</span>
                       <span>{group.label}</span>

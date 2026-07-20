@@ -142,7 +142,7 @@ describe('AppShell grouped navigation model', () => {
     expect(screen.queryByRole('navigation', { name: '内容分组导航' })).toBeNull();
   });
 
-  it('opens a compact current-group destination menu on hover and marks the current destination', async () => {
+  it('keeps a hover-opened menu open after a habitual trigger click, then closes after pointer leave', async () => {
     render(
       <MemoryRouter initialEntries={['/curated']}>
         <Routes>
@@ -160,6 +160,14 @@ describe('AppShell grouped navigation model', () => {
     expect(within(menu).getAllByRole('menuitem')).toHaveLength(4);
     expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '发布队列', '精选', '排期']);
     expect(within(menu).getByRole('link', { name: '精选' }).getAttribute('aria-current')).toBe('page');
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('menu')).toBe(menu);
+
+    fireEvent.mouseLeave(trigger);
+    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'));
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
 
   it('opens a multi-destination group by click for touch and keyboard activation paths', async () => {
