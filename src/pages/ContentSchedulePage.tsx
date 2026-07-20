@@ -4,8 +4,10 @@ import {
   Alert,
   Button,
   Card,
+  Input,
   InputNumber,
   Modal,
+  Popover,
   Segmented,
   Skeleton,
   Space,
@@ -89,6 +91,127 @@ function ActionModeControl(props: {
       onChange={props.onChange}
       style={{ minWidth: 112 }}
     />
+  );
+}
+
+/**
+ * 排期页缺失联系方式的快速补齐入口。
+ *
+ * 只复用账号主数据的权威写端点，不把联系方式正文复制进排期 DTO。保存前不乐观解锁：
+ * 服务端明确回传非空 contactInfo 后，才更新 hasContactInfo 派生徽标并重取两份目录真态。
+ */
+function MissingContactQuickConfig({ accountId }: { accountId: string }) {
+  const { message } = App.useApp();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const saveContact = useMutation({
+    mutationFn: async (contactInfo: string) => {
+      const result = await apiPut<{ accountId: string; contactInfo: string | null }>(
+        `/api/accounts/${encodeURIComponent(accountId)}/contact-info`,
+        { contactInfo },
+      );
+      if (!result.contactInfo) throw new Error('contact_info_not_confirmed');
+      return result;
+    },
+    onSuccess: () => {
+      // 回执确认后先定点解除本行的「缺失联系方式」门禁，再后台重取 JOIN 派生真态。
+      qc.setQueryData<ContentScheduleCatalog>(['config', 'content-schedule'], (old) =>
+        old
+          ? {
+              ...old,
+              rows: old.rows.map((row) =>
+                row.accountId === accountId ? { ...row, hasContactInfo: true } : row,
+              ),
+            }
+          : old,
+      );
+      setOpen(false);
+      setDraft('');
+      message.success('已保存关联联系方式');
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: (error) => {
+      const detail =
+        error instanceof Error && error.message === 'contact_info_not_confirmed'
+          ? '服务端未确认联系方式已保存，请重试'
+          : errorText(error, '请稍后重试');
+      message.error(`联系方式保存失败：${detail}`);
+    },
+  });
+
+  const submit = () => {
+    if (draft.trim() === '') {
+      message.warning('请输入联系方式');
+      return;
+    }
+    // 与账号页一致：trim 只用于判空，非空正文 verbatim 下发，保留 emoji、换行与首尾空白。
+    saveContact.mutate(draft);
+  };
+
+  const editor = (
+    <Space direction="vertical" size={8} style={{ width: 300 }}>
+      <Typography.Text>为账号 {accountId} 添加联系方式</Typography.Text>
+      <Input.TextArea
+        aria-label={`账号 ${accountId} 联系方式`}
+        autoFocus
+        autoSize={{ minRows: 2, maxRows: 8 }}
+        value={draft}
+        disabled={saveContact.isPending}
+        onChange={(event) => setDraft(event.target.value)}
+        placeholder="粘贴联系方式（原样保存，含 emoji/换行）"
+      />
+      <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
+        <Button
+          aria-label="取消添加联系方式"
+          size="small"
+          disabled={saveContact.isPending}
+          onClick={() => setOpen(false)}
+        >
+          取消
+        </Button>
+        <Button
+          aria-label="保存联系方式"
+          size="small"
+          type="primary"
+          loading={saveContact.isPending}
+          onClick={submit}
+        >
+          {saveContact.isPending ? '保存中' : '保存'}
+        </Button>
+      </Space>
+    </Space>
+  );
+
+  return (
+    <Popover
+      content={editor}
+      open={open}
+      trigger="click"
+      placement="bottomRight"
+      destroyOnHidden
+      onOpenChange={(nextOpen) => {
+        if (!saveContact.isPending) setOpen(nextOpen);
+      }}
+    >
+      <Tag
+        color="red"
+        role="button"
+        tabIndex={0}
+        title="点击添加联系方式"
+        style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        未配联系方式（点击添加）
+      </Tag>
+    </Popover>
   );
 }
 
@@ -350,7 +473,7 @@ export function ContentSchedulePage() {
               disabled={!r.autoEnabled || !r.hasContactInfo}
               onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('contact', mode) })}
             />
-            {!r.hasContactInfo ? <Tag color="red">未配联系方式</Tag> : null}
+            {!r.hasContactInfo ? <MissingContactQuickConfig accountId={r.accountId} /> : null}
           </Space>
         ),
       },

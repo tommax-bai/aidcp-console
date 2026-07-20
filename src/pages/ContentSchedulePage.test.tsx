@@ -3,6 +3,7 @@
  *  1) 乐观更新——拨「总开关」在服务器回执之前开关就翻（point-and-flip，不等两趟网络往返）；失败回滚到真态。
  *  2) 子开关显示「有效态」= 总开关 && 本开关——总开关关时子开关统一显示为关（不写库、保留记忆），
  *     消除「总开关关后子开关仍显示开却灰掉、关不掉」的假象。
+ *  3) 排期页缺失联系方式可直接补齐；保存前不解锁、成功后收敛、失败保留草稿。
  * 只 mock HTTP 客户端层，页面 + react-query 走真实渲染 / mutation 路径。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -107,6 +108,11 @@ function selectedMode(label: string): string | null {
   return modeControl(label).querySelector('.ant-segmented-item-selected')?.textContent ?? null;
 }
 
+async function openContactEditor(): Promise<HTMLTextAreaElement> {
+  fireEvent.click(screen.getByRole('button', { name: '未配联系方式（点击添加）' }));
+  return screen.findByLabelText('账号 acc-1 联系方式') as Promise<HTMLTextAreaElement>;
+}
+
 describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
   beforeEach(() => {
     state.rows = [makeRow()];
@@ -169,5 +175,83 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
       ]),
     );
     expect(selectedMode('自动评论 acc-1')).toBe('免审');
+  });
+});
+
+describe('ContentSchedulePage 缺失联系方式快速配置', () => {
+  beforeEach(() => {
+    state.rows = [makeRow({ hasContactInfo: false })];
+    state.putImpl = () => Promise.resolve({});
+    state.putCalls = [];
+  });
+
+  it('点击“未配联系方式”在当前排期页直接打开多行编辑器', async () => {
+    await renderSchedule();
+
+    const input = await openContactEditor();
+
+    expect(input.value).toBe('');
+    expect(screen.getByRole('button', { name: '保存联系方式' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '取消添加联系方式' })).not.toBeNull();
+  });
+
+  it('全空白输入只提示、不写入，并保留草稿继续编辑', async () => {
+    await renderSchedule();
+    const input = await openContactEditor();
+    fireEvent.change(input, { target: { value: '  \n ' } });
+
+    fireEvent.click(screen.getByRole('button', { name: '保存联系方式' }));
+
+    await screen.findByText('请输入联系方式');
+    expect(state.putCalls).toEqual([]);
+    expect(screen.getByLabelText('账号 acc-1 联系方式')).toHaveProperty('value', '  \n ');
+  });
+
+  it('非空正文原样发送；等待回执时不解锁，确认成功后才解除缺失门禁', async () => {
+    const contactInfo = '  微信：aidcp\n📱 13800000000  ';
+    const deferred: { resolve?: () => void } = {};
+    state.putImpl = (_path, body) =>
+      new Promise<unknown>((resolve) => {
+        deferred.resolve = () => {
+          state.rows = [makeRow({ hasContactInfo: true })];
+          resolve({ accountId: 'acc-1', contactInfo: (body as { contactInfo: string }).contactInfo });
+        };
+      });
+
+    await renderSchedule();
+    const input = await openContactEditor();
+    fireEvent.change(input, { target: { value: contactInfo } });
+    fireEvent.click(screen.getByRole('button', { name: '保存联系方式' }));
+
+    await waitFor(() =>
+      expect(state.putCalls).toEqual([
+        { path: '/api/accounts/acc-1/contact-info', body: { contactInfo } },
+      ]),
+    );
+    expect(screen.getByRole('button', { name: '保存联系方式' }).textContent).toContain('保存中');
+    expect(modeControl('自动联系评论 acc-1').className).toContain('ant-segmented-disabled');
+
+    if (!deferred.resolve) throw new Error('contact save request was not started');
+    deferred.resolve();
+
+    await waitFor(() =>
+      expect(modeControl('自动联系评论 acc-1').className).not.toContain('ant-segmented-disabled'),
+    );
+    expect(screen.queryByRole('button', { name: '未配联系方式（点击添加）' })).toBeNull();
+    expect(screen.queryByLabelText('账号 acc-1 联系方式')).toBeNull();
+  });
+
+  it('保存失败不伪装成功：保留原草稿和编辑器，联系方式门禁继续关闭', async () => {
+    state.putImpl = () => Promise.reject(new Error('boom'));
+
+    await renderSchedule();
+    const input = await openContactEditor();
+    fireEvent.change(input, { target: { value: '微信：retry-me' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存联系方式' }));
+
+    await screen.findByText('联系方式保存失败：请稍后重试');
+    expect(screen.getByLabelText('账号 acc-1 联系方式')).toHaveProperty('value', '微信：retry-me');
+    expect(modeControl('自动联系评论 acc-1').className).toContain('ant-segmented-disabled');
+    expect(screen.getByRole('button', { name: '未配联系方式（点击添加）' })).not.toBeNull();
   });
 });
