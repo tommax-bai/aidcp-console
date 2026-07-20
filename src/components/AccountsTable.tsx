@@ -83,6 +83,23 @@ const columns: ColumnsType<PanelAccount> = [
     },
   },
   {
+    title: '环境',
+    key: 'environment',
+    width: 138,
+    render: (_, r) => {
+      const summary = r.environmentSummary ?? { activeCount: 0, deletingCount: 0, onlineCount: 0 };
+      return (
+        <Space size={4} wrap>
+          <Link to={`/environments?account=${encodeURIComponent(r.accountId)}`}>
+            {summary.activeCount > 0 ? `${summary.activeCount} 个` : '无环境'}
+          </Link>
+          {summary.onlineCount > 0 ? <Tag color="green">在线 {summary.onlineCount}</Tag> : null}
+          {summary.deletingCount > 0 ? <Tag color="orange">删除中 {summary.deletingCount}</Tag> : null}
+        </Space>
+      );
+    },
+  },
+  {
     title: '人设',
     key: 'persona',
     width: 76,

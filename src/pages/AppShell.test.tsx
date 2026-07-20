@@ -76,9 +76,9 @@ describe('AppShell top navigation active route matching', () => {
 });
 
 describe('AppShell grouped navigation model', () => {
-  it('keeps six stable labelled groups and assigns all fifteen visible destinations exactly once', () => {
+  it('keeps six stable labelled groups and assigns all sixteen visible destinations exactly once', () => {
     expect(NAV_GROUPS.map((group) => group.label)).toEqual(['总览', '账号', '内容', '互动', 'AI 配置', '系统']);
-    expect(NAV_ROUTES).toHaveLength(15);
+    expect(NAV_ROUTES).toHaveLength(16);
 
     const knownGroupIds = new Set(NAV_GROUPS.map((group) => group.id));
     expect(NAV_ROUTES.every((route) => knownGroupIds.has(route.navGroup))).toBe(true);
@@ -92,7 +92,7 @@ describe('AppShell grouped navigation model', () => {
 
     expect(labelsByGroup).toEqual({
       overview: ['数据'],
-      accounts: ['账号', '视频号策略', '群组'],
+      accounts: ['账号', '环境', '视频号策略', '群组'],
       content: ['内容', '发布队列', '精选', '排期'],
       interaction: ['互动联系人', '通知路由'],
       'ai-config': ['人设', '角色'],
@@ -201,7 +201,7 @@ describe('AppShell grouped navigation model', () => {
     fireEvent.click(screen.getByRole('button', { name: '打开导航菜单，当前位置：内容，精选' }));
     const menu = await screen.findByRole('menu');
     expect(within(menu).getAllByRole('group')).toHaveLength(6);
-    expect(within(menu).getAllByRole('menuitem')).toHaveLength(15);
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(16);
     await waitFor(() => expect(within(menu).getByText('视频号策略')).toBeTruthy());
     expect(within(menu).getByText('端用户')).toBeTruthy();
   });

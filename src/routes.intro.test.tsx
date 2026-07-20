@@ -13,6 +13,7 @@ import { APP_ROUTES, NAV_ROUTES } from './routes';
 
 vi.mock('./pages/AccountsPage', () => ({ AccountsPage: () => 'Accounts Page' }));
 vi.mock('./pages/ContentPage', () => ({ ContentPage: () => 'Content Page', PublishQueuePage: () => 'Publish Queue Page' }));
+vi.mock('./pages/EnvironmentsPage', () => ({ EnvironmentsPage: () => 'Environments Page' }));
 vi.mock('./pages/ContentSchedulePage', () => ({ ContentSchedulePage: () => 'Content Schedule Page' }));
 vi.mock('./pages/CuratedContentPage', () => ({ CuratedContentPage: () => 'Curated Content Page' }));
 vi.mock('./pages/DashboardPage', () => ({ DashboardPage: () => 'Dashboard Home' }));

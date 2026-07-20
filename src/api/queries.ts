@@ -36,6 +36,7 @@ import type {
   ClientEnvScopeRow,
   ClientEnvScopeInput,
   ClientEnvironmentView,
+  EnvironmentAssetView,
   ClientUserMutationResponse,
   ClientScopeMutationResponse,
   DownloadsManifest,
@@ -388,6 +389,16 @@ export function useClientEnvironments(enabled: boolean) {
     queryKey: ['client-environments'],
     queryFn: () => apiGet<{ environments: ClientEnvironmentView[] }>('/api/client-environments'),
     enabled,
+  });
+}
+
+/** 管理侧独立环境资产页；10 秒轮询展示 Edge 删除终态，不把“已受理”冒充“已删除”。 */
+export function useEnvironments() {
+  return useQuery({
+    queryKey: ['environments'],
+    queryFn: () => apiGet<{ environments: EnvironmentAssetView[]; asOf: number }>('/api/environments'),
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
   });
 }
 

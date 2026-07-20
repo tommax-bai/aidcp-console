@@ -17,8 +17,10 @@ import {
   SafetyOutlined,
   SettingOutlined,
   TeamOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons';
 import { AccountsPage } from './pages/AccountsPage';
+import { EnvironmentsPage } from './pages/EnvironmentsPage';
 import { ClientUsersPage } from './pages/ClientUsersPage';
 import { ContentPage, PublishQueuePage } from './pages/ContentPage';
 import { ContentSchedulePage } from './pages/ContentSchedulePage';
@@ -88,6 +90,7 @@ export interface NavRoute extends AppRoute {
 export const APP_ROUTES: AppRoute[] = [
   { path: '/', element: <DashboardPage />, navLabel: '数据', navIcon: <DashboardOutlined />, navGroup: 'overview', showInNav: true },
   { path: '/accounts', element: <AccountsPage />, navLabel: '账号', navIcon: <TeamOutlined />, navGroup: 'accounts', showInNav: true },
+  { path: '/environments', element: <EnvironmentsPage />, navLabel: '环境', navIcon: <CloudServerOutlined />, navGroup: 'accounts', showInNav: true },
   { path: '/wechat-strategies', element: <WechatStrategiesPage />, navLabel: '视频号策略', navIcon: <MessageOutlined />, navGroup: 'accounts', showInNav: true },
   { path: '/facebook-groups', element: <FacebookGroupsPage />, navLabel: '群组', navIcon: <ApartmentOutlined />, navGroup: 'accounts', showInNav: true },
   { path: '/content', element: <ContentPage />, navLabel: '内容', navIcon: <FileTextOutlined />, navGroup: 'content', showInNav: true },

@@ -75,6 +75,8 @@ export interface PanelAccount {
   personaBound: boolean;
   /** 需设置人设（派生）：未绑且非 default。手工镜像 cloud panel-store.ts PanelAccount，两处须同步防漂移。 */
   needsPersonaSetup: boolean;
+  /** 环境是独立可删除资产；账号只展示当前生命周期摘要。滚动升级旧 Cloud 可能暂缺。 */
+  environmentSummary?: { activeCount: number; deletingCount: number; onlineCount: number };
 }
 
 /** Legacy 容器配置项，保留用于兼容旧接口 / 回滚；当前 FB 配置 UI 不再编辑它。 */
@@ -1409,6 +1411,48 @@ export interface ClientEnvironmentView {
   assignees: ClientEnvAssignee[];
   assigneeCount: number;
   cleanup: ClientCleanupReceipt | null;
+}
+
+export type EnvironmentLifecycleState = 'active' | 'waiting_edge' | 'deleting' | 'delete_failed' | 'deleted';
+
+/** 独立环境资产页 DTO（GET /api/environments）。环境名与挂载账号展示名严格分列。 */
+export interface EnvironmentAssetView extends ClientEnvironmentView {
+  environmentName: string;
+  account: {
+    accountId: string;
+    label: string | null;
+    nickname: string | null;
+    operatorAlias: string | null;
+    displayName: string;
+    platform: string;
+    groupLabel: string | null;
+    riskStatus: RiskStatus | null;
+    riskQuotaLevel: RiskQuotaLevel | null;
+  } | null;
+  bindingObservedAt: number | null;
+  installation: { installationId: string; lastSeenAt: number; online: boolean } | null;
+  lifecycle: {
+    state: EnvironmentLifecycleState;
+    requestId: string | null;
+    requestedBy: string | null;
+    requestedAt: number | null;
+    resultKind: 'deleted' | 'already_missing' | null;
+    resultError: string | null;
+    resultAt: number | null;
+    deletedAt: number | null;
+  };
+}
+
+export interface EnvironmentDeletionResponse {
+  deletion: {
+    requestId: string;
+    version: number;
+    envKey: string;
+    platform: string | null;
+    targetUserId: string | null;
+    state: Exclude<EnvironmentLifecycleState, 'active'>;
+    idempotent: boolean;
+  };
 }
 
 /**
