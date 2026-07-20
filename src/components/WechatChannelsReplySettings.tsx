@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Collapse,
   Descriptions,
   Divider,
   Drawer,
@@ -111,6 +112,12 @@ import {
   replyProcessingModeOf,
   type ReplyProcessingMode,
 } from './wechatChannelsReplyMode';
+import {
+  applyWechatChannelsRateLimitPreset,
+  summarizeWechatChannelsRateLimits,
+  wechatChannelsRateLimitPresetOf,
+  type WechatChannelsRateLimitPreset,
+} from './wechatChannelsRateLimitPresets';
 
 type DirtySection = 'runtime' | 'policy' | 'profiles';
 type DirtyState = Record<DirtySection, boolean>;
@@ -361,6 +368,8 @@ export function WechatChannelsReplySettings({
   const [selectedPreviewMessageId, setSelectedPreviewMessageId] = useState<string | null>(null);
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [rateLimitCustomMode, setRateLimitCustomMode] = useState(false);
+  const [rateLimitsAdvancedOpen, setRateLimitsAdvancedOpen] = useState(false);
 
   const scopeId = scope?.scopeId ?? null;
   const targetId = scopeId ?? account?.accountId ?? null;
@@ -402,6 +411,8 @@ export function WechatChannelsReplySettings({
     setSelectedPreviewMessageId(null);
     setPreviewResult(null);
     setPreviewError(null);
+    setRateLimitCustomMode(false);
+    setRateLimitsAdvancedOpen(false);
   }, []);
 
   const loadAccount = useCallback(async (configTargetId: string) => {
@@ -1436,20 +1447,49 @@ export function WechatChannelsReplySettings({
   const renderRisk = () => {
     if (!snapshot) return null;
     const limits = snapshot.policy.rateLimits;
+    const storedPreset = wechatChannelsRateLimitPresetOf(limits);
+    const selectedPreset: WechatChannelsRateLimitPreset = rateLimitCustomMode ? 'custom' : storedPreset;
     const setLimit = (key: keyof typeof limits, value: number | null) => {
       if (value === null) return;
+      setRateLimitCustomMode(true);
       mutateSnapshot('policy', (current) => ({
         ...current,
         policy: { ...current.policy, rateLimits: { ...current.policy.rateLimits, [key]: value } },
       }));
     };
+    const selectPreset = (preset: WechatChannelsRateLimitPreset) => {
+      if (preset === 'custom') {
+        setRateLimitCustomMode(true);
+        setRateLimitsAdvancedOpen(true);
+        return;
+      }
+      setRateLimitCustomMode(false);
+      if (storedPreset === preset) return;
+      mutateSnapshot('policy', (current) => ({
+        ...current,
+        policy: {
+          ...current.policy,
+          rateLimits: applyWechatChannelsRateLimitPreset(current.policy.rateLimits, preset),
+        },
+      }));
+    };
+    const advancedLimits = (
+      <div className="reply-config__limit-grid">
+        <LimitInput label="每分钟上限" value={limits.accountPerMinute} max={60} onChange={(value) => setLimit('accountPerMinute', value)} disabled={editDenied} />
+        <LimitInput label="每小时上限" value={limits.accountPerHour} max={1000} onChange={(value) => setLimit('accountPerHour', value)} disabled={editDenied} />
+        <LimitInput label="每日上限" value={limits.accountPerDay} max={10000} onChange={(value) => setLimit('accountPerDay', value)} disabled={editDenied} />
+        <LimitInput label="同会话冷却（秒）" value={limits.threadCooldownSeconds} max={604800} onChange={(value) => setLimit('threadCooldownSeconds', value)} disabled={editDenied} />
+        <LimitInput label="新登录冷却（秒）" value={limits.newLoginCooldownSeconds} max={604800} onChange={(value) => setLimit('newLoginCooldownSeconds', value)} disabled={editDenied} />
+        <LimitInput label="连续失败熔断" value={limits.consecutiveFailureLimit} min={1} max={100} onChange={(value) => setLimit('consecutiveFailureLimit', value)} disabled={editDenied} />
+      </div>
+    );
     return (
       <div className="reply-config__stack">
         <Alert
           type="warning"
           showIcon
           message="系统保护始终生效，不是可配置开关"
-          description="下列 Cloud RiskController、身份、capability、幂等和待核验门禁不可关闭；账号管理员只能通过限速和人工审核增加更严格的限制。"
+          description="下列风险状态、身份、capability、幂等和待核验门禁不可关闭；限速预设只是 Cloud 本地回复节流，不是视频号官方安全额度。"
         />
         <List
           bordered
@@ -1462,17 +1502,29 @@ export function WechatChannelsReplySettings({
         />
         <Card
           size="small"
-          title="账号安全限速（只能收紧）"
+          title="Cloud 本地回复限速"
           extra={<Button type="primary" onClick={savePolicy} disabled={!dirty.policy || editDenied} loading={pendingAction === 'policy'}>保存到策略草稿</Button>}
         >
-          <div className="reply-config__limit-grid">
-            <LimitInput label="每分钟上限" value={limits.accountPerMinute} max={60} onChange={(value) => setLimit('accountPerMinute', value)} disabled={editDenied} />
-            <LimitInput label="每小时上限" value={limits.accountPerHour} max={1000} onChange={(value) => setLimit('accountPerHour', value)} disabled={editDenied} />
-            <LimitInput label="每日上限" value={limits.accountPerDay} max={10000} onChange={(value) => setLimit('accountPerDay', value)} disabled={editDenied} />
-            <LimitInput label="同会话冷却（秒）" value={limits.threadCooldownSeconds} max={604800} onChange={(value) => setLimit('threadCooldownSeconds', value)} disabled={editDenied} />
-            <LimitInput label="新登录冷却（秒）" value={limits.newLoginCooldownSeconds} max={604800} onChange={(value) => setLimit('newLoginCooldownSeconds', value)} disabled={editDenied} />
-            <LimitInput label="连续失败熔断" value={limits.consecutiveFailureLimit} min={1} max={100} onChange={(value) => setLimit('consecutiveFailureLimit', value)} disabled={editDenied} />
-          </div>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Radio.Group
+              aria-label="回复限速预设"
+              value={selectedPreset}
+              onChange={(event) => selectPreset(event.target.value as WechatChannelsRateLimitPreset)}
+              disabled={editDenied}
+            >
+              <Radio.Button value="conservative">保守</Radio.Button>
+              <Radio.Button value="standard">标准</Radio.Button>
+              <Radio.Button value="custom">自定义</Radio.Button>
+            </Radio.Group>
+            <Typography.Text type="secondary">
+              当前实际值：{summarizeWechatChannelsRateLimits(limits)}。选择预设只修改本页策略草稿，保存和发布仍需分别确认。
+            </Typography.Text>
+            <Collapse
+              activeKey={rateLimitsAdvancedOpen ? ['advanced'] : []}
+              onChange={(keys) => setRateLimitsAdvancedOpen(Array.isArray(keys) ? keys.includes('advanced') : keys === 'advanced')}
+              items={[{ key: 'advanced', label: '高级设置（查看实际数值）', children: advancedLimits }]}
+            />
+          </Space>
         </Card>
       </div>
     );

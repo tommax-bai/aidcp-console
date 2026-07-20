@@ -643,6 +643,65 @@ describe('WechatChannelsReplySettings', () => {
     expect(screen.getByRole('textbox', { name: '模拟互动内容' })).toBeTruthy();
   });
 
+  it('shows preset-first limits, expands custom without writing, and deliberately saves the complete standard preset', async () => {
+    const server = createServer();
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '风险门禁' }));
+
+    expect((screen.getByRole('radio', { name: '保守' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText(/当前实际值：每分钟 2 条、每小时 20 条、每天 100 条/)).toBeTruthy();
+    const advanced = screen.getByRole('button', { name: /高级设置（查看实际数值）/ });
+    expect(advanced.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(screen.getByRole('radio', { name: '自定义' }));
+    expect((screen.getByRole('radio', { name: '自定义' }) as HTMLInputElement).checked).toBe(true);
+    expect(advanced.getAttribute('aria-expanded')).toBe('true');
+    expect((screen.getByRole('spinbutton', { name: '每分钟上限' }) as HTMLInputElement).value).toBe('2');
+    expect(server.calls.some((call) => call.method === 'PUT')).toBe(false);
+
+    fireEvent.click(screen.getByRole('radio', { name: '标准' }));
+    expect(screen.getByText(/当前实际值：每分钟 4 条、每小时 60 条、每天 300 条/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '保存到策略草稿' }));
+    await waitFor(() => expect(server.calls.some((call) => call.path.endsWith('/interaction-reply-policy') && call.method === 'PUT')).toBe(true));
+    const policyCall = server.calls.find((call) => call.path.endsWith('/interaction-reply-policy') && call.method === 'PUT');
+    expect(policyCall?.body).toMatchObject({
+      policy: {
+        rateLimits: {
+          accountPerMinute: 4,
+          accountPerHour: 60,
+          accountPerDay: 300,
+          threadCooldownSeconds: 30,
+          newLoginCooldownSeconds: 300,
+          consecutiveFailureLimit: 3,
+        },
+      },
+    });
+    expect(server.calls.some((call) => call.path.endsWith('/interaction-runtime-controls') && call.method === 'PUT')).toBe(false);
+  });
+
+  it('keeps historical zero limits custom and renders their true advanced values without an implicit write', async () => {
+    const server = createServer();
+    const store = frozenInteractionFixtures('acct_wc_demo');
+    Object.assign(store.policy.data.policy.rateLimits, {
+      accountPerMinute: 0,
+      accountPerHour: 0,
+      accountPerDay: 0,
+    });
+    server.stores.set('acct_wc_demo', store);
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '风险门禁' }));
+
+    expect((screen.getByRole('radio', { name: '自定义' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText(/当前实际值：每分钟 0 条、每小时 0 条、每天 0 条/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /高级设置（查看实际数值）/ }));
+    expect((screen.getByRole('spinbutton', { name: '每分钟上限' }) as HTMLInputElement).value).toBe('0');
+    expect((screen.getByRole('spinbutton', { name: '每小时上限' }) as HTMLInputElement).value).toBe('0');
+    expect((screen.getByRole('spinbutton', { name: '每日上限' }) as HTMLInputElement).value).toBe('0');
+    expect(server.calls.some((call) => call.method === 'PUT')).toBe(false);
+  });
+
   it('selects the newest real interaction by default and sends its actual video title to preview', async () => {
     const server = createServer();
     renderDrawer();
