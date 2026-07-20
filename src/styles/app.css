@@ -1455,3 +1455,7 @@ body {
   font-size: var(--aidcp-font-size-xs);
   line-height: 1.3;
 }
+.account-name-manual {
+  color: #5969a8;
+  font-weight: 600;
+}

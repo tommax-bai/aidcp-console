@@ -309,7 +309,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
   it('并行多轮：可切换查看每一轮详情，账号显示昵称不裸 id（2026-07-09 用户反馈）', async () => {
     state.published = { items: [] };
     state.accounts = {
-      accounts: [{ accountId: 'acc-1', nickname: '小红薯甲', label: null } as unknown],
+      accounts: [{ accountId: 'acc-1', nickname: '小红薯甲', label: null, displayName: '小红薯甲' } as unknown],
     };
     const runOf = (runId: string, sourceId: string, title: string, startedAt: number) => ({
       runId,
@@ -343,7 +343,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
 
   it('新 cloud 生命周期优先展示八阶段，并保留原始快照排障入口', async () => {
     state.published = { items: [] };
-    state.accounts = { accounts: [{ accountId: 'acc-1', nickname: 'Tmax', label: null } as unknown] };
+    state.accounts = { accounts: [{ accountId: 'acc-1', nickname: 'Tmax', label: null, displayName: 'Tmax' } as unknown] };
     state.queue = {
       status: 'running',
       snapshot: null,

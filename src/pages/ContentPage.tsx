@@ -1207,7 +1207,7 @@ export function ContentPage() {
   const accountOptions = [
     { label: '全部账号', value: '' },
     ...(accounts.data?.accounts ?? []).map((a) => ({
-      label: accountDisplayName(a.nickname, a.label, a.accountId),
+      label: accountDisplayName(a),
       value: a.accountId,
     })),
   ];
@@ -1227,7 +1227,7 @@ export function ContentPage() {
   // 队列卡任何账号一律显示昵称/标签、绝不裸 id（用户反馈 2026-07-09）；解析不到才回落 id。
   const resolveAccountName = (id: string) => {
     const a = (accounts.data?.accounts ?? []).find((x) => x.accountId === id);
-    return a ? accountDisplayName(a.nickname, a.label, a.accountId) : id;
+    return a ? accountDisplayName(a) : id;
   };
   // 选中轮可切换：显式选择优先；选中轮已收敛消失则回落最新启动的一轮。
   const latestRun = queueRuns.length > 0 ? queueRuns.reduce((a, b) => (b.startedAt >= a.startedAt ? b : a)) : null;

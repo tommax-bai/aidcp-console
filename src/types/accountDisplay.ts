@@ -1,23 +1,15 @@
 import type { PanelAccount } from './api';
 
-/**
- * 账号展示名诚实回落链（change account-real-nickname）：真名 → 运营名 → 账号ID。
- * 用空白裁剪 + `||` 兜底：读不到真名回落运营标识/ID，绝不显示空白或假名（守「不伪造」红线）。
- * 所有「显示账号名」处统一走它，防各处回落链漂移。
- */
-export function accountDisplayName(
-  nickname: string | null | undefined,
-  label: string | null | undefined,
-  accountId: string,
-): string {
-  const nn = nickname?.trim();
-  const lb = label?.trim();
-  return nn || lb || accountId;
+type DisplayAccount = Pick<PanelAccount, 'accountId'> & { displayName?: string | null };
+
+/** Console 不再重建优先级，只消费 Cloud 已解析的 displayName；旧 DTO 唯一兼容回落为 accountId。 */
+export function accountDisplayName(account: DisplayAccount): string {
+  return account.displayName?.trim() || account.accountId;
 }
 
 /** 便捷重载：直接传一行带 nickname/label/accountId 的账号对象。 */
-export function accountName(a: Pick<PanelAccount, 'nickname' | 'label' | 'accountId'>): string {
-  return accountDisplayName(a.nickname, a.label, a.accountId);
+export function accountName(a: DisplayAccount): string {
+  return accountDisplayName(a);
 }
 
 /**
@@ -27,11 +19,11 @@ export function accountName(a: Pick<PanelAccount, 'nickname' | 'label' | 'accoun
  * 所有「只有 accountId 的地方显示账号名」统一走它，禁止各处内联手写回落链（防漂移）。
  */
 export function makeAccountNamer(
-  accounts: ReadonlyArray<Pick<PanelAccount, 'accountId' | 'nickname' | 'label'>>,
+  accounts: ReadonlyArray<DisplayAccount>,
 ): (accountId: string) => string {
   const byId = new Map(accounts.map((a) => [a.accountId, a]));
   return (accountId: string): string => {
     const a = byId.get(accountId);
-    return a ? accountDisplayName(a.nickname, a.label, accountId) : accountId;
+    return a ? accountDisplayName(a) : accountId;
   };
 }

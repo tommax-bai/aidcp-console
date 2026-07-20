@@ -23,7 +23,7 @@ export function AccountTotalsTable({
 }) {
   const nameOf = (accountId: string): string => {
     const a = accounts?.find((x) => x.accountId === accountId);
-    return a ? accountDisplayName(a.nickname, a.label, a.accountId) : accountId;
+    return a ? accountDisplayName(a) : accountId;
   };
   const columns: ColumnsType<AccountTotals> = [
     {

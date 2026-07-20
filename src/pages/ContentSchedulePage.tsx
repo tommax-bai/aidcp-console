@@ -42,8 +42,8 @@ const contentMaskForEdit = (m: string | null | undefined) => (m && isValidMask(m
 const clampContent = (browse: string, content: string) =>
   Array.from(content, (c, i) => (c === '1' && browse[i] === '1' ? '1' : '0')).join('');
 
-/** 展示名回落：nickname → label → accountId。 */
-const displayName = (r: ContentScheduleRow) => r.nickname || r.label || r.accountId;
+/** 排期 catalog 同样只消费 Cloud 的统一展示名；旧 DTO 回落 accountId。 */
+const displayName = (r: ContentScheduleRow) => r.displayName?.trim() || r.accountId;
 
 const ACTION_MODE_OPTIONS: Array<{ label: string; value: ContentScheduleActionMode }> = [
   { label: '关', value: 'off' },

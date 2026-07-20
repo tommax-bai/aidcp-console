@@ -49,11 +49,16 @@ export interface MeResponse {
 }
 
 /** 账号一览行（accounts ⨝ risk_state）。operator 态与 risk 态分开 → 两个独立徽标。 */
+export type AccountDisplayNameSource = 'operator_alias' | 'platform_nickname' | 'label' | 'account_id';
+
 export interface PanelAccount {
   accountId: string;
   label: string | null;
   /** 登录账号平台真实昵称（change account-real-nickname；未采到为 null，回落 label/accountId）。手工镜像 cloud。 */
   nickname: string | null;
+  operatorAlias: string | null;
+  displayName: string;
+  displayNameSource: AccountDisplayNameSource;
   platform: string;
   groupLabel: string | null;
   machineLabel: string | null;
@@ -1262,6 +1267,9 @@ export interface ContentScheduleRow {
   accountId: string;
   label: string | null;
   nickname: string | null;
+  operatorAlias: string | null;
+  displayName: string;
+  displayNameSource: AccountDisplayNameSource;
   /** 总开关：false=该账号完全不自动（零回归默认）。 */
   autoEnabled: boolean;
   /** 发帖开关。 */

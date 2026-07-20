@@ -69,11 +69,12 @@ const columns: ColumnsType<PanelAccount> = [
     ellipsis: { showTitle: false },
     // 账号名可点：仅小红书账号跳其站外主页（accountId = 登录派生的 xhs userid）；其它平台回落纯文本，绝不出死链。
     render: (_, r) => {
-      const name = accountDisplayName(r.nickname, r.label, r.accountId);
+      const name = accountDisplayName(r);
+      const content = <span className={r.displayNameSource === 'operator_alias' ? 'account-name-manual' : undefined}>{name}</span>;
       return r.platform === 'xiaohongshu' ? (
-        <ProfileLink userId={r.accountId}>{name}</ProfileLink>
+        <ProfileLink userId={r.accountId}>{content}</ProfileLink>
       ) : (
-        <span title={name}>{name}</span>
+        <span title={name}>{content}</span>
       );
     },
   },

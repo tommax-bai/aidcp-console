@@ -162,7 +162,7 @@ export function NotificationContactsPage() {
   const accountOptions = [
     { label: '全部账号', value: ALL_ACCOUNTS },
     ...(accounts.data?.accounts ?? []).map((a) => ({
-      label: accountDisplayName(a.nickname, a.label, a.accountId),
+      label: accountDisplayName(a),
       value: a.accountId,
     })),
   ];

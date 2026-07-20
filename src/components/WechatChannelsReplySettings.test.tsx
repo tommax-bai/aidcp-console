@@ -604,8 +604,8 @@ describe('WechatChannelsReplySettings', () => {
 
   it('aborts an in-flight audit page when switching accounts and never appends it to the new account', async () => {
     const server = createServer({ auditPagination: true, slowAuditPageAccountId: 'acct_slow_audit' });
-    const slow = { ...panelAccount('acct_slow_audit'), nickname: '慢审计账号' };
-    const fast = { ...panelAccount('acct_fast_audit'), nickname: '新审计账号' };
+    const slow = { ...panelAccount('acct_slow_audit'), nickname: '慢审计账号', displayName: '慢审计账号' };
+    const fast = { ...panelAccount('acct_fast_audit'), nickname: '新审计账号', displayName: '新审计账号' };
     const view = render(
       <AntdApp>
         <WechatChannelsReplySettings account={slow} open onClose={() => undefined} />
@@ -891,8 +891,8 @@ describe('WechatChannelsReplySettings', () => {
 
   it('aborts the previous account reads and prevents stale account content from winning', async () => {
     const server = createServer({ slowAccountId: 'acct_slow' });
-    const slow = { ...panelAccount('acct_slow'), nickname: '慢账号' };
-    const fast = { ...panelAccount('acct_fast'), nickname: '新账号' };
+    const slow = { ...panelAccount('acct_slow'), nickname: '慢账号', displayName: '慢账号' };
+    const fast = { ...panelAccount('acct_fast'), nickname: '新账号', displayName: '新账号' };
     const view = render(
       <AntdApp>
         <WechatChannelsReplySettings account={slow} open onClose={() => undefined} />
