@@ -339,46 +339,66 @@ body {
   color: var(--aidcp-foreground);
   box-shadow: var(--aidcp-shadow-sm);
 }
+.pill__btn--open:not(.pill__btn--active) {
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--aidcp-foreground);
+}
 .pill__icon {
   display: inline-flex;
 }
 .pill__chevron {
   display: inline-flex;
   margin-left: 1px;
-  font-size: 9px;
+  font-size: 8px;
+  opacity: 0.55;
+  transition: transform 0.15s ease;
+}
+.pill__btn--open .pill__chevron {
+  transform: rotate(180deg);
 }
 
 /* ---- 桌面分组浮层：覆盖正文，不形成第二条顶栏 ---- */
+.group-nav-dropdown {
+  padding-top: 6px;
+}
 .group-nav-dropdown .ant-dropdown-menu {
-  min-width: 204px;
-  padding: 8px;
-  border: 1px solid var(--aidcp-border);
-  border-radius: 12px;
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
+  width: 176px;
+  min-width: 176px;
+  padding: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 .group-nav-dropdown .ant-dropdown-menu-item {
-  min-height: 42px;
+  min-height: 38px;
+  margin: 0;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 7px;
+}
+.group-nav-dropdown .ant-dropdown-menu-item + .ant-dropdown-menu-item {
+  margin-top: 2px;
 }
 .group-nav-dropdown .ant-dropdown-menu-title-content {
   display: block;
 }
 .group-nav-dropdown .ant-dropdown-menu-item:hover,
-.group-nav-dropdown .ant-dropdown-menu-item-active,
+.group-nav-dropdown .ant-dropdown-menu-item-active {
+  color: var(--aidcp-foreground);
+  background: #f7f7f8;
+}
 .group-nav-dropdown .ant-dropdown-menu-item-selected {
   color: var(--aidcp-foreground);
-  background: var(--aidcp-muted);
+  background: #f2f2f3;
 }
 .group-nav-menu__link {
   width: 100%;
-  min-height: 42px;
+  min-height: 38px;
   padding: 0 10px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 14px;
+  grid-template-columns: 16px minmax(0, 1fr) 12px;
   align-items: center;
   gap: 10px;
-  color: inherit;
+  color: #3f3f46;
   text-decoration: none;
 }
 .group-nav-menu__icon,
@@ -388,7 +408,8 @@ body {
   justify-content: center;
 }
 .group-nav-menu__icon {
-  color: var(--aidcp-muted-foreground);
+  color: #8a8a8a;
+  font-size: 16px;
 }
 .group-nav-menu__label {
   overflow: hidden;
@@ -398,6 +419,7 @@ body {
   white-space: nowrap;
 }
 .group-nav-menu__check {
+  color: var(--aidcp-foreground);
   font-size: 11px;
 }
 

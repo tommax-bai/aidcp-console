@@ -151,8 +151,12 @@ describe('AppShell grouped navigation model', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.mouseEnter(screen.getByRole('button', { name: '打开内容分组菜单' }));
+    const trigger = screen.getByRole('button', { name: '打开内容分组菜单' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.mouseEnter(trigger);
     const menu = await screen.findByRole('menu');
+    await waitFor(() => expect(trigger.className).toContain('pill__btn--open'));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(within(menu).getAllByRole('menuitem')).toHaveLength(4);
     expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['内容', '发布队列', '精选', '排期']);
     expect(within(menu).getByRole('link', { name: '精选' }).getAttribute('aria-current')).toBe('page');
@@ -171,6 +175,8 @@ describe('AppShell grouped navigation model', () => {
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     fireEvent.click(trigger);
     const menu = await screen.findByRole('menu');
+    expect(trigger.className).toContain('pill__btn--open');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['安全', '用量', '端用户']);
     expect(within(menu).getByRole('link', { name: '安全' }).getAttribute('aria-current')).toBe('page');
   });

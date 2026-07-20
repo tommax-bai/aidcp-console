@@ -1,4 +1,5 @@
 import { Dropdown, type MenuProps } from 'antd';
+import { useEffect, useState } from 'react';
 import {
   CheckOutlined,
   DeploymentUnitOutlined,
@@ -115,12 +116,17 @@ export function AppShell() {
   const location = useLocation();
   const { logout } = useAuth();
   const pathname = location.pathname;
+  const [openGroupId, setOpenGroupId] = useState<NavGroup['id'] | null>(null);
   const downloads = useDownloads();
   const downloadMenuItems = buildDownloadMenuItems(downloads.data, downloads.isPending);
   const activeNavigation = getActiveNavigation(pathname);
   const currentLocationLabel = activeNavigation.destination?.navLabel
     ?? (isActive(pathname, '/settings') ? '设置' : activeNavigation.group.label);
   const mobileNavigationItems = buildMobileNavigationItems();
+
+  useEffect(() => {
+    setOpenGroupId(null);
+  }, [pathname]);
 
   return (
     <div className="app-shell">
@@ -143,7 +149,12 @@ export function AppShell() {
               {NAV_GROUPS.map((group) => {
                 const routes = navRoutesForGroup(group.id);
                 const groupIsActive = activeNavigation.group.id === group.id;
-                const groupClassName = `pill__btn${groupIsActive ? ' pill__btn--active' : ''}`;
+                const groupIsOpen = openGroupId === group.id;
+                const groupClassName = [
+                  'pill__btn',
+                  groupIsActive ? 'pill__btn--active' : '',
+                  groupIsOpen ? 'pill__btn--open' : '',
+                ].filter(Boolean).join(' ');
 
                 if (routes.length === 1) {
                   return (
@@ -163,9 +174,11 @@ export function AppShell() {
                   <Dropdown
                     key={group.id}
                     trigger={['hover', 'click']}
-                    placement="bottom"
+                    placement="bottomLeft"
                     mouseEnterDelay={0.12}
                     mouseLeaveDelay={0.2}
+                    open={groupIsOpen}
+                    onOpenChange={(open) => setOpenGroupId(open ? group.id : null)}
                     overlayClassName="group-nav-dropdown"
                     menu={{
                       items: buildGroupNavigationItems(group, pathname),
@@ -180,6 +193,7 @@ export function AppShell() {
                       aria-label={`打开${group.label}分组菜单`}
                       aria-current={groupIsActive ? 'location' : undefined}
                       aria-haspopup="menu"
+                      aria-expanded={groupIsOpen}
                     >
                       <span className="pill__icon" aria-hidden="true">{group.icon}</span>
                       <span>{group.label}</span>
