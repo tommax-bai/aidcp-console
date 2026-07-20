@@ -234,7 +234,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
       journeyId: `publish:${index + 1}`,
       runId: null,
       recordId: 158 + index,
-      title: index === 0 ? '做Agent别光死磕大模型' : `活跃稿件 ${index + 1}`,
+      title: index === 0 ? '做Agent别光死磕大模型' : `第 ${index + 1} 份活跃稿件`,
       status: index === 0 ? 'waiting_approval' : 'generating',
       statusSummary: index === 0 ? '等待人工审批' : '正在生成候审稿',
     }, index === 0 ? { approval: 'waiting_human', dispatch: 'pending' } : {}));
@@ -247,17 +247,20 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
 
     renderQueuePage();
 
-    expect(await screen.findByText('活跃稿件 5')).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'acc-1' })).toBeTruthy();
+    expect(screen.queryByLabelText('选择活跃稿件')).toBeNull();
+    expect(screen.getByText('做Agent别光死磕大模型')).toBeTruthy();
+    expect(screen.getByText('第 5 份活跃稿件')).toBeTruthy();
     expect(document.querySelector('.publish-queue-metric--active .publish-queue-metric__value')?.textContent).toBe('5');
     expect(document.querySelector('.publish-queue-metric--human .publish-queue-metric__value')?.textContent).toBe('1');
     expect(document.querySelector('.publish-queue-metric--queued .publish-queue-metric__value')?.textContent).toBe('0');
     const approvalLink = await screen.findByRole('link', { name: '去内容页审批' });
     expect(approvalLink.getAttribute('href')).toBe('/content?status=pending_approval');
-    expect(screen.getByText('平台下发')).toBeTruthy();
+    expect(screen.getAllByText('平台下发')).toHaveLength(5);
     expect(screen.getAllByText('未开始').length).toBeGreaterThan(0);
   });
 
-  it('发布队列运行中快照按阶段摘要展示，并保留原始字段', async () => {
+  it('发布队列运行中快照按阶段摘要展示，不再暴露原始字段', async () => {
     state.published = { items: [] };
     state.queue = {
       status: 'running',
@@ -288,10 +291,49 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.getByText('洗稿/正文')).toBeTruthy();
     expect(screen.getByText(/已产出：原稿分析、洗稿草稿/)).toBeTruthy();
 
-    fireEvent.click(screen.getByText(/原始字段/));
+    expect(screen.queryByText(/原始字段/)).toBeNull();
+    expect(screen.queryByText('customDebug')).toBeNull();
+    expect(screen.queryByText(/keep-me/)).toBeNull();
+  });
 
-    expect(await screen.findByText('customDebug')).toBeTruthy();
-    expect(await screen.findByText(/keep-me/)).toBeTruthy();
+  it('活跃稿件按账号横向切换，选中账号的所有任务一次性排在下方', async () => {
+    state.accounts = {
+      accounts: [
+        { accountId: 'acc-a', nickname: '账号甲', label: null, displayName: '账号甲' } as unknown,
+        { accountId: 'acc-b', nickname: '账号乙', label: null, displayName: '账号乙' } as unknown,
+      ],
+    };
+    state.queue = {
+      status: 'running',
+      snapshot: null,
+      lifecycle: {
+        status: 'running',
+        active: [
+          journey({ journeyId: 'run:a1', runId: 'a1', accountId: 'acc-a', title: '甲账号任务一' }),
+          journey({ journeyId: 'run:a2', runId: 'a2', accountId: 'acc-a', title: '甲账号任务二' }),
+          journey({ journeyId: 'run:b1', runId: 'b1', accountId: 'acc-b', title: '乙账号任务一' }),
+        ],
+        recent: [],
+      },
+    };
+
+    renderQueuePage();
+
+    const accountTabs = await screen.findByRole('tablist', { name: '活跃账号' });
+    expect(accountTabs.classList.contains('publish-queue-account-tabs')).toBe(true);
+    const tabs = within(accountTabs).getAllByRole('tab');
+    expect(tabs).toHaveLength(2);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['账号甲', '账号乙']);
+    expect(screen.getByText('甲账号任务一')).toBeTruthy();
+    expect(screen.getByText('甲账号任务二')).toBeTruthy();
+    expect(screen.queryByText('乙账号任务一')).toBeNull();
+    expect(screen.getAllByRole('region', { name: '排队中的发布任务' })).toHaveLength(1);
+
+    fireEvent.click(within(accountTabs).getByRole('tab', { name: '账号乙' }));
+
+    expect(await screen.findByText('乙账号任务一')).toBeTruthy();
+    expect(screen.queryByText('甲账号任务一')).toBeNull();
+    expect(screen.queryByText('甲账号任务二')).toBeNull();
   });
 
   it('发布队列独立展示尚未开跑的发布任务，并对旧 Cloud 回包二次过滤', async () => {
@@ -392,7 +434,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
 
     expect((await screen.findAllByText('排队任务加载失败')).length).toBeGreaterThan(0);
     expect(screen.getByText('错误隔离活跃稿件')).toBeTruthy();
-    expect(screen.getByText('活跃稿件 1')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'acc-1' })).toBeTruthy();
   });
 
   it('并行多轮：可切换查看每一轮详情，账号显示昵称不裸 id（2026-07-09 用户反馈）', async () => {
@@ -430,7 +472,7 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(await screen.findByText('甲稿标题')).toBeTruthy();
   });
 
-  it('新 cloud 生命周期优先展示八阶段，并保留原始快照排障入口', async () => {
+  it('新 cloud 生命周期优先展示八阶段，不再展示原始快照', async () => {
     state.published = { items: [] };
     state.accounts = { accounts: [{ accountId: 'acc-1', nickname: 'Tmax', label: null, displayName: 'Tmax' } as unknown] };
     state.queue = {
@@ -447,9 +489,9 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     for (const label of lifecycleStageLabels) expect(screen.getByText(label)).toBeTruthy();
     expect(screen.queryByText('洗稿/正文')).toBeNull();
 
-    fireEvent.click(screen.getByText(/原始字段/));
-    expect(await screen.findByText('customDebug')).toBeTruthy();
-    expect(screen.getByText(/lifecycle-raw/)).toBeTruthy();
+    expect(screen.queryByText(/原始字段/)).toBeNull();
+    expect(screen.queryByText('customDebug')).toBeNull();
+    expect(screen.queryByText(/lifecycle-raw/)).toBeNull();
   });
 
   it('待审和下发中使用明确阶段状态，不折叠成同一个人审/下发阶段', async () => {

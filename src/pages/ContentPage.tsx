@@ -9,7 +9,6 @@ import {
   Card,
   Collapse,
   DatePicker,
-  Descriptions,
   Divider,
   Empty,
   Image,
@@ -317,13 +316,6 @@ function contentLengthFrom(record: SnapshotRecord | null, key: string): number |
   return value ? value.length : null;
 }
 
-function compactJson(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '—';
-  if (typeof value !== 'object') return String(value);
-  return JSON.stringify(value);
-}
-
 function queueStageFact(stageKey: string, snapshot: SnapshotRecord, resolveAccountName?: (id: string) => string): string | null {
   const trigger = triggerRecord(snapshot);
   const referenceNote = referenceNoteRecord(snapshot);
@@ -536,11 +528,9 @@ function QueueMetric(props: {
 function LifecycleJourneyOverview(props: {
   journey: ContentQueueJourney;
   resolveAccountName: (id: string) => string;
-  queuedTasks: Array<DelegatedTaskView & { status: QueuedPublishStatus }>;
-  queuedTasksLoading: boolean;
-  queuedTasksFailed: boolean;
+  showAccount?: boolean;
 }) {
-  const { journey, resolveAccountName, queuedTasks, queuedTasksLoading, queuedTasksFailed } = props;
+  const { journey, resolveAccountName, showAccount = true } = props;
   return (
     <div className="publish-queue-overview">
       {!journey.active ? (
@@ -552,35 +542,28 @@ function LifecycleJourneyOverview(props: {
           className="publish-queue-result-alert"
         />
       ) : null}
-      <div className="publish-queue-summary-grid">
-        <div className={`publish-queue-draft${journey.active ? '' : ' publish-queue-draft--recent'}`}>
-          <div className="publish-queue-draft__main">
-            <Typography.Text type="secondary" className="publish-queue-draft__eyebrow">
-              {journey.active ? '活跃稿件' : '最近结果'}
+      <div className={`publish-queue-draft${journey.active ? '' : ' publish-queue-draft--recent'}`}>
+        <div className="publish-queue-draft__main">
+          <Typography.Text type="secondary" className="publish-queue-draft__eyebrow">
+            {journey.active ? '活跃稿件' : '最近结果'}
+          </Typography.Text>
+          <Typography.Title level={5} className="publish-queue-draft__title" title={journey.title}>
+            {journey.title}
+          </Typography.Title>
+          {journey.sourceTitle && journey.sourceTitle !== journey.title ? (
+            <Typography.Text type="secondary" className="publish-queue-draft__source" title={journey.sourceTitle}>
+              来源：{journey.sourceTitle}
             </Typography.Text>
-            <Typography.Title level={5} className="publish-queue-draft__title" title={journey.title}>
-              {journey.title}
-            </Typography.Title>
-            {journey.sourceTitle && journey.sourceTitle !== journey.title ? (
-              <Typography.Text type="secondary" className="publish-queue-draft__source" title={journey.sourceTitle}>
-                来源：{journey.sourceTitle}
-              </Typography.Text>
-            ) : null}
-          </div>
-          <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
-            <Tag>{resolveAccountName(journey.accountId)}</Tag>
-            <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{labelOf(JOURNEY_STATUS_LABEL, journey.status)}</Tag>
-            {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
-            {journey.active && journey.status === 'waiting_approval' ? (
-              <Button type="primary" size="small" href="/content?status=pending_approval">去内容页审批</Button>
-            ) : null}
-          </Space>
+          ) : null}
         </div>
-        <QueuedPublishTasksPanel
-          tasks={queuedTasks}
-          loading={queuedTasksLoading}
-          failed={queuedTasksFailed}
-        />
+        <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
+          {showAccount ? <Tag>{resolveAccountName(journey.accountId)}</Tag> : null}
+          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{labelOf(JOURNEY_STATUS_LABEL, journey.status)}</Tag>
+          {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
+          {journey.active && journey.status === 'waiting_approval' ? (
+            <Button type="primary" size="small" href="/content?status=pending_approval">去内容页审批</Button>
+          ) : null}
+        </Space>
       </div>
 
       <div className="publish-queue-stage-strip publish-queue-stage-strip--lifecycle" aria-label="发布生命周期八阶段">
@@ -1109,6 +1092,7 @@ function SourceReferenceModal({
  */
 export function PublishQueuePage() {
   const [selectedQueueItemId, setSelectedQueueItemId] = useState<string | null>(null);
+  const [selectedActiveAccountId, setSelectedActiveAccountId] = useState<string | null>(null);
   const accounts = useAccounts();
   const queue = useContentQueue();
   const delegatedPublishTasks = useDelegatedTasks({
@@ -1123,10 +1107,14 @@ export function PublishQueuePage() {
   const lifecycle = queue.data?.lifecycle;
   const lifecycleActive = lifecycle?.active ?? [];
   const lifecycleRecent = lifecycle?.recent ?? [];
-  const selectedJourney = lifecycleActive.find((item) => item.journeyId === selectedQueueItemId)
-    ?? lifecycleActive[0]
-    ?? lifecycleRecent[0]
-    ?? null;
+  const activeAccountIds = Array.from(new Set(lifecycleActive.map((item) => item.accountId)));
+  const visibleActiveAccountId = selectedActiveAccountId && activeAccountIds.includes(selectedActiveAccountId)
+    ? selectedActiveAccountId
+    : activeAccountIds[0] ?? null;
+  const selectedAccountJourneys = visibleActiveAccountId
+    ? lifecycleActive.filter((item) => item.accountId === visibleActiveAccountId)
+    : [];
+  const selectedJourney = selectedAccountJourneys[0] ?? lifecycleRecent[0] ?? null;
   // 并行多轮（change parallel-rewrite-drafts）：runs 可空缺（旧 cloud）——回落旧聚合单快照渲染，绝不白屏。
   const queueRuns = queue.data?.runs ?? [];
   const resolveAccountName = (id: string) => {
@@ -1136,7 +1124,7 @@ export function PublishQueuePage() {
   const latestRun = queueRuns.length > 0 ? queueRuns.reduce((a, b) => (b.startedAt >= a.startedAt ? b : a)) : null;
   const selectedRun = queueRuns.find((run) => run.runId === selectedQueueItemId) ?? latestRun;
   const queueSnapshot = lifecycle
-    ? isRecord(selectedJourney?.snapshot) ? selectedJourney.snapshot : null
+    ? null
     : selectedRun
       ? isRecord(selectedRun.snapshot)
         ? selectedRun.snapshot
@@ -1146,7 +1134,6 @@ export function PublishQueuePage() {
         : null;
   const queueStages = queueSnapshot ? buildQueueStages(queueSnapshot, resolveAccountName) : [];
   const queueDraft = queueSnapshot ? buildQueueDraftSummary(queueSnapshot, resolveAccountName) : null;
-  const rawSnapshotEntries = queueSnapshot ? Object.entries(queueSnapshot) : [];
   const queueActive = lifecycle ? lifecycleActive.length > 0 : queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
   const visibleQueueStatus = lifecycle?.status ?? queueStatus;
   const activeCount = lifecycle
@@ -1221,52 +1208,42 @@ export function PublishQueuePage() {
           selectedJourney ? (
             <>
               {lifecycleActive.length > 0 ? (
-                <div className="publish-queue-runs">
-                  <Space wrap size={[8, 8]}>
-                    <Typography.Text type="secondary">活跃稿件 {lifecycleActive.length}</Typography.Text>
-                    {lifecycleActive.length > 1 ? (
-                      <Select
-                        size="small"
-                        aria-label="选择活跃稿件"
-                        className="publish-queue-journey-select"
-                        value={selectedJourney.active ? selectedJourney.journeyId : lifecycleActive[0].journeyId}
-                        onChange={setSelectedQueueItemId}
-                        options={lifecycleActive.map((item) => ({
-                          value: item.journeyId,
-                          label: `${resolveAccountName(item.accountId)} · ${item.title} · ${labelOf(JOURNEY_STATUS_LABEL, item.status)}`,
-                        }))}
-                      />
-                    ) : null}
-                  </Space>
+                <div className="publish-queue-account-tabs" role="tablist" aria-label="活跃账号">
+                  {activeAccountIds.map((accountId) => {
+                    const selected = accountId === visibleActiveAccountId;
+                    return (
+                      <Button
+                        key={accountId}
+                        role="tab"
+                        aria-selected={selected}
+                        type={selected ? 'primary' : 'default'}
+                        onClick={() => setSelectedActiveAccountId(accountId)}
+                      >
+                        {resolveAccountName(accountId)}
+                      </Button>
+                    );
+                  })}
                 </div>
               ) : null}
-              <LifecycleJourneyOverview
-                journey={selectedJourney}
-                resolveAccountName={resolveAccountName}
-                queuedTasks={queuedPublishTasks}
-                queuedTasksLoading={delegatedPublishTasks.isLoading}
-                queuedTasksFailed={delegatedPublishTasks.isError}
+              {selectedAccountJourneys.length > 0 ? (
+                <div className="publish-queue-account-tasks" role="tabpanel" aria-label={`${resolveAccountName(visibleActiveAccountId ?? '')}的活跃任务`}>
+                  {selectedAccountJourneys.map((journey) => (
+                    <LifecycleJourneyOverview
+                      key={journey.journeyId}
+                      journey={journey}
+                      resolveAccountName={resolveAccountName}
+                      showAccount={false}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <LifecycleJourneyOverview journey={selectedJourney} resolveAccountName={resolveAccountName} />
+              )}
+              <QueuedPublishTasksPanel
+                tasks={queuedPublishTasks}
+                loading={delegatedPublishTasks.isLoading}
+                failed={delegatedPublishTasks.isError}
               />
-              {queueSnapshot ? (
-                <Collapse
-                  size="small"
-                  ghost
-                  className="publish-queue-raw"
-                  items={[{
-                    key: 'snapshot',
-                    label: `原始字段（${rawSnapshotEntries.length}）`,
-                    children: (
-                      <Descriptions size="small" column={1} bordered>
-                        {rawSnapshotEntries.map(([key, value]) => (
-                          <Descriptions.Item key={key} label={key}>
-                            <Typography.Text style={{ fontSize: 12, wordBreak: 'break-all' }}>{compactJson(value)}</Typography.Text>
-                          </Descriptions.Item>
-                        ))}
-                      </Descriptions>
-                    ),
-                  }]}
-                />
-              ) : null}
             </>
           ) : (
             <div className="publish-queue-empty-grid">
@@ -1369,26 +1346,6 @@ export function PublishQueuePage() {
                 description={queueStatus === 'running' ? '生成管道快照尚未写入' : '暂无进行中生成任务'}
               />
             )}
-            {queueSnapshot ? (
-              <Collapse
-                size="small"
-                ghost
-                className="publish-queue-raw"
-                items={[{
-                  key: 'snapshot',
-                  label: `原始字段（${rawSnapshotEntries.length}）`,
-                  children: (
-                    <Descriptions size="small" column={1} bordered>
-                      {rawSnapshotEntries.map(([key, value]) => (
-                        <Descriptions.Item key={key} label={key}>
-                          <Typography.Text style={{ fontSize: 12, wordBreak: 'break-all' }}>{compactJson(value)}</Typography.Text>
-                        </Descriptions.Item>
-                      ))}
-                    </Descriptions>
-                  ),
-                }]}
-              />
-            ) : null}
           </>
         ) : (
           <div className="publish-queue-empty-grid">
