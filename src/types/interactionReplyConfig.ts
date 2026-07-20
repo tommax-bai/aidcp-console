@@ -339,7 +339,7 @@ export interface PublishRequest {
 
 /** v2: 视频号回复策略按账号分组（或未分组默认项）聚合。 */
 export type ReplyConfigScopeType = 'group' | 'default';
-export type ReplyConfigResolutionMode = 'legacy' | 'shadow' | 'scoped';
+export type ReplyConfigResolutionMode = 'scoped';
 
 export interface ReplyConfigSource {
   type: ReplyConfigScopeType;

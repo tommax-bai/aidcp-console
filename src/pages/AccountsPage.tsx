@@ -1,43 +1,19 @@
 import { useState } from 'react';
-import { App, Button, Card, Popconfirm, Space, Tag, Tooltip } from 'antd';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { App, Button, Card, Popconfirm, Tag } from 'antd';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
-import { loadEffectiveReplyConfig } from '../api/interactionReplyConfig';
 import { useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
-import { AccountsTable, RiskControls, FacebookSearchConfig, WechatChannelsReplySettings } from '../components';
+import {
+  AccountsTable,
+  FacebookSearchConfig,
+  QuotaTierControl,
+  RiskStatusControl,
+  WechatChannelsReplySettings,
+} from '../components';
 import { accountName } from '../types/accountDisplay';
+import { OPERATOR_STATUS_LABEL, labelOf } from '../types/aidcp-enums';
 import type { PanelAccount } from '../types/api';
-
-function WechatStrategyActions({ account, onRuntime }: { account: PanelAccount; onRuntime: () => void }) {
-  const navigate = useNavigate();
-  const effective = useQuery({
-    queryKey: ['effective-reply-config', account.accountId],
-    queryFn: ({ signal }) => loadEffectiveReplyConfig(account.accountId, signal),
-  });
-  const data = effective.data?.data;
-  const scopedSource = data?.source.type === 'default' ? '默认策略' : data?.source.groupLabel ?? '分组策略';
-  const source = data?.mode === 'legacy' ? '账号旧策略' : data?.mode === 'shadow' ? '影子比对' : scopedSource;
-  const status = data?.status === 'published' ? '已生效' : data?.status === 'draft_only' ? '仅草稿' : '未配置';
-  const detail = data?.reason === 'group_config_missing'
-    ? '该账号的分组策略缺失，不会回退默认策略'
-    : data?.reason === 'default_config_missing' ? '未分组账号的默认策略缺失' : data?.mode === 'legacy'
-      ? `当前仍执行账号旧策略；目标来源为${scopedSource}`
-      : data?.mode === 'shadow' ? `当前仍执行账号旧策略；正在与${scopedSource}影子比对` : `${source} · ${status}`;
-
-  return (
-    <Space size={4}>
-      <Tooltip title={effective.isError ? '策略来源读取失败' : detail}>
-        <Tag color={data?.status === 'published' ? 'green' : data?.status === 'draft_only' ? 'gold' : undefined}>
-          {effective.isLoading ? '策略读取中' : effective.isError ? '策略未知' : source}
-        </Tag>
-      </Tooltip>
-      <Button size="small" onClick={() => navigate(`/wechat-strategies?accountId=${encodeURIComponent(account.accountId)}`)}>查看策略</Button>
-      <Button size="small" onClick={onRuntime}>运行控制</Button>
-    </Space>
-  );
-}
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
 export function AccountsPage() {
@@ -86,34 +62,26 @@ export function AccountsPage() {
     onError: () => message.error('联系方式保存失败'),
   });
 
-  const actions = (a: PanelAccount) => (
-    <Space size={4}>
-      {a.operatorStatus === 'paused' ? (
-        <Popconfirm
-          title={`确认恢复账号 ${accountName(a)}？`}
-          onConfirm={() => cmd.mutate({ accountId: a.accountId, command: 'resume' })}
+  const operatorStatusControl = (account: PanelAccount) => {
+    const paused = account.operatorStatus === 'paused';
+    return (
+      <Popconfirm
+        title={`确认${paused ? '恢复' : '暂停'}账号 ${accountName(account)}？`}
+        onConfirm={() => cmd.mutate({ accountId: account.accountId, command: paused ? 'resume' : 'pause' })}
+      >
+        <button
+          type="button"
+          aria-label={`${paused ? '恢复' : '暂停'}账号 ${accountName(account)}`}
+          disabled={cmd.isPending}
+          style={{ border: 0, padding: 0, background: 'transparent', cursor: cmd.isPending ? 'wait' : 'pointer' }}
         >
-          <Button size="small" loading={cmd.isPending}>
-            恢复
-          </Button>
-        </Popconfirm>
-      ) : (
-        <Popconfirm
-          title={`确认暂停账号 ${accountName(a)}？`}
-          onConfirm={() => cmd.mutate({ accountId: a.accountId, command: 'pause' })}
-        >
-          <Button size="small" danger loading={cmd.isPending}>
-            暂停
-          </Button>
-        </Popconfirm>
-      )}
-      <RiskControls account={a} />
-      {a.platform === 'facebook' ? <FacebookSearchConfig account={a} /> : null}
-      {a.platform === 'wechat_channels' ? (
-        <WechatStrategyActions account={a} onRuntime={() => setRuntimeAccount(a)} />
-      ) : null}
-    </Space>
-  );
+          <Tag color={paused ? undefined : 'green'} style={{ marginInlineEnd: 0 }}>
+            {labelOf(OPERATOR_STATUS_LABEL, account.operatorStatus)}
+          </Tag>
+        </button>
+      </Popconfirm>
+    );
+  };
 
   if (isError) return <QueryError title="加载账号列表失败" onRetry={() => refetch()} />;
 
@@ -123,7 +91,13 @@ export function AccountsPage() {
         <AccountsTable
           accounts={data?.accounts ?? []}
           loading={isLoading}
-          actionsColumn={actions}
+          operatorStatusControl={operatorStatusControl}
+          riskStatusControl={(account) => <RiskStatusControl account={account} />}
+          quotaTierControl={(account) => <QuotaTierControl account={account} />}
+          platformAddon={(account) => account.platform === 'facebook'
+            ? <FacebookSearchConfig account={account} compactTrigger /> : null}
+          runtimeControl={(account) => account.platform === 'wechat_channels'
+            ? <Button size="small" onClick={() => setRuntimeAccount(account)}>运行控制</Button> : null}
           onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
           onEditContact={(accountId, contactInfo) => contactCmd.mutate({ accountId, contactInfo })}
         />

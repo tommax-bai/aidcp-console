@@ -115,7 +115,7 @@ function statusTag(status: FacebookPublishMediaStatus) {
  * 仅对 Facebook 账号展示（调用方按 platform 门控）。打开时拉当前配置回填、保存经面板 PUT。
  * 目标群由账号已加入群组账本选择；本弹窗不再编辑 legacy containers。
  */
-export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
+export function FacebookSearchConfig({ account, compactTrigger = false }: { account: PanelAccount; compactTrigger?: boolean }) {
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -461,9 +461,15 @@ export function FacebookSearchConfig({ account }: { account: PanelAccount }) {
 
   return (
     <>
-      <Button size="small" onClick={openModal}>
-        FB配置
-      </Button>
+      {compactTrigger ? (
+        <Tag color="blue" role="button" tabIndex={0} aria-label="FB配置" onClick={openModal} style={{ cursor: 'pointer' }}>
+          配置
+        </Tag>
+      ) : (
+        <Button size="small" onClick={openModal}>
+          FB配置
+        </Button>
+      )}
       <Modal
         title={`FB配置 · ${accountName(account)}`}
         open={open}

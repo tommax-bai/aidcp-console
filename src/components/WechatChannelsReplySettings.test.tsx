@@ -356,7 +356,7 @@ beforeEach(() => {
 });
 
 describe('WechatChannelsReplySettings', () => {
-  it('shows group strategy lookup and separate runtime controls only for wechat_channels accounts', async () => {
+  it('keeps only named runtime control and moves account actions into fact columns', async () => {
     createServer();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -368,10 +368,19 @@ describe('WechatChannelsReplySettings', () => {
         </QueryClientProvider>
       </AntdApp>,
     );
-    expect(await screen.findAllByRole('button', { name: '查看策略' })).toHaveLength(1);
+    await screen.findByText('视频号');
+    expect(screen.queryByRole('button', { name: '查看策略' })).toBeNull();
     expect(screen.getAllByRole('button', { name: '运行控制' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: '回复设置' })).toBeNull();
-    expect(screen.getByText('视频号')).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: '操作' })).toBeNull();
+    const riskTriggers = screen.getAllByRole('button', { name: '调整风控：正常' });
+    const tierTriggers = screen.getAllByRole('button', { name: '调整档位：正常' });
+    expect(riskTriggers).toHaveLength(3);
+    expect(tierTriggers).toHaveLength(3);
+    fireEvent.click(riskTriggers[0]);
+    expect(await screen.findByText('强制恢复（特权覆盖）…')).toBeTruthy();
+    fireEvent.click(tierTriggers[0]);
+    expect(await screen.findByText('保守')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'FB配置' })).toHaveLength(1);
   });
 

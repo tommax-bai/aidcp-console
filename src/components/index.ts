@@ -4,7 +4,7 @@ export { EdgeOnlineBadge } from './EdgeOnlineBadge';
 export { AlertSeverityBadge } from './AlertSeverityBadge';
 export { AccountsTable } from './AccountsTable';
 export { AccountTotalsTable } from './AccountTotalsTable';
-export { RiskControls } from './RiskControls';
+export { QuotaTierControl, RiskControls, RiskStatusControl } from './RiskControls';
 export { FacebookSearchConfig } from './FacebookSearchConfig';
 export { WechatChannelsReplySettings } from './WechatChannelsReplySettings';
 export { DispatchControl } from './DispatchControl';

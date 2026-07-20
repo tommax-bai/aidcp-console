@@ -29,6 +29,10 @@ const PLATFORM_COLOR: Record<string, string> = {
   wechat_channels: 'green',
 };
 
+function platformTag(platform: string) {
+  return <Tag color={PLATFORM_COLOR[platform] ?? 'default'}>{labelOf(PLATFORM_LABEL, platform)}</Tag>;
+}
+
 const viewsColumn: ColumnsType<PanelAccount>[number] = {
   // #17：站内深链——一键跳到该账号在其它页的视图，带 ?account=<id> 深链（各页读 URL 预置账号筛选）。
   // 与「账号名」的站外小红书主页 ProfileLink 互不影响：那是外链，这是站内导航。
@@ -59,7 +63,7 @@ const columns: ColumnsType<PanelAccount> = [
       { text: '视频号', value: 'wechat_channels' },
     ],
     onFilter: (value, r) => r.platform === value,
-    render: (p: string) => <Tag color={PLATFORM_COLOR[p] ?? 'default'}>{labelOf(PLATFORM_LABEL, p)}</Tag>,
+    render: (p: string) => platformTag(p),
   },
   {
     title: '账号',
@@ -128,15 +132,25 @@ export function AccountsTable({
   accounts,
   loading,
   severitySorted = false,
-  actionsColumn,
+  operatorStatusControl,
+  riskStatusControl,
+  quotaTierControl,
+  platformAddon,
+  runtimeControl,
   onEditGroup,
   onEditContact,
 }: {
   accounts: PanelAccount[];
   loading?: boolean;
   severitySorted?: boolean;
-  /** 可选操作列（如 pause/resume 按钮）；只读视图不传。 */
-  actionsColumn?: (account: PanelAccount) => ReactNode;
+  /** 账号页把动作归入对应事实列；只读视图不传，保留原徽标。 */
+  operatorStatusControl?: (account: PanelAccount) => ReactNode;
+  riskStatusControl?: (account: PanelAccount) => ReactNode;
+  quotaTierControl?: (account: PanelAccount) => ReactNode;
+  /** 平台专属配置入口附着平台标签，不创建通用操作列。 */
+  platformAddon?: (account: PanelAccount) => ReactNode;
+  /** 视频号账号的具名运行控制列。 */
+  runtimeControl?: (account: PanelAccount) => ReactNode;
   /**
    * 可选：分组标签就地编辑保存回调（change editable-account-group-label）。
    * 传入 →「分组」列点击即变输入框、回车/失焦保存（trim 后空 = 清空，回 null）；
@@ -238,9 +252,26 @@ export function AccountsTable({
       }
     : { title: '分组', dataIndex: 'groupLabel', width: 80, render: (v: string | null) => v ?? dash };
 
-  const baseCols: ColumnsType<PanelAccount> = columns.map((c) =>
-    (c as { dataIndex?: string }).dataIndex === 'groupLabel' ? groupColumn : c,
-  );
+  const baseCols: ColumnsType<PanelAccount> = columns.map((column) => {
+    const dataIndex = (column as { dataIndex?: string }).dataIndex;
+    const key = (column as { key?: string }).key;
+    if (dataIndex === 'groupLabel') return groupColumn;
+    if (dataIndex === 'platform' && platformAddon) {
+      return { ...column, render: (platform: string, account: PanelAccount) => (
+        <Space size={2} wrap={false}>{platformTag(platform)}{platformAddon(account)}</Space>
+      ) };
+    }
+    if (dataIndex === 'operatorStatus' && operatorStatusControl) {
+      return { ...column, render: (_: unknown, account: PanelAccount) => operatorStatusControl(account) };
+    }
+    if (dataIndex === 'riskStatus' && riskStatusControl) {
+      return { ...column, render: (_: unknown, account: PanelAccount) => riskStatusControl(account) };
+    }
+    if (key === 'tier' && quotaTierControl) {
+      return { ...column, render: (_: unknown, account: PanelAccount) => quotaTierControl(account) };
+    }
+    return column;
+  });
 
   // 「联系方式」列：传 onEditContact → 点击即编辑（多行文本框，verbatim）；否则只读（read-only 零回归，不加列）。
   const contactColumn: ColumnsType<PanelAccount>[number] | null = onEditContact
@@ -278,14 +309,14 @@ export function AccountsTable({
     : null;
 
   const withContactColumn: ColumnsType<PanelAccount> = contactColumn ? [...baseCols, contactColumn] : baseCols;
-  const cols: ColumnsType<PanelAccount> = actionsColumn
-    ? [
-        ...withContactColumn,
-        viewsColumn,
-        // 固定宽度容下当前内容（暂停/恢复 + 风控▾ + 档位选择，Facebook 号另加「配置搜索词」入口，Space 不换行）；不再被挤出视口。
-        { title: '操作', key: 'actions', width: 312, render: (_, r) => actionsColumn(r) },
-      ]
-    : [...withContactColumn, viewsColumn];
+  const runtimeColumn: ColumnsType<PanelAccount>[number] | null = runtimeControl
+    ? { title: '运行控制', key: 'runtimeControl', width: 92, render: (_, account) => runtimeControl(account) }
+    : null;
+  const cols: ColumnsType<PanelAccount> = [
+    ...withContactColumn,
+    ...(runtimeColumn ? [runtimeColumn] : []),
+    viewsColumn,
+  ];
   return (
     <Table
       size="small"
@@ -295,7 +326,7 @@ export function AccountsTable({
       pagination={false}
       columns={cols}
       dataSource={rows}
-      // 列多于视口时整表横向滚动，操作列始终可达、绝不再被顶出视口。
+      // 列多于视口时整表横向滚动；账号页不再创建通用“操作”列。
       scroll={{ x: 'max-content' }}
     />
   );
