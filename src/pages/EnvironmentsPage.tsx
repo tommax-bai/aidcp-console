@@ -1,17 +1,13 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Card, Empty, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Card, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { apiPost } from '../api/client';
-import { errorText } from '../api/errorText';
 import { useEnvironments } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import { QuotaTierBadge } from '../components/QuotaTierBadge';
 import { RiskStatusBadge } from '../components/RiskStatusBadge';
 import type {
   EnvironmentAssetView,
-  EnvironmentDeletionResponse,
   EnvironmentLifecycleState,
 } from '../types/api';
 import { labelOf, RISK_STATUS_LABEL } from '../types/aidcp-enums';
@@ -24,9 +20,9 @@ const PLATFORM_META: Record<string, { text: string; color: string }> = {
 
 export const ENVIRONMENT_LIFECYCLE_META: Record<EnvironmentLifecycleState, { text: string; color?: string }> = {
   active: { text: '正常', color: 'green' },
-  waiting_edge: { text: '旧删除请求，需重试', color: 'gold' },
-  deleting: { text: '正在从 AdsPower 删除', color: 'processing' },
-  delete_failed: { text: '删除失败', color: 'red' },
+  waiting_edge: { text: '历史删除请求（已停止）', color: 'gold' },
+  deleting: { text: '历史删除状态（已停止）', color: 'gold' },
+  delete_failed: { text: '历史删除失败', color: 'red' },
   deleted: { text: '已删除' },
 };
 
@@ -77,7 +73,7 @@ function lifecycleTag(environment: EnvironmentAssetView) {
       {tag}
       {environment.lifecycle.state === 'deleted' ? (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {environment.lifecycle.resultKind === 'already_missing' ? 'AdsPower 已不存在' : 'AdsPower 已删除'}
+          {environment.lifecycle.resultKind === 'already_missing' ? '历史结果：AdsPower 已不存在' : '历史结果：AdsPower 已删除'}
           {' · '}{fmtTime(environment.lifecycle.resultAt ?? environment.lifecycle.deletedAt)}
         </Typography.Text>
       ) : null}
@@ -100,15 +96,8 @@ function fmtTime(value: number | null) {
   return value ? new Date(value).toLocaleString('zh-CN') : '—';
 }
 
-function idempotencyKey(envKey: string) {
-  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `console-environment-delete:${envKey}:${id}`;
-}
-
 export function EnvironmentsPage() {
-  const { message } = App.useApp();
   const [params] = useSearchParams();
-  const queryClient = useQueryClient();
   const query = useEnvironments();
   const linkedAccount = params.get('account')?.trim() ?? '';
   const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>('current');
@@ -117,27 +106,6 @@ export function EnvironmentsPage() {
   const [riskFilter, setRiskFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
-  const [target, setTarget] = useState<{ environment: EnvironmentAssetView; key: string } | null>(null);
-  const [confirmation, setConfirmation] = useState('');
-
-  const deletion = useMutation({
-    mutationFn: ({ environment, key }: { environment: EnvironmentAssetView; key: string }) =>
-      apiPost<EnvironmentDeletionResponse>(`/api/environments/${encodeURIComponent(environment.envKey)}/deletion`, {
-        confirmEnvKey: environment.envKey,
-        idempotencyKey: key,
-      }),
-    onSuccess: (result) => {
-      message.success(result.deletion.resultKind === 'already_missing'
-        ? 'AdsPower 中已不存在该环境，AIDCP 环境已移除'
-        : 'AdsPower 已删除，AIDCP 环境已移除');
-      setTarget(null);
-      setConfirmation('');
-      void queryClient.invalidateQueries({ queryKey: ['environments'] });
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      void queryClient.invalidateQueries({ queryKey: ['client-environments'] });
-    },
-    onError: (error) => message.error(errorText(error, '环境删除失败，AIDCP 环境已保留')),
-  });
 
   const rows = useMemo(() => {
     const all = query.data?.environments ?? [];
@@ -165,20 +133,6 @@ export function EnvironmentsPage() {
         .sort((a, b) => a[1].localeCompare(b[1], 'zh-CN')),
     };
   }, [query.data]);
-
-  const targetImpact = useMemo(() => {
-    if (!target) return null;
-    const environment = target.environment;
-    const accountId = environment.account?.accountId;
-    const remainingForAccount = accountId
-      ? (query.data?.environments ?? []).filter((item) => item.account?.accountId === accountId
-        && item.lifecycle.state !== 'deleted').length
-      : 0;
-    return {
-      isLastEnvironment: !!accountId && remainingForAccount <= 1,
-      execution: 'Cloud 直接调用服务端 AdsPower API，不等待客户端在线',
-    };
-  }, [query.data, target]);
 
   const columns: ColumnsType<EnvironmentAssetView> = [
     {
@@ -238,26 +192,6 @@ export function EnvironmentsPage() {
       ) : <Tag>未观测</Tag>,
     },
     { title: '状态', key: 'lifecycle', width: 150, render: (_, environment) => lifecycleTag(environment) },
-    {
-      title: '操作', key: 'actions', fixed: 'right', width: 104,
-      render: (_, environment) => {
-        const disabled = environment.lifecycle.state === 'deleted'
-          || environment.lifecycle.state === 'deleting';
-        return (
-          <Button
-            size="small"
-            danger
-            disabled={disabled}
-            onClick={() => {
-              setConfirmation('');
-              setTarget({ environment, key: idempotencyKey(environment.envKey) });
-            }}
-          >
-            {environment.lifecycle.state === 'delete_failed' || environment.lifecycle.state === 'waiting_edge' ? '重试删除' : '删除'}
-          </Button>
-        );
-      },
-    },
   ];
 
   if (query.isError) return <QueryError title="加载环境列表失败" onRetry={() => query.refetch()} />;
@@ -266,7 +200,7 @@ export function EnvironmentsPage() {
       <Card
         size="small"
         title={linkedAccount ? '环境（来自账号页）' : '环境'}
-        extra={<Typography.Text type="secondary">Cloud 直调 AdsPower 成功后才移除 AIDCP 环境</Typography.Text>}
+        extra={<Typography.Text type="secondary">只读展示环境资产及历史状态</Typography.Text>}
       >
         <Space wrap style={{ marginBottom: 12 }}>
           <Select
@@ -343,48 +277,11 @@ export function EnvironmentsPage() {
           columns={columns}
           dataSource={rows}
           loading={query.isLoading}
-          scroll={{ x: 1360 }}
+          scroll={{ x: 1240 }}
           locale={{ emptyText: <Empty description="当前筛选下没有环境" /> }}
           pagination={{ pageSize: 20, showSizeChanger: true }}
         />
       </Card>
-      <Modal
-        title="删除环境"
-        open={!!target}
-        okText="确认删除环境"
-        okButtonProps={{ danger: true, disabled: !target || confirmation !== target.environment.envKey }}
-        confirmLoading={deletion.isPending}
-        onCancel={() => { if (!deletion.isPending) { setTarget(null); setConfirmation(''); } }}
-        onOk={() => { if (target && confirmation === target.environment.envKey) deletion.mutate(target); }}
-        destroyOnHidden
-      >
-        {target && targetImpact ? (
-          <Space direction="vertical" size={2} style={{ width: '100%', marginBottom: 12 }}>
-            <Typography.Text><Typography.Text strong>环境：</Typography.Text>{target.environment.environmentName}</Typography.Text>
-            <Typography.Text><Typography.Text strong>挂载账号：</Typography.Text>
-              {target.environment.account?.displayName ?? '未挂载'}</Typography.Text>
-            <Typography.Text type={targetImpact.isLastEnvironment ? 'warning' : undefined}>
-              <Typography.Text strong>账号影响：</Typography.Text>
-              {targetImpact.isLastEnvironment ? '这是该账号当前最后一个环境；账号本身与风控状态仍会保留' : '账号还有其他当前环境'}
-            </Typography.Text>
-            <Typography.Text><Typography.Text strong>执行路径：</Typography.Text>{targetImpact.execution}</Typography.Text>
-          </Space>
-        ) : null}
-        <Typography.Paragraph>
-          Cloud 会直接调用 AdsPower 删除真实分身；AdsPower 明确成功后，才会移除 AIDCP 环境。
-          如果 AdsPower 调用失败，AIDCP 环境会保留。账号、分组和风控状态不会被删除。
-        </Typography.Paragraph>
-        <Typography.Paragraph type="danger">
-          此操作不可恢复。请输入完整环境 ID <Typography.Text code>{target?.environment.envKey}</Typography.Text> 确认。
-        </Typography.Paragraph>
-        <Input
-          aria-label="确认环境 ID"
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-          placeholder={target?.environment.envKey}
-          autoComplete="off"
-        />
-      </Modal>
     </div>
   );
 }

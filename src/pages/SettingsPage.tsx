@@ -107,9 +107,6 @@ function credentialPlaceholder(cred: Credential): string {
 }
 
 function credentialHelp(cred: Credential): string {
-  if (cred.provider === 'adspower' && cred.field === 'api_key') {
-    return 'Cloud 删除环境时调用 AdsPower 使用；保存后下一次删除立即生效，不回显明文。';
-  }
   if (cred.secretKind === 'access_key_id') return '账单查询使用的 AccessKey ID，保存后只显示掩码。';
   if (cred.secretKind === 'access_key_secret') return '账单查询使用的 AccessKey Secret，不会回显明文。';
   return '模型调用使用的 API Key，不会回显明文。';
@@ -166,12 +163,7 @@ export function SettingsPage() {
   const saveKey = useConfigMutation({
     mutationFn: (v: { provider: string; field: string; value: string }) =>
       apiPut<{ provider: string; field: string; configured: boolean; maskedHint: string }>('/api/config/credential', v),
-    successMessage: (_data, variables) => {
-      const credential = data?.credentials.find((item) => item.provider === variables.provider && item.field === variables.field);
-      return credential?.restartRequired === false
-        ? '凭据已加密保存，下一次环境删除立即生效'
-        : '凭据已加密保存，重启 cloud 后生效';
-    },
+    successMessage: '凭据已加密保存，重启 cloud 后生效',
     invalidateKeys: [['config', 'model']],
     errorFallback: '凭据保存失败',
     onSuccess: (_d, v) => setCredentialInputs((s) => ({ ...s, [credentialId(v.provider, v.field)]: '' })),
@@ -179,12 +171,14 @@ export function SettingsPage() {
 
   const credentialGroups = useMemo(() => {
     if (!data) return [];
-    return data.credentials.reduce<Array<{ key: string; label: string; items: Credential[] }>>((groups, cred) => {
-      const found = groups.find((g) => g.key === cred.group);
-      if (found) found.items.push(cred);
-      else groups.push({ key: cred.group, label: cred.groupLabel, items: [cred] });
-      return groups;
-    }, []);
+    return data.credentials
+      .filter((cred) => !(cred.provider === 'adspower' && cred.field === 'api_key'))
+      .reduce<Array<{ key: string; label: string; items: Credential[] }>>((groups, cred) => {
+        const found = groups.find((g) => g.key === cred.group);
+        if (found) found.items.push(cred);
+        else groups.push({ key: cred.group, label: cred.groupLabel, items: [cred] });
+        return groups;
+      }, []);
   }, [data]);
 
   if (isError) return <QueryError title="加载平台配置失败" onRetry={() => refetch()} />;
@@ -317,8 +311,8 @@ export function SettingsPage() {
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Text type="secondary">
-            模型 API Key 用于模型调用，账单 AccessKey 用于价格刷新，AdsPower API Key 用于 Cloud 直接删除环境。
-            所有凭据走同一个加密保存入口，但用途和生效时机分别标注。
+            模型 API Key 用于模型调用，账单 AccessKey 用于价格刷新。
+            所有凭据走同一个加密保存入口，并按各自真实生效时机标注。
           </Typography.Text>
 
           {!data.canEditCredential && (

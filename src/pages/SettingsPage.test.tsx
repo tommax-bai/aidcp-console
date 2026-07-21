@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SettingsPage } from './SettingsPage';
 import type { InteractionPermissionOverview, ModelConfig } from '../types/api';
-import { apiPut } from '../api/client';
 
 if (typeof window.matchMedia !== 'function') {
   window.matchMedia = (query: string): MediaQueryList =>
@@ -64,19 +63,6 @@ function makeModelConfig(overrides: Partial<ModelConfig> = {}): ModelConfig {
         restartRequired: true,
         configured: true,
         maskedHint: 'sk-***abcd',
-        source: 'db',
-      },
-      {
-        provider: 'adspower',
-        field: 'api_key',
-        label: 'AdsPower API Key',
-        providerLabel: 'AdsPower',
-        group: 'browser_service',
-        groupLabel: '浏览器服务 API Key',
-        secretKind: 'api_key',
-        restartRequired: false,
-        configured: true,
-        maskedHint: 'ads-****abcd',
         source: 'db',
       },
       {
@@ -161,30 +147,27 @@ describe('SettingsPage 平台凭据输入', () => {
     expect(secretInput.value).toBe('ak-secret-456');
   });
 
-  it('AdsPower Key 只展示掩码、输入独立并标明下一次删除立即生效', async () => {
+  it('即使旧缓存仍带 AdsPower 凭据也不再渲染或提供输入', async () => {
+    const current = makeModelConfig();
+    state.config = makeModelConfig({
+      credentials: [
+        ...current.credentials,
+        {
+          provider: 'adspower', field: 'api_key', label: 'AdsPower API Key', providerLabel: 'AdsPower',
+          group: 'browser_service', groupLabel: '浏览器服务 API Key', secretKind: 'api_key',
+          restartRequired: false, configured: true, maskedHint: 'ads-****abcd', source: 'db',
+        } as unknown as ModelConfig['credentials'][number],
+      ],
+    });
     renderPage();
 
-    const title = await screen.findByText('浏览器服务 API Key');
-    const section = title.closest('section');
-    expect(section).toBeTruthy();
-    const scope = within(section!);
-    expect(scope.getByText('AdsPower API Key')).toBeTruthy();
-    expect(scope.getByText('ads-****abcd')).toBeTruthy();
-    expect(scope.getByText('保存后立即生效')).toBeTruthy();
-    expect(scope.queryByText(/secret|完整值.*ads-/i)).toBeNull();
-
-    const adsInput = scope.getByLabelText('输入AdsPower API Key') as HTMLInputElement;
-    const modelInput = screen.getByLabelText('输入通义千问 API Key') as HTMLInputElement;
-    expect(adsInput.value).toBe('');
-    fireEvent.change(modelInput, { target: { value: 'model-key' } });
-    fireEvent.change(adsInput, { target: { value: 'new-ads-key' } });
-    expect(modelInput.value).toBe('model-key');
-    expect(adsInput.value).toBe('new-ads-key');
-    fireEvent.click(scope.getByRole('button', { name: /保\s*存\s*凭\s*据/ }));
-    await waitFor(() => expect(vi.mocked(apiPut)).toHaveBeenCalledWith('/api/config/credential', {
-      provider: 'adspower', field: 'api_key', value: 'new-ads-key',
-    }));
+    expect(await screen.findByText('平台凭据')).toBeTruthy();
+    expect(screen.queryByText('AdsPower API Key')).toBeNull();
+    expect(screen.queryByText('浏览器服务 API Key')).toBeNull();
+    expect(screen.queryByLabelText('输入AdsPower API Key')).toBeNull();
+    expect(screen.queryByText(/下一次环境删除立即生效/)).toBeNull();
   });
+
 
   it('只读展示六项视频号权限、说明和有效用户', async () => {
     renderPage();

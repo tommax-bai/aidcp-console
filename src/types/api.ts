@@ -728,7 +728,7 @@ export interface ModelConfigCredential {
   field: string;
   label: string;
   providerLabel: string;
-  group: 'model_api' | 'billing_access' | 'browser_service';
+  group: 'model_api' | 'billing_access';
   groupLabel: string;
   secretKind: 'api_key' | 'access_key_id' | 'access_key_secret';
   restartRequired: boolean;
@@ -1447,19 +1447,6 @@ export interface EnvironmentAssetView extends ClientEnvironmentView {
     resultError: string | null;
     resultAt: number | null;
     deletedAt: number | null;
-  };
-}
-
-export interface EnvironmentDeletionResponse {
-  deletion: {
-    requestId: string;
-    version: number;
-    envKey: string;
-    platform: string | null;
-    targetUserId: string | null;
-    state: 'deleting' | 'delete_failed' | 'deleted';
-    resultKind: 'deleted' | 'already_missing' | null;
-    idempotent: boolean;
   };
 }
 
