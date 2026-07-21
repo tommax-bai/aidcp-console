@@ -81,6 +81,35 @@ function timeText(ms: number | null): string {
   return ms == null ? '—' : new Date(ms).toLocaleString();
 }
 
+function sourcePublishedTimeText(row: PanelCuratedContent): string {
+  const rawText = row.sourcePublishedAtText?.trim() ?? '';
+  if (row.sourcePublishedAtStatus === 'parsed' && row.sourcePublishedAt != null) {
+    try {
+      if (row.sourcePublishedAtPrecision === 'day') {
+        return new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
+        }).format(new Date(row.sourcePublishedAt));
+      }
+      if (row.sourcePublishedAtPrecision === 'hour') {
+        const value = new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', hour12: false,
+        }).format(new Date(row.sourcePublishedAt));
+        return `${value}时左右`;
+      }
+      if (row.sourcePublishedAtPrecision === 'minute') {
+        return new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', hour12: false,
+        }).format(new Date(row.sourcePublishedAt));
+      }
+    } catch {
+      // Fall through to retained evidence or the explicit unknown state.
+    }
+  }
+  if (row.sourcePublishedAtStatus === 'unparseable' && rawText) return `${rawText}（未转换）`;
+  return '发布时间未知';
+}
+
 function curatedTypeLabel(type: CuratedContentType): string {
   if (type === 'comment') return '评论';
   if (type === 'video') return '视频';
@@ -494,6 +523,17 @@ export function CuratedContentPage() {
           <Typography.Text type="secondary">—</Typography.Text>
         ),
     },
+    {
+      title: '原稿发布',
+      key: 'sourcePublishedAt',
+      width: 132,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      render: (_, row) => (
+        <Tooltip title={row.sourcePublishedAtText || undefined}>
+          <span>{sourcePublishedTimeText(row)}</span>
+        </Tooltip>
+      ),
+    },
     { title: '赞', dataIndex: 'likeCount', width: 54, render: countCell },
     { title: '藏', dataIndex: 'collectCount', width: 54, render: countCell },
     {
@@ -817,6 +857,7 @@ export function CuratedContentPage() {
                 <div style={{ fontWeight: 600 }}>
                   {viewing.author ?? <Typography.Text type="secondary">匿名作者</Typography.Text>}
                 </div>
+                <Typography.Text type="secondary">原稿发布：{sourcePublishedTimeText(viewing)}</Typography.Text>
                 <Tag color={curatedTypeColor(viewing.contentType)} style={{ marginTop: 2 }}>
                   {curatedTypeLabel(viewing.contentType)}
                 </Tag>

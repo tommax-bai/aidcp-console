@@ -52,6 +52,11 @@ function makeRow(overrides: Partial<PanelCuratedContent> = {}): PanelCuratedCont
     collectCount: 5,
     commentCount: null,
     countsCapturedAt: null,
+    sourcePublishedAtText: null,
+    sourcePublishedAt: null,
+    sourcePublishedAtPrecision: null,
+    sourcePublishedAtStatus: null,
+    sourcePublishedAtObservedAt: null,
     botLiked: false,
     botCollected: true,
     admitReason: 'bot_collect',
@@ -131,6 +136,41 @@ describe('CuratedContentPage 行级定向动作（change curated-note-actions）
     vi.mocked(apiPost).mockImplementation((path: string) =>
       Promise.resolve(taskReceipt(path.endsWith('/comment') ? 'comment_curated' : 'publish_post')),
     );
+  });
+
+  it('原稿发布时间按精度展示，不可解析留原文，历史行明确未知', async () => {
+    const observedAt = Date.parse('2026-07-21T07:30:00.000Z');
+    state.items = [
+      makeRow({
+        id: 7,
+        title: '已解析日期稿',
+        sourcePublishedAtText: '07-20',
+        sourcePublishedAt: Date.parse('2026-07-19T16:00:00.000Z'),
+        sourcePublishedAtPrecision: 'day',
+        sourcePublishedAtStatus: 'parsed',
+        sourcePublishedAtObservedAt: observedAt,
+      }),
+      makeRow({
+        id: 8,
+        title: '不可解析日期稿',
+        sourcePublishedAtText: '平台新格式',
+        sourcePublishedAt: null,
+        sourcePublishedAtPrecision: null,
+        sourcePublishedAtStatus: 'unparseable',
+        sourcePublishedAtObservedAt: observedAt,
+      }),
+      makeRow({ id: 9, title: '历史未知日期稿' }),
+    ];
+
+    renderPage();
+    expect(await screen.findByText(/2026\/7\/20/)).toBeTruthy();
+    expect(screen.getByText('平台新格式（未转换）')).toBeTruthy();
+    expect(screen.getByText('发布时间未知')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('已解析日期稿'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/原稿发布：2026\/7\/20/)).toBeTruthy();
+    expect(within(dialog).getByText(/更新时刻：/)).toBeTruthy();
   });
 
   /**

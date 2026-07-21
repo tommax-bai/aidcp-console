@@ -626,6 +626,11 @@ export interface PanelCuratedContent {
   collectCount: number | null;
   commentCount: number | null;
   countsCapturedAt: number | null;
+  sourcePublishedAtText: string | null;
+  sourcePublishedAt: number | null;
+  sourcePublishedAtPrecision: 'minute' | 'hour' | 'day' | null;
+  sourcePublishedAtStatus: 'parsed' | 'unparseable' | null;
+  sourcePublishedAtObservedAt: number | null;
   botLiked: boolean;
   botCollected: boolean;
   admitReason: string | null;
