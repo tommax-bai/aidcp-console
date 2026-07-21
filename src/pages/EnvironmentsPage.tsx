@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { apiPost } from '../api/client';
+import { errorText } from '../api/errorText';
 import { useEnvironments } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import { QuotaTierBadge } from '../components/QuotaTierBadge';
@@ -23,8 +24,8 @@ const PLATFORM_META: Record<string, { text: string; color: string }> = {
 
 export const ENVIRONMENT_LIFECYCLE_META: Record<EnvironmentLifecycleState, { text: string; color?: string }> = {
   active: { text: '正常', color: 'green' },
-  waiting_edge: { text: '等待客户端删除', color: 'blue' },
-  deleting: { text: 'AdsPower 删除中', color: 'processing' },
+  waiting_edge: { text: '旧删除请求，需重试', color: 'gold' },
+  deleting: { text: '正在从 AdsPower 删除', color: 'processing' },
   delete_failed: { text: '删除失败', color: 'red' },
   deleted: { text: '已删除' },
 };
@@ -126,16 +127,16 @@ export function EnvironmentsPage() {
         idempotencyKey: key,
       }),
     onSuccess: (result) => {
-      message.info(result.deletion.state === 'deleted'
-        ? '环境此前已删除'
-        : '删除请求已受理，客户端将先从 AdsPower 删除；页面会继续显示真实进度');
+      message.success(result.deletion.resultKind === 'already_missing'
+        ? 'AdsPower 中已不存在该环境，AIDCP 环境已移除'
+        : 'AdsPower 已删除，AIDCP 环境已移除');
       setTarget(null);
       setConfirmation('');
       void queryClient.invalidateQueries({ queryKey: ['environments'] });
       void queryClient.invalidateQueries({ queryKey: ['accounts'] });
       void queryClient.invalidateQueries({ queryKey: ['client-environments'] });
     },
-    onError: (error) => message.error(`删除请求失败：${error instanceof Error ? error.message : '未知错误'}`),
+    onError: (error) => message.error(errorText(error, '环境删除失败，AIDCP 环境已保留')),
   });
 
   const rows = useMemo(() => {
@@ -175,12 +176,7 @@ export function EnvironmentsPage() {
       : 0;
     return {
       isLastEnvironment: !!accountId && remainingForAccount <= 1,
-      installation: environment.installation
-        ? `${environment.installation.online ? '在线' : '离线'} · ${environment.installation.installationId}`
-        : '尚未观测到承载客户端，将等待 Edge 上线',
-      cleanup: environment.platform === 'wechat_channels'
-        ? '需先完成既有视频号 offboard 清理，再允许 AdsPower 物理删除'
-        : '无额外平台清理前置',
+      execution: 'Cloud 直接调用服务端 AdsPower API，不等待客户端在线',
     };
   }, [query.data, target]);
 
@@ -246,7 +242,6 @@ export function EnvironmentsPage() {
       title: '操作', key: 'actions', fixed: 'right', width: 104,
       render: (_, environment) => {
         const disabled = environment.lifecycle.state === 'deleted'
-          || environment.lifecycle.state === 'waiting_edge'
           || environment.lifecycle.state === 'deleting';
         return (
           <Button
@@ -258,7 +253,7 @@ export function EnvironmentsPage() {
               setTarget({ environment, key: idempotencyKey(environment.envKey) });
             }}
           >
-            {environment.lifecycle.state === 'delete_failed' ? '重试删除' : '删除'}
+            {environment.lifecycle.state === 'delete_failed' || environment.lifecycle.state === 'waiting_edge' ? '重试删除' : '删除'}
           </Button>
         );
       },
@@ -271,7 +266,7 @@ export function EnvironmentsPage() {
       <Card
         size="small"
         title={linkedAccount ? '环境（来自账号页）' : '环境'}
-        extra={<Typography.Text type="secondary">环境删除不会删除账号或重置风控；终态以 AdsPower 回执为准</Typography.Text>}
+        extra={<Typography.Text type="secondary">Cloud 直调 AdsPower 成功后才移除 AIDCP 环境</Typography.Text>}
       >
         <Space wrap style={{ marginBottom: 12 }}>
           <Select
@@ -372,13 +367,12 @@ export function EnvironmentsPage() {
               <Typography.Text strong>账号影响：</Typography.Text>
               {targetImpact.isLastEnvironment ? '这是该账号当前最后一个环境；账号本身与风控状态仍会保留' : '账号还有其他当前环境'}
             </Typography.Text>
-            <Typography.Text><Typography.Text strong>客户端定位：</Typography.Text>{targetImpact.installation}</Typography.Text>
-            <Typography.Text><Typography.Text strong>平台前置：</Typography.Text>{targetImpact.cleanup}</Typography.Text>
+            <Typography.Text><Typography.Text strong>执行路径：</Typography.Text>{targetImpact.execution}</Typography.Text>
           </Space>
         ) : null}
         <Typography.Paragraph>
-          客户端会先停止该环境，并从 AdsPower 删除真实分身；Cloud 只有收到成功回执后才标记“已删除”。
-          账号、分组和风控状态不会被删除。
+          Cloud 会直接调用 AdsPower 删除真实分身；AdsPower 明确成功后，才会移除 AIDCP 环境。
+          如果 AdsPower 调用失败，AIDCP 环境会保留。账号、分组和风控状态不会被删除。
         </Typography.Paragraph>
         <Typography.Paragraph type="danger">
           此操作不可恢复。请输入完整环境 ID <Typography.Text code>{target?.environment.envKey}</Typography.Text> 确认。

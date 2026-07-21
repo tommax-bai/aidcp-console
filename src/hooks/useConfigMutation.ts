@@ -21,7 +21,7 @@ export interface UseConfigMutationOptions<TData, TVars> {
   /** 提交函数（PUT/POST 到配置端点），返回服务端最新态。 */
   mutationFn: (vars: TVars) => Promise<TData>;
   /** 成功后的 message.success 文案。 */
-  successMessage: string;
+  successMessage: string | ((data: TData, vars: TVars) => string);
   /** 成功后要 invalidate 的 queryKey（可多把，整体重取相关配置真态）。 */
   invalidateKeys: QueryKey[];
   /** 失败提示兜底文案：errorText 命中集中映射时用中文、未命中回落此串（绝不上屏英文码）。 */
@@ -39,7 +39,7 @@ export function useConfigMutation<TData, TVars>(
   return useMutation<TData, Error, TVars>({
     mutationFn: opts.mutationFn,
     onSuccess: (data, vars) => {
-      message.success(opts.successMessage);
+      message.success(typeof opts.successMessage === 'function' ? opts.successMessage(data, vars) : opts.successMessage);
       opts.onSuccess?.(data, vars);
       for (const key of opts.invalidateKeys) {
         void qc.invalidateQueries({ queryKey: key });
