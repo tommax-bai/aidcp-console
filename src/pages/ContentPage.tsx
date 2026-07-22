@@ -139,6 +139,17 @@ const JOURNEY_STATUS_LABEL: Record<ContentQueueJourneyStatus, string> = {
   skipped: '已跳过',
 };
 
+/**
+ * 状态标签：已批准但尚未真正开始下发时，MUST 与「等待审批」和「平台下发中」都可区分。
+ * 缺 `dispatchState`（旧 cloud）→ 逐字回落既有标签。
+ */
+function journeyStatusLabel(journey: ContentQueueJourney): string {
+  if (journey.status === 'dispatching' && journey.dispatchState === 'pending_dispatch') {
+    return '已批准·待下发';
+  }
+  return labelOf(JOURNEY_STATUS_LABEL, journey.status);
+}
+
 const JOURNEY_STATUS_COLOR: Record<ContentQueueJourneyStatus, string> = {
   generating: 'processing',
   waiting_approval: 'warning',
@@ -151,6 +162,48 @@ const JOURNEY_STATUS_COLOR: Record<ContentQueueJourneyStatus, string> = {
   draft: 'default',
   skipped: 'default',
 };
+
+/**
+ * 下发阻塞原因 → 人话（change publish-approval-signal-to-database）。
+ * 未知原因经 labelOf 原样透出：绝不吞成「无原因」——「没有原因」恰恰是最该被看见的那种。
+ */
+const DISPATCH_BLOCKED_LABEL: Record<string, string> = {
+  edge_offline_waiting: '客户端核心离线，等待恢复',
+  browser_slot_waiting: '浏览器在等本机可用槽位',
+  breaker_open: '该账号下发熔断中，待人工确认',
+  captcha_paused: '账号处于验证码 / 风控暂停',
+  approval_unreadable: '授权状态暂不可读（不下发、不烧稿）',
+};
+
+/** 无阻塞原因却待下发超过这个时长 = 下发侧疑似失联，前端打告警标记（与云端告警阈值同轴）。 */
+const PENDING_DISPATCH_ALERT_MS = 15 * 60_000;
+
+function formatWaiting(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} 小时 ${minutes % 60} 分钟`;
+}
+
+/**
+ * 「已批准·待下发」的呈现要素。字段缺省 → 返回 null，调用处回落既有呈现（零回归）。
+ */
+function pendingDispatchView(journey: ContentQueueJourney): {
+  blockedLabel: string | null;
+  waitingText: string | null;
+  stalled: boolean;
+} | null {
+  if (journey.dispatchState !== 'pending_dispatch') return null;
+  const reason = journey.dispatchBlockedReason ?? null;
+  const waitingMs = typeof journey.waitingMs === 'number' && Number.isFinite(journey.waitingMs)
+    ? journey.waitingMs
+    : null;
+  return {
+    blockedLabel: reason ? labelOf(DISPATCH_BLOCKED_LABEL, reason) : null,
+    waitingText: waitingMs === null ? null : formatWaiting(waitingMs),
+    stalled: !reason && waitingMs !== null && waitingMs >= PENDING_DISPATCH_ALERT_MS,
+  };
+}
 
 const LIFECYCLE_STAGE_STATE_LABEL: Record<ContentQueueStageState, string> = {
   pending: '未开始',
@@ -585,8 +638,23 @@ function LifecycleJourneyOverview(props: {
         </div>
         <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
           {showAccount ? <Tag>{resolveAccountName(journey.accountId)}</Tag> : null}
-          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{labelOf(JOURNEY_STATUS_LABEL, journey.status)}</Tag>
+          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{journeyStatusLabel(journey)}</Tag>
           {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
+          {(() => {
+            // 已批准·待下发：与「等待审批」视觉可区分，并把阻塞原因与等待时长直接摆出来。
+            // 无原因却久等 = 下发侧疑似失联 → 打 error 色告警标记（与云端阈值同轴）。
+            const pending = pendingDispatchView(journey);
+            if (!pending) return null;
+            return (
+              <>
+                {pending.waitingText ? (
+                  <Tag color={pending.stalled ? 'error' : 'gold'}>已等待 {pending.waitingText}</Tag>
+                ) : null}
+                {pending.blockedLabel ? <Tag color="gold">{pending.blockedLabel}</Tag> : null}
+                {pending.stalled ? <Tag color="error">无阻塞原因，下发侧疑似失联</Tag> : null}
+              </>
+            );
+          })()}
           {journey.active && journey.status === 'waiting_approval' ? (
             <Button type="primary" size="small" href="/content?status=pending_approval">去内容页审批</Button>
           ) : null}

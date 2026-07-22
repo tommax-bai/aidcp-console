@@ -652,6 +652,63 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.getAllByText('已完成').length).toBeGreaterThan(0);
   });
 
+  // ── change publish-approval-signal-to-database：已批准·待下发是独立可见状态 ──────────────
+  it('已批准·待下发：与「等待审批」可区分，展示阻塞原因与等待时长', async () => {
+    const pending = journey({
+      journeyId: 'publish:3', runId: null, recordId: 3, active: true, status: 'dispatching',
+      statusSummary: '已批准·待下发（客户端核心离线，等待恢复）', snapshot: null,
+      dispatchState: 'pending_dispatch', dispatchBlockedReason: 'edge_offline_waiting',
+      decidedAt: 1_700_000_000_000, waitingMs: 7 * 60_000,
+    }, { source: 'completed', content: 'completed', text_quality: 'completed', visual_plan: 'completed', image_review: 'completed', package: 'completed', approval: 'completed', dispatch: 'pending' });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [pending], recent: [] },
+    };
+    renderQueuePage();
+
+    expect(await screen.findByText('已批准·待下发')).toBeTruthy();
+    expect(screen.queryByText('等待审批')).toBeNull();
+    expect(screen.getByText('已等待 7 分钟')).toBeTruthy();
+    expect(screen.getByText('客户端核心离线，等待恢复')).toBeTruthy();
+    expect(screen.queryByText('无阻塞原因，下发侧疑似失联')).toBeNull();
+  });
+
+  it('无阻塞原因且久等 → 打出「下发侧疑似失联」告警标记', async () => {
+    const stalled = journey({
+      journeyId: 'publish:4', runId: null, recordId: 4, active: true, status: 'dispatching',
+      statusSummary: '已批准·待下发', snapshot: null,
+      dispatchState: 'pending_dispatch', dispatchBlockedReason: null,
+      decidedAt: 1_700_000_000_000, waitingMs: 40 * 60_000,
+    }, { source: 'completed', content: 'completed', text_quality: 'completed', visual_plan: 'completed', image_review: 'completed', package: 'completed', approval: 'completed', dispatch: 'pending' });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [stalled], recent: [] },
+    };
+    renderQueuePage();
+
+    expect(await screen.findByText('已批准·待下发')).toBeTruthy();
+    expect(screen.getByText('无阻塞原因，下发侧疑似失联')).toBeTruthy();
+    expect(screen.getByText('已等待 40 分钟')).toBeTruthy();
+  });
+
+  it('下发态字段缺省（旧 cloud）→ 回落既有呈现，不白屏不报错', async () => {
+    const legacy = journey({
+      journeyId: 'publish:5', runId: null, recordId: 5, active: true, status: 'dispatching',
+      statusSummary: '审批已通过，正在向平台下发', snapshot: null,
+    }, { source: 'completed', content: 'completed', text_quality: 'completed', visual_plan: 'completed', image_review: 'completed', package: 'completed', approval: 'completed', dispatch: 'running' });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      lifecycle: { status: 'running', active: [legacy], recent: [] },
+    };
+    renderQueuePage();
+
+    expect(await screen.findByText('平台下发中')).toBeTruthy();
+    expect(screen.queryByText('已批准·待下发')).toBeNull();
+  });
+
   it('失败终态只显示在最近结果，不再因 snapshot 存在冒充活跃稿件', async () => {
     const failed = journey({
       journeyId: 'publish:112', runId: null, recordId: 112, active: false, status: 'failed',

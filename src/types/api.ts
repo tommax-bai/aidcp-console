@@ -570,6 +570,12 @@ export type ContentQueueJourneyStatus =
   | 'draft'
   | 'skipped';
 
+/**
+ * 授权的下发进度（change publish-approval-signal-to-database）。
+ * 与 `status` 是两个轴：`status` 是稿件走到哪一步，本字段是「批完之后走到哪了」。
+ */
+export type ContentQueueDispatchState = 'pending_dispatch' | 'dispatching' | 'consumed' | 'void';
+
 export interface ContentQueueJourney {
   journeyId: string;
   runId: string | null;
@@ -584,6 +590,16 @@ export interface ContentQueueJourney {
   statusSummary: string;
   stages: ContentQueueStage[];
   snapshot: unknown | null;
+  /**
+   * 下发进度增量字段（尚未升级的 cloud 不返回）。**全部可选**：缺省时前端 MUST 回落既有呈现，
+   * MUST NOT 白屏或报错——console 与 cloud 的枚举一旦漂移就是整页白屏，这是踩过的坑。
+   * 未知取值同样 MUST 安全降级（用 labelOf 原样透出，绝不落 default 崩）。
+   */
+  dispatchState?: ContentQueueDispatchState | string;
+  dispatchBlockedReason?: string | null;
+  decidedAt?: number;
+  /** 自决策起已等待的毫秒数。 */
+  waitingMs?: number;
 }
 
 export interface ContentQueueLifecycle {
