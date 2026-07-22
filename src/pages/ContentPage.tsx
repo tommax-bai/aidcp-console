@@ -700,9 +700,26 @@ function reasonMessage(err: unknown, fallback: string): string {
   return errorText(err, fallback);
 }
 
-/** 生命周期标签：待审 / 已编辑待审(琥珀，飞书卡片已失效) / 已提交待链接确认 / 已发布 / 失败 / 已否决。 */
-function lifecycleTag(row: Pick<PanelPublish, 'status' | 'contentVersion'>) {
+/**
+ * 生命周期标签：待审 / 已编辑待审(琥珀，飞书卡片已失效) / **已批准·待下发** / 已提交待链接确认 /
+ * 已发布 / 失败 / 已否决。
+ *
+ * change publish-approval-signal-to-database：`pending_approval` 这个业务态下藏着两种完全不同的
+ * 处境——「还没人批」与「批了但下发侧还没动」。后者过去与前者不可区分，运营点了通过之后界面毫无变化。
+ * 下发进度字段缺省（旧 cloud）时逐字回落既有标签。
+ */
+function lifecycleTag(
+  row: Pick<PanelPublish, 'status' | 'contentVersion'> & Partial<Pick<PanelPublish, 'dispatchState' | 'dispatchBlockedReason'>>,
+) {
   if (row.status === 'pending_approval') {
+    if (row.dispatchState === 'pending_dispatch' || row.dispatchState === 'dispatching') {
+      const blocked = row.dispatchBlockedReason ? labelOf(DISPATCH_BLOCKED_LABEL, row.dispatchBlockedReason) : null;
+      return row.dispatchState === 'dispatching' ? (
+        <Tag color="processing">已批准·下发中</Tag>
+      ) : (
+        <Tag color="gold">{blocked ? `已批准·待下发（${blocked}）` : '已批准·待下发'}</Tag>
+      );
+    }
     return row.contentVersion > 0 ? (
       <Tag color="gold">已编辑待审 · v{row.contentVersion}</Tag>
     ) : (

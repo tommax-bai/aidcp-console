@@ -378,6 +378,15 @@ export interface PanelPublish {
   visualReferenceAudit?: PanelVisualReferenceAudit | null;
   /** 参照洗稿来稿快照；普通发布为 null。 */
   sourceReference: PanelPublishSourceReference | null;
+  /**
+   * 授权的下发进度（change publish-approval-signal-to-database）：待审列表 / 详情抽屉据此把
+   * 「已批准·待下发」与「待审批」区分开。**全部可选**——尚未升级的 cloud 不返回时前端 MUST
+   * 回落既有呈现，MUST NOT 白屏或报错。
+   */
+  dispatchState?: ContentQueueDispatchState | string;
+  dispatchBlockedReason?: string | null;
+  decidedAt?: number;
+  waitingMs?: number;
 }
 
 export type PanelImageReferenceAuditStatus = 'none' | 'used' | 'unsupported' | 'unavailable' | 'skipped';
