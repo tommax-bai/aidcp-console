@@ -77,13 +77,13 @@ describe('approval policy controls', () => {
     };
   });
 
-  it('account control states that global exemption includes manual /comment and writes server policy', async () => {
+  it('account control presents global exemption directly and writes server policy', async () => {
     renderPage(<AccountsPage />);
-    expect(await screen.findByText('账号全局免审会覆盖所有评论来源')).toBeTruthy();
-    expect(screen.getByText(/飞书手工 \/comment/)).toBeTruthy();
     await screen.findByText('小猫');
+    expect(screen.queryByText('账号全局免审会覆盖所有评论来源')).toBeNull();
+    expect(screen.queryByText(/飞书手工 \/comment/)).toBeNull();
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '账号 acc-1 评论审批' }));
-    fireEvent.click(await screen.findByText('全局免审（含 /comment）', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByText('全局免审', { selector: '.ant-select-item-option-content' }));
     await waitFor(() => expect(state.putCalls).toContainEqual({
       path: '/api/approval-policies/account-comment',
       body: { accountId: 'acc-1', mode: 'auto_approve_all' },

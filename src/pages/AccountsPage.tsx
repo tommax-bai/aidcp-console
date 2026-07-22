@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, App, Button, Card, Popconfirm, Select, Tag, Tooltip } from 'antd';
+import { App, Button, Card, Popconfirm, Select, Tag } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
 import { useAccounts, useApprovalPolicies } from '../api/queries';
@@ -103,13 +103,6 @@ export function AccountsPage() {
   return (
     <div className="page-stack">
       <Card size="small" title="账号">
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="账号全局免审会覆盖所有评论来源"
-          description="开启后，普通浏览、排期、联系评论、强制互动、结构化委托和飞书手工 /comment 都不再等待按钮审批；系统仍会先发免审通知，通知失败不发评论，风控与提交确认保持不变。"
-        />
         <AccountsTable
           accounts={data?.accounts ?? []}
           loading={isLoading}
@@ -124,21 +117,19 @@ export function AccountsPage() {
             if (approvalPolicies.isError) return <Tag color="error">策略不可用</Tag>;
             const policy = policyByAccount.get(account.accountId);
             return (
-              <Tooltip title="全局免审包含飞书手工 /comment；通知失败仍不提交">
-                <Select<AccountCommentApprovalMode>
-                  aria-label={`账号 ${account.accountId} 评论审批`}
-                  size="small"
-                  style={{ width: 142 }}
-                  loading={approvalPolicies.isLoading}
-                  disabled={approvalPolicies.isLoading || commentPolicyCmd.isPending}
-                  value={policy?.mode ?? 'source_rules'}
-                  options={[
-                    { value: 'source_rules', label: '按来源规则' },
-                    { value: 'auto_approve_all', label: '全局免审（含 /comment）' },
-                  ]}
-                  onChange={(mode) => commentPolicyCmd.mutate({ accountId: account.accountId, mode })}
-                />
-              </Tooltip>
+              <Select<AccountCommentApprovalMode>
+                aria-label={`账号 ${account.accountId} 评论审批`}
+                size="small"
+                style={{ width: 142 }}
+                loading={approvalPolicies.isLoading}
+                disabled={approvalPolicies.isLoading || commentPolicyCmd.isPending}
+                value={policy?.mode ?? 'source_rules'}
+                options={[
+                  { value: 'source_rules', label: '按来源规则' },
+                  { value: 'auto_approve_all', label: '全局免审' },
+                ]}
+                onChange={(mode) => commentPolicyCmd.mutate({ accountId: account.accountId, mode })}
+              />
             );
           }}
           onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
