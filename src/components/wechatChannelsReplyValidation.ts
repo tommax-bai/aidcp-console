@@ -127,6 +127,13 @@ export function collectLocalValidationIssues(
       });
       continue;
     }
+    if ((profile.knowledgeDocument?.trim().length ?? 0) > 20_000) {
+      issues.push({
+        path: `profiles.${channel}.knowledgeDocument`,
+        code: 'knowledge_document_too_long',
+        message: `${channel === 'comment' ? '评论' : '私信'}的 AI 回答说明文档不能超过 20000 个字符。`,
+      });
+    }
     const usedVariables = new Set(
       templates
         .filter((template) => template.channel === channel && template.enabled && !template.archived)

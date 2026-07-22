@@ -177,6 +177,8 @@ export interface ReplyProfile {
   blockedPhrases: string[];
   disallowedClaims: string[];
   requiredDisclaimer: string | null;
+  /** Optional Markdown/plain-text facts used only by the channel AI polisher. */
+  knowledgeDocument?: string | null;
   variableFallbacks: VariableFallbacks;
 }
 

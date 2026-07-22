@@ -32,4 +32,17 @@ describe('wechatChannelsReplyValidation', () => {
       fixtures.profiles.data.profiles,
     )).toEqual([]);
   });
+
+  it('rejects a knowledge document over 20000 characters', () => {
+    const fixtures = frozenInteractionFixtures();
+    fixtures.profiles.data.profiles[0].knowledgeDocument = '文'.repeat(20_001);
+    expect(collectLocalValidationIssues(
+      fixtures.templates.data.items,
+      fixtures.rules.data.items,
+      fixtures.profiles.data.profiles,
+    )).toContainEqual(expect.objectContaining({
+      path: 'profiles.comment.knowledgeDocument',
+      code: 'knowledge_document_too_long',
+    }));
+  });
 });

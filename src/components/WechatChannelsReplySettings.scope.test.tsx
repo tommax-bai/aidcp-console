@@ -32,6 +32,7 @@ describe('WechatChannelsReplySettings scope mode', () => {
     const fixture = frozenInteractionFixtures(account.accountId);
     let currentVersion = 1;
     let policy = structuredClone(fixture.policy.data.policy);
+    let profiles = structuredClone(fixture.profiles.data.profiles);
     const scope: ReplyConfigScopeSummary = {
       scopeId: 'scope_east',
       platform: 'wechat_channels',
@@ -62,6 +63,11 @@ describe('WechatChannelsReplySettings scope mode', () => {
         currentVersion += 1;
         return json({ data: { head: { ...scope, currentVersion, draftVersion: currentVersion }, snapshot: {} }, meta: { requestId: 'write', asOf: 2 } });
       }
+      if (path === '/api/interaction-reply-config-scopes/scope_east/profiles' && method === 'PUT') {
+        profiles = structuredClone((body as { profiles: typeof profiles }).profiles);
+        currentVersion += 1;
+        return json({ data: { head: { ...scope, currentVersion, draftVersion: currentVersion }, snapshot: {} }, meta: { requestId: 'write-profile', asOf: 3 } });
+      }
       if (path === '/api/interaction-reply-config-scopes/scope_east' && method === 'GET') return json({
         data: {
           head: { ...scope, currentVersion, draftVersion: currentVersion },
@@ -69,7 +75,7 @@ describe('WechatChannelsReplySettings scope mode', () => {
             accountId: '', configScopeId: 'scope_east', configSource: scope.source,
             platform: 'wechat_channels', configVersion: currentVersion, state: 'draft',
             policy, templates: fixture.templates.data.items, rules: fixture.rules.data.items,
-            profiles: fixture.profiles.data.profiles, createdAt: 1, createdBy: 'admin_scope',
+            profiles, createdAt: 1, createdBy: 'admin_scope',
             publishedAt: null, publishedBy: null,
           },
         },
@@ -94,5 +100,20 @@ describe('WechatChannelsReplySettings scope mode', () => {
       '/api/interaction-reply-config-scopes/scope_east/policy')).toBe(true));
     expect(calls.some((call) => call.path.includes(`/api/accounts/${account.accountId}/interaction-reply-policy`))).toBe(false);
     await waitFor(() => expect(screen.getByText('当前聚合版本').parentElement?.textContent).toContain('v2'));
+
+    fireEvent.click(screen.getByRole('tab', { name: '语气与知识' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'AI 回答说明文档' }), {
+      target: { value: '# 分组说明\n- 每周日更新。' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存语气与知识' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PUT' && call.path ===
+      '/api/interaction-reply-config-scopes/scope_east/profiles')).toBe(true));
+    const profileCall = calls.find((call) => call.method === 'PUT' && call.path.endsWith('/scope_east/profiles'));
+    const profileBody = profileCall?.body as { expectedVersion: number; profiles: Array<{ channel: string; knowledgeDocument: string | null }> };
+    expect(profileBody.expectedVersion).toBe(2);
+    expect(profileBody.profiles.find((profile) => profile.channel === 'comment')).toMatchObject({
+      knowledgeDocument: '# 分组说明\n- 每周日更新。',
+    });
+    expect(calls.some((call) => call.path.includes(`/api/accounts/${account.accountId}/reply-profile`))).toBe(false);
   });
 });

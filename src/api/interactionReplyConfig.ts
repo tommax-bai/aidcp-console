@@ -30,6 +30,7 @@ import type {
   TemplateWrite,
   EffectiveReplyConfigResponse,
   RuntimeControls,
+  ReplyProfile,
 } from '../types/interactionReplyConfig';
 
 /** 响应 scope 与当前抽屉账号不一致时拒绝落入 UI，避免任何跨账号旧响应覆盖。 */
@@ -48,6 +49,17 @@ function assertAccount(expected: string, actual: string, platform?: string): voi
   if (actual !== expected || (platform !== undefined && platform !== 'wechat_channels')) {
     throw new ReplyConfigScopeError();
   }
+}
+
+function normalizeReplyProfiles(profiles: ReplyProfile[]): ReplyProfile[] {
+  return profiles.map((profile) => ({
+    ...profile,
+    knowledgeDocument: profile.knowledgeDocument?.trim() || null,
+  }));
+}
+
+function normalizeProfileWrite(body: ProfileWrite): ProfileWrite {
+  return { ...body, profiles: normalizeReplyProfiles(body.profiles) };
 }
 
 /** 一次读取同一 aggregate 的配置切片；版本不同表示读取期间有并发写，拒绝拼成伪快照。 */
@@ -83,7 +95,7 @@ export async function loadReplyConfig(accountId: string, signal?: AbortSignal): 
     policy: policy.data.policy,
     templates: templates.data.items,
     rules: rules.data.items,
-    profiles: profiles.data.profiles,
+    profiles: normalizeReplyProfiles(profiles.data.profiles),
   };
 }
 
@@ -186,7 +198,7 @@ export function deleteReplyRule(
 }
 
 export function saveReplyProfiles(accountId: string, body: ProfileWrite): Promise<InternalApiEnvelope<unknown>> {
-  return apiPut(`${basePath(accountId)}/reply-profile`, body);
+  return apiPut(`${basePath(accountId)}/reply-profile`, normalizeProfileWrite(body));
 }
 
 export function previewReply(accountId: string, body: PreviewRequest, signal?: AbortSignal): Promise<PreviewResponse> {
@@ -267,7 +279,7 @@ function scopeSnapshotToEditor(
     policy: snapshot.policy,
     templates: snapshot.templates,
     rules: snapshot.rules,
-    profiles: snapshot.profiles,
+    profiles: normalizeReplyProfiles(snapshot.profiles),
   };
 }
 
@@ -358,7 +370,7 @@ export function deleteScopeReplyRule(
 }
 
 export function saveScopeReplyProfiles(scopeId: string, body: ProfileWrite): Promise<ReplyConfigScopeWriteResponse> {
-  return apiPut(`${scopePath(scopeId)}/profiles`, body);
+  return apiPut(`${scopePath(scopeId)}/profiles`, normalizeProfileWrite(body));
 }
 
 export function previewScopeReply(

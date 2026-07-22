@@ -399,6 +399,41 @@ describe('WechatChannelsReplySettings', () => {
     await waitFor(() => expect(screen.getByText('当前聚合版本').parentElement?.textContent).toContain('v2'));
   });
 
+  it('edits per-channel knowledge text and saves a trimmed document through the existing profile CAS', async () => {
+    const server = createServer();
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '语气与知识' }));
+
+    const editor = screen.getByRole('textbox', { name: 'AI 回答说明文档' }) as HTMLTextAreaElement;
+    expect(editor.value).toContain('居家收纳');
+    expect(screen.getByText(/AI 只可依据这里明确写出的信息回答/)).toBeTruthy();
+    fireEvent.change(editor, { target: { value: '  # 直播说明\n- 每周六 20:00  ' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存语气与知识' }));
+
+    await waitFor(() => expect(server.calls.some((call) => call.path.endsWith('/reply-profile') && call.method === 'PUT')).toBe(true));
+    const call = server.calls.find((item) => item.path.endsWith('/reply-profile') && item.method === 'PUT');
+    expect(call?.body).toMatchObject({
+      expectedVersion: 1,
+      profiles: [
+        { channel: 'comment', knowledgeDocument: '# 直播说明\n- 每周六 20:00' },
+        { channel: 'dm', knowledgeDocument: null },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText('当前聚合版本').parentElement?.textContent).toContain('v2'));
+  });
+
+  it('renders a legacy profile without a knowledge field as an empty editor', async () => {
+    const server = createServer();
+    const store = frozenInteractionFixtures('acct_wc_demo');
+    delete store.profiles.data.profiles[0].knowledgeDocument;
+    server.stores.set('acct_wc_demo', store);
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '语气与知识' }));
+    expect((screen.getByRole('textbox', { name: 'AI 回答说明文档' }) as HTMLTextAreaElement).value).toBe('');
+  });
+
   it('shows one fail-closed processing choice and asks for channel auto scope only in auto mode', async () => {
     createServer();
     renderDrawer();

@@ -759,7 +759,7 @@ export function WechatChannelsReplySettings({
 
   const saveProfiles = () => {
     if (!snapshot || !targetId) return;
-    void runWrite('profiles', '品牌语气草稿已保存', 'profiles', () =>
+    void runWrite('profiles', '语气与知识草稿已保存', 'profiles', () =>
       scopeId ? saveScopeReplyProfiles(scopeId, {
         expectedVersion: snapshot.head.currentVersion,
         profiles: snapshot.profiles,
@@ -1370,7 +1370,7 @@ export function WechatChannelsReplySettings({
     if (!snapshot) return null;
     const index = snapshot.profiles.findIndex((item) => item.channel === profileChannel);
     const profile = snapshot.profiles[index];
-    if (!profile) return <Alert type="error" message="Cloud 返回缺少渠道品牌语气，不能伪造默认值。" />;
+    if (!profile) return <Alert type="error" message="Cloud 返回缺少渠道语气与知识配置，不能伪造默认值。" />;
     const change = (patch: Partial<ReplyProfile>) => mutateSnapshot('profiles', (current) => ({
       ...current,
       profiles: updateAt(current.profiles, index, { ...current.profiles[index], ...patch }),
@@ -1378,13 +1378,13 @@ export function WechatChannelsReplySettings({
     return (
       <div className="reply-config__stack">
         <div className="reply-config__toolbar">
-          <Radio.Group aria-label="品牌语气渠道" value={profileChannel} onChange={(event) => setProfileChannel(event.target.value as InteractionChannel)}>
-            <Radio.Button value="comment">评论语气</Radio.Button>
-            <Radio.Button value="dm">私信语气</Radio.Button>
+          <Radio.Group aria-label="语气与知识渠道" value={profileChannel} onChange={(event) => setProfileChannel(event.target.value as InteractionChannel)}>
+            <Radio.Button value="comment">评论配置</Radio.Button>
+            <Radio.Button value="dm">私信配置</Radio.Button>
           </Radio.Group>
           <Space>
             {dirty.profiles ? <Tag color="gold">有未保存修改</Tag> : <Tag color="green">已保存 draft</Tag>}
-            <Button type="primary" onClick={saveProfiles} disabled={!dirty.profiles || editDenied} loading={pendingAction === 'profiles'}>保存品牌语气</Button>
+            <Button type="primary" onClick={saveProfiles} disabled={!dirty.profiles || editDenied} loading={pendingAction === 'profiles'}>保存语气与知识</Button>
           </Space>
         </div>
         <Card size="small">
@@ -1424,6 +1424,22 @@ export function WechatChannelsReplySettings({
             </Form.Item>
             <Form.Item label="必要说明 / 转人工话术">
               <Input.TextArea aria-label="必要说明 / 转人工话术" rows={3} value={profile.requiredDisclaimer ?? ''} disabled={editDenied} onChange={(event) => change({ requiredDisclaimer: event.target.value || null })} />
+            </Form.Item>
+            <Divider orientation="left">AI 回答知识</Divider>
+            <Form.Item
+              label="AI 回答说明文档"
+              extra="支持 Markdown 或纯文本，最多 20000 字。AI 只可依据这里明确写出的信息回答；无法确认时会如实说明。私聊引导和联系方式仍由回复模板控制。"
+            >
+              <Input.TextArea
+                aria-label="AI 回答说明文档"
+                rows={10}
+                maxLength={20_000}
+                showCount
+                value={profile.knowledgeDocument ?? ''}
+                disabled={editDenied}
+                placeholder={'# 示例说明\n- 直播时间：每周六 20:00\n- 适合人群：刚开始学习的朋友'}
+                onChange={(event) => change({ knowledgeDocument: event.target.value || null })}
+              />
             </Form.Item>
             <Divider orientation="left">变量缺失时的安全兜底</Divider>
             <div className="reply-config__form-grid">
@@ -1683,7 +1699,7 @@ export function WechatChannelsReplySettings({
     { key: 'strategy', label: '基本策略', children: renderStrategy() },
     { key: 'templates', label: `回复模板 (${snapshot.templates.filter((item) => !item.archived).length})`, children: renderTemplates() },
     { key: 'rules', label: `匹配规则 (${snapshot.rules.length})`, children: renderRules() },
-    { key: 'profile', label: '品牌语气', children: renderProfile() },
+    { key: 'profile', label: '语气与知识', children: renderProfile() },
     { key: 'risk', label: '风险门禁', children: renderRisk() },
     { key: 'preview', label: '模拟预览', children: renderPreview() },
     { key: 'audit', label: '审计', children: renderAudit() },
