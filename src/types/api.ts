@@ -75,6 +75,17 @@ export interface PanelAccount {
   personaBound: boolean;
   /** 需设置人设（派生）：未绑且非 default。手工镜像 cloud panel-store.ts PanelAccount，两处须同步防漂移。 */
   needsPersonaSetup: boolean;
+  /**
+   * 账号归属的执行目标（change risk-state-cross-process-integrity）：`dev` / `ol` / null=未归属。
+   * **服务端权威**：MUST NOT 由 console 从别的字段推断；未归属 MUST 显示为「未归属」，
+   * MUST NOT 伪装成当前 target。滚动升级旧 Cloud 可能暂缺 → 可选。
+   */
+  executionTarget?: 'dev' | 'ol' | null;
+  /**
+   * 本后台对该账号是否有风控写权（服务端权威）。false ⇒ 禁用风控写操作并指向真实属主。
+   * 滚动升级旧 Cloud 可能暂缺 → 缺省按可写处理（与本 change 之前逐位一致）。
+   */
+  riskWritable?: boolean;
   /** 环境是独立可删除资产；账号只展示当前生命周期摘要。滚动升级旧 Cloud 可能暂缺。 */
   environmentSummary?: { activeCount: number; deletingCount: number; onlineCount: number };
 }

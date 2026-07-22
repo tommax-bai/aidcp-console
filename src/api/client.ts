@@ -53,6 +53,13 @@ export class ApiError extends Error {
     public readonly requestId?: string,
     /** 新版统一错误 envelope 的安全结构化细节（例如 currentVersion / validation issues）。 */
     public readonly details?: unknown,
+    /**
+     * 服务端给运营看的人话说明（body.message）。与 message（=body.error 那个机器码）分开：
+     * 归属类拒绝（risk_state_not_owned / owner_change_blocked_by_active_session）把
+     * 「真实属主是谁、该去哪操作」写在这里，UI MUST 原样呈现而不是自己编一句通用失败
+     * （change risk-state-cross-process-integrity）。
+     */
+    public readonly serverMessage?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -96,11 +103,14 @@ async function request<T>(
     let reason: string | undefined;
     let requestId: string | undefined;
     let details: unknown;
+    let serverMessage: string | undefined;
     try {
       const body = (await res.json()) as {
         error?: string | { code?: string; message?: string; requestId?: string; details?: unknown };
         reason?: string;
+        message?: string;
       };
+      if (typeof body.message === 'string' && body.message.trim()) serverMessage = body.message.trim();
       if (typeof body.error === 'string') message = body.error;
       else if (body.error?.code) message = body.error.code;
       if (body.reason) reason = body.reason; // #31：保留细分原因，别只上屏粗错误码
@@ -111,7 +121,7 @@ async function request<T>(
     } catch {
       // 非 JSON 错误体，沿用 statusText
     }
-    throw new ApiError(res.status, message, reason, requestId, details);
+    throw new ApiError(res.status, message, reason, requestId, details, serverMessage);
   }
   return (await res.json()) as T;
 }

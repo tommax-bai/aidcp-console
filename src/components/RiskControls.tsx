@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { App, Dropdown, Input, Modal, Space, Tag } from 'antd';
+import { App, Dropdown, Input, Modal, Space, Tag, Tooltip } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '../api/client';
+import { ApiError, apiPost } from '../api/client';
 import type { PanelAccount } from '../types/api';
 import {
   RISK_QUOTA_LEVELS,
@@ -11,6 +11,59 @@ import {
 } from '../types/aidcp-enums';
 import { QuotaTierBadge } from './QuotaTierBadge';
 import { RiskStatusBadge } from './RiskStatusBadge';
+
+/**
+ * 账号归属（change risk-state-cross-process-integrity）。
+ *
+ * 同一个账号在平台眼里只有一份活动预算，因此它只能由一套云端的自动化驱动。归属事实由服务端权威给出
+ * （`executionTarget` / `riskWritable`），**console MUST NOT 自己推断**。
+ *
+ * 未归属 MUST 显示为「未归属」而不是伪装成当前后台：那不是一个空值，那是「还没有任何一套云端
+ * 真实驱动过它」这个确切事实。
+ */
+export function ownershipHint(account: PanelAccount): string {
+  if (account.executionTarget === undefined || account.executionTarget === null) {
+    return '该账号尚未归属任何一套云端的自动化；等它在某套云端上真实连上一次即可自动归属。';
+  }
+  return `该账号归属 ${account.executionTarget}，请在 ${account.executionTarget} 后台操作。`;
+}
+
+/** 服务端说 false 才算不可写；字段缺失（旧 Cloud）按可写处理，与本 change 之前逐位一致。 */
+export function isRiskWritable(account: PanelAccount): boolean {
+  return account.riskWritable !== false;
+}
+
+/**
+ * 只读呈现：拿掉下拉与可点样式，并把归属**直接显示在行上**（不只挂在 hover 提示里）——
+ * 运营需要一眼看出「这行为什么是灰的」，而不是先去猜、再去悬停。
+ */
+function ReadOnlyRisk({ account, children }: { account: PanelAccount; children: React.ReactNode }) {
+  const owner = account.executionTarget ?? null;
+  return (
+    <Tooltip title={ownershipHint(account)}>
+      <span
+        data-testid="risk-readonly"
+        aria-disabled="true"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: 0.6 }}
+      >
+        {children}
+        <Tag>{owner ? `归属 ${owner}` : '未归属'}</Tag>
+      </span>
+    </Tooltip>
+  );
+}
+
+/**
+ * 归属类拒绝的诚实呈现（MUST NOT 显示成功、MUST NOT 静默无反应）。
+ * 服务端把「真实属主是谁、该去哪操作」写在 body.message 里，这里原样上屏。
+ */
+function ownershipRefusal(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null;
+  if (err.message !== 'risk_state_not_owned' && err.message !== 'owner_change_blocked_by_active_session') {
+    return null;
+  }
+  return err.serverMessage ?? '该账号不归本后台管，操作未执行。';
+}
 
 /**
  * 风控写控件（V1 task 10.1）：status 迁移（枚举种类）与 quota-tier 是**两个独立控件**。
@@ -38,8 +91,21 @@ export function RiskStatusControl({ account }: { account: PanelAccount }) {
       else message.warning(`已拒绝（仍为 ${label}）`);
       invalidate();
     },
-    onError: () => message.error('风控状态修改失败'),
+    onError: (err) => {
+      const refusal = ownershipRefusal(err);
+      // 可区分的失败态：归属拒绝不是「改失败了再试一次」，而是「这台后台没有写它的权力」。
+      if (refusal) message.warning(refusal);
+      else message.error('风控状态修改失败');
+    },
   });
+
+  if (!isRiskWritable(account)) {
+    return (
+      <ReadOnlyRisk account={account}>
+        {account.riskStatus ? <RiskStatusBadge status={account.riskStatus} /> : <Tag>未上报</Tag>}
+      </ReadOnlyRisk>
+    );
+  }
 
   return (
     <>
@@ -106,8 +172,20 @@ export function QuotaTierControl({ account }: { account: PanelAccount }) {
       message.success(`配额档位已改为 ${label}`);
       void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
-    onError: () => message.error('配额档位修改失败'),
+    onError: (err) => {
+      const refusal = ownershipRefusal(err);
+      if (refusal) message.warning(refusal);
+      else message.error('配额档位修改失败');
+    },
   });
+
+  if (!isRiskWritable(account)) {
+    return (
+      <ReadOnlyRisk account={account}>
+        {account.riskQuotaLevel ? <QuotaTierBadge tier={account.riskQuotaLevel} /> : <Tag>未配置</Tag>}
+      </ReadOnlyRisk>
+    );
+  }
 
   return (
     <Dropdown
