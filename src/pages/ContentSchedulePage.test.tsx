@@ -11,7 +11,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContentSchedulePage } from './ContentSchedulePage';
-import type { ContentScheduleRow } from '../types/api';
+import type { ContentScheduleAvailableAction, ContentScheduleRow } from '../types/api';
 
 // jsdom 无 matchMedia；antd 响应式需要最小桩。
 if (typeof window.matchMedia !== 'function') {
@@ -28,11 +28,21 @@ if (typeof window.matchMedia !== 'function') {
     }) as unknown as MediaQueryList;
 }
 
+// rc-table 会以伪元素参数测滚动条；jsdom 对该参数只打印 not-implemented 噪声。
+const getComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = (element: Element) => getComputedStyle(element);
+
 const state = vi.hoisted(() => ({
   rows: [] as unknown[],
   putImpl: (() => Promise.resolve({})) as (path: string, body: unknown) => Promise<unknown>,
   putCalls: [] as Array<{ path: string; body: unknown }>,
 }));
+
+const xiaohongshuActions: ContentScheduleAvailableAction[] = [
+  { action: 'post', allowedModes: ['review', 'auto_approve'], maxDailyCap: 50 },
+  { action: 'comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 50 },
+  { action: 'contact_comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 10 },
+];
 
 vi.mock('../api/client', async () => ({
   // 保留真实 ApiError（errorText 的 `err instanceof ApiError` 依赖它——否则被 mock 成 undefined 会抛）。
@@ -53,11 +63,14 @@ vi.mock('../api/client', async () => ({
 function makeRow(overrides: Partial<ContentScheduleRow> = {}): ContentScheduleRow {
   return {
     accountId: 'acc-1',
+    platform: 'xiaohongshu',
+    groupLabel: '测试组',
     label: 'A',
     nickname: '昵称A',
     operatorAlias: null,
     displayName: '昵称A',
     displayNameSource: 'platform_nickname',
+    availableActions: xiaohongshuActions,
     autoEnabled: true,
     postEnabled: true,
     postMode: 'review',
@@ -99,9 +112,15 @@ function renderPage(): void {
   );
 }
 
-async function renderSchedule(): Promise<void> {
+async function selectPlatform(label: string): Promise<void> {
+  fireEvent.click(within(screen.getByLabelText('平台筛选')).getByText(label));
+  await waitFor(() => expect(screen.getByLabelText('平台筛选').textContent).toContain(label));
+}
+
+async function renderSchedule(platformLabel?: string): Promise<void> {
   renderPage();
   await screen.findByText('昵称A'); // 等表格渲染出数据（catalog 从 loading→data）
+  if (platformLabel) await selectPlatform(platformLabel);
 }
 
 function totalSwitch(): HTMLElement {
@@ -121,6 +140,99 @@ async function openContactEditor(): Promise<HTMLTextAreaElement> {
   return screen.findByLabelText('账号 acc-1 联系方式') as Promise<HTMLTextAreaElement>;
 }
 
+describe('ContentSchedulePage 平台感知视图', () => {
+  beforeEach(() => {
+    state.rows = [
+      makeRow(),
+      makeRow({
+        accountId: 'fb-1',
+        platform: 'facebook',
+        groupLabel: null,
+        label: 'FB',
+        nickname: 'Facebook账号',
+        displayName: 'Facebook账号',
+        availableActions: [
+          { action: 'post', allowedModes: ['review'], maxDailyCap: 2 },
+          { action: 'comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 4 },
+        ],
+        postDailyCap: 1,
+      }),
+      makeRow({
+        accountId: 'wc-1',
+        platform: 'wechat_channels',
+        groupLabel: '视频号组',
+        label: 'WC',
+        nickname: '视频号账号',
+        displayName: '视频号账号',
+        availableActions: [],
+        postEnabled: false,
+        postMode: 'off',
+        postDailyCap: 0,
+      }),
+    ];
+    state.putImpl = () => Promise.resolve({});
+    state.putCalls = [];
+  });
+
+  it('默认全部平台只展示公共摘要，并从同一集合计算计数', async () => {
+    await renderSchedule();
+
+    expect(screen.getByText('账号自动化')).not.toBeNull();
+    expect(screen.getByTestId('platform-filter-count').textContent).toBe('当前 3 / 全部 3 个账号');
+    expect(screen.getByText('Facebook账号')).not.toBeNull();
+    expect(screen.getByText('视频号账号')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '已启用动作' })).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '自动发帖' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '自动评论' })).toBeNull();
+    expect(screen.getByText('测试组')).not.toBeNull();
+    expect(screen.getAllByText('未分组').length).toBeGreaterThan(0);
+  });
+
+  it('选择 Facebook 后只显示过滤行，并按服务端声明限制模式和日上限', async () => {
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    expect(screen.getByTestId('platform-filter-count').textContent).toBe('当前 1 / 全部 3 个账号');
+    expect(screen.getByText('Facebook账号')).not.toBeNull();
+    expect(screen.queryByText('昵称A')).toBeNull();
+    expect(screen.getByRole('columnheader', { name: '自动发帖' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '自动评论' })).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '自动联系评论' })).toBeNull();
+    expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
+    expect(screen.getByText('/ 2')).not.toBeNull();
+
+    const capInput = screen.getByLabelText('自动发帖日上限 fb-1');
+    fireEvent.change(capInput, { target: { value: '2' } });
+    fireEvent.blur(capInput);
+    await waitFor(() =>
+      expect(state.putCalls).toContainEqual({
+        path: '/api/content-schedule/fb-1',
+        body: { postDailyCap: 2 },
+      }),
+    );
+  });
+
+  it('无动作平台仍显示账号，并明确暂无可配置动作', async () => {
+    await renderSchedule();
+    await selectPlatform('视频号');
+
+    expect(screen.getByText('视频号账号')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '自动化动作' })).not.toBeNull();
+    expect(screen.getByText('暂无可配置自动化动作')).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '自动发帖' })).toBeNull();
+  });
+
+  it('空平台的表格、计数和空态均来自空过滤集合', async () => {
+    state.rows = [makeRow()];
+    await renderSchedule();
+    await selectPlatform('视频号');
+
+    expect(screen.getByTestId('platform-filter-count').textContent).toBe('当前 0 / 全部 1 个账号');
+    expect(await screen.findByText('视频号暂无账号')).not.toBeNull();
+    expect(screen.queryByText('昵称A')).toBeNull();
+  });
+});
+
 describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
   beforeEach(() => {
     state.rows = [makeRow()];
@@ -129,7 +241,7 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
   });
 
   it('初始：总开关开 → 自动发帖显示有效态开（勾选）', async () => {
-    await renderSchedule();
+    await renderSchedule('小红书');
     expect(totalSwitch().getAttribute('aria-checked')).toBe('true'); // 总开关
     expect(selectedMode('自动发帖 acc-1')).toBe('开'); // 自动发帖（有效态 true && review）
   });
@@ -142,7 +254,7 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
         resolvePut = () => resolve({});
       });
 
-    await renderSchedule();
+    await renderSchedule('小红书');
     fireEvent.click(totalSwitch()); // 拨关总开关
 
     // 服务器尚未回执（putImpl 仍挂起），但开关必须已经翻到「关」：
@@ -157,7 +269,7 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
   it('失败回滚：apiPut 拒绝 → 开关弹回真态（开）', async () => {
     state.putImpl = () => Promise.reject(new Error('boom'));
 
-    await renderSchedule();
+    await renderSchedule('小红书');
     fireEvent.click(totalSwitch()); // 拨关总开关
 
     // 乐观先翻关，onError 回滚后弹回开；onSettled invalidate 重取仍是 autoEnabled=true。
@@ -167,7 +279,7 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
 
   it('假象消除：总开关关但 postEnabled 记忆为 true → 子开关显示关且禁用（不显示「开着却关不掉」）', async () => {
     state.rows = [makeRow({ autoEnabled: false, postEnabled: true, postMode: 'review' })];
-    await renderSchedule();
+    await renderSchedule('小红书');
     expect(totalSwitch().getAttribute('aria-checked')).toBe('false'); // 总开关关
     expect(selectedMode('自动发帖 acc-1')).toBe('关'); // 自动发帖：有效态关（记忆值 review 被隐藏、不写库）
     expect(modeControl('自动发帖 acc-1').className).toContain('ant-segmented-disabled'); // 且禁用——不给「想关却关不掉」的操作面
@@ -175,7 +287,7 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
 
   it('三档：自动评论选免审 → PUT commentMode=auto_approve，非旧 boolean', async () => {
     state.putImpl = () => new Promise(() => {});
-    await renderSchedule();
+    await renderSchedule('小红书');
     fireEvent.click(within(modeControl('自动评论 acc-1')).getByText('免审'));
     await waitFor(() =>
       expect(state.putCalls).toEqual([
@@ -269,7 +381,7 @@ describe('ContentSchedulePage 缺失联系方式快速配置', () => {
   });
 
   it('点击“未配联系方式”在当前排期页直接打开多行编辑器', async () => {
-    await renderSchedule();
+    await renderSchedule('小红书');
 
     const input = await openContactEditor();
 
@@ -279,7 +391,7 @@ describe('ContentSchedulePage 缺失联系方式快速配置', () => {
   });
 
   it('全空白输入只提示、不写入，并保留草稿继续编辑', async () => {
-    await renderSchedule();
+    await renderSchedule('小红书');
     const input = await openContactEditor();
     fireEvent.change(input, { target: { value: '  \n ' } });
 
@@ -301,7 +413,7 @@ describe('ContentSchedulePage 缺失联系方式快速配置', () => {
         };
       });
 
-    await renderSchedule();
+    await renderSchedule('小红书');
     const input = await openContactEditor();
     fireEvent.change(input, { target: { value: contactInfo } });
     fireEvent.click(screen.getByRole('button', { name: '保存联系方式' }));
@@ -327,7 +439,7 @@ describe('ContentSchedulePage 缺失联系方式快速配置', () => {
   it('保存失败不伪装成功：保留原草稿和编辑器，联系方式门禁继续关闭', async () => {
     state.putImpl = () => Promise.reject(new Error('boom'));
 
-    await renderSchedule();
+    await renderSchedule('小红书');
     const input = await openContactEditor();
     fireEvent.change(input, { target: { value: '微信：retry-me' } });
     fireEvent.click(screen.getByRole('button', { name: '保存联系方式' }));

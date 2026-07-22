@@ -23,7 +23,14 @@ import { apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
 import { useContentSchedule, useContentScheduleGlobal, useSessionLimits } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
-import type { ContentScheduleRow, ContentSchedulePatch, ContentScheduleCatalog, ContentScheduleActionMode } from '../types/api';
+import type {
+  ContentScheduleRow,
+  ContentSchedulePatch,
+  ContentScheduleCatalog,
+  ContentScheduleActionMode,
+  ContentScheduleAutomationAction,
+  ContentScheduleAvailableAction,
+} from '../types/api';
 import {
   WeekActiveGrid,
   EMPTY_MASK,
@@ -34,8 +41,6 @@ import {
   setCell,
   workdayMask,
 } from '../components/WeekActiveGrid';
-
-const CAP_MAX = 50;
 
 /** 浏览活跃掩码 fail-open：null / 非法（未配）= 全天活跃（与 cloud 回落同口径）。 */
 const browseMaskForEdit = (m: string | null | undefined) => (m && isValidMask(m) ? m : FULL_ACTIVE_MASK);
@@ -114,19 +119,101 @@ function ScheduleGridEditor(props: {
 /** 排期 catalog 同样只消费 Cloud 的统一展示名；旧 DTO 回落 accountId。 */
 const displayName = (r: ContentScheduleRow) => r.displayName?.trim() || r.accountId;
 
-const ACTION_MODE_OPTIONS: Array<{ label: string; value: ContentScheduleActionMode }> = [
-  { label: '关', value: 'off' },
-  { label: '开', value: 'review' },
-  { label: '免审', value: 'auto_approve' },
-];
+const ACTION_MODE_LABELS: Record<ContentScheduleActionMode, string> = {
+  off: '关',
+  review: '开',
+  auto_approve: '免审',
+};
+
+const PLATFORM_LABELS: Record<string, string> = {
+  xiaohongshu: '小红书',
+  facebook: 'Facebook',
+  wechat_channels: '视频号',
+};
+
+const PLATFORM_COLORS: Record<string, string> = {
+  xiaohongshu: 'red',
+  facebook: 'blue',
+  wechat_channels: 'green',
+};
+
+const KNOWN_PLATFORM_OPTIONS = ['xiaohongshu', 'facebook', 'wechat_channels'] as const;
+
+const platformLabel = (platform: string) => PLATFORM_LABELS[platform] ?? platform;
 
 const isActionModeOn = (mode: ContentScheduleActionMode) => mode !== 'off';
 
-function modePatch(kind: 'post' | 'comment' | 'contact', mode: ContentScheduleActionMode): ContentSchedulePatch {
-  if (kind === 'post') return { postMode: mode };
-  if (kind === 'comment') return { commentMode: mode };
-  return { contactCommentMode: mode };
+interface ActionUiConfig {
+  label: string;
+  enabled: (row: ContentScheduleRow) => boolean;
+  mode: (row: ContentScheduleRow) => ContentScheduleActionMode;
+  dailyCap: (row: ContentScheduleRow) => number;
+  modePatch: (mode: ContentScheduleActionMode) => ContentSchedulePatch;
+  capPatch: (dailyCap: number) => ContentSchedulePatch;
+  requiresContact?: boolean;
 }
+
+/** 动作字段适配，不表达任何平台支持关系；平台能力只认 availableActions。 */
+const actionUi: Record<ContentScheduleAutomationAction, ActionUiConfig> = {
+  post: {
+    label: '自动发帖',
+    enabled: (row) => row.postEnabled,
+    mode: (row) => row.postMode,
+    dailyCap: (row) => row.postDailyCap,
+    modePatch: (mode) => ({ postMode: mode }),
+    capPatch: (dailyCap) => ({ postDailyCap: dailyCap }),
+  },
+  comment: {
+    label: '自动评论',
+    enabled: (row) => row.commentEnabled,
+    mode: (row) => row.commentMode,
+    dailyCap: (row) => row.commentDailyCap,
+    modePatch: (mode) => ({ commentMode: mode }),
+    capPatch: (dailyCap) => ({ commentDailyCap: dailyCap }),
+  },
+  contact_comment: {
+    label: '自动联系评论',
+    enabled: (row) => row.contactCommentEnabled,
+    mode: (row) => row.contactCommentMode,
+    dailyCap: (row) => row.contactCommentDailyCap,
+    modePatch: (mode) => ({ contactCommentMode: mode }),
+    capPatch: (dailyCap) => ({ contactCommentDailyCap: dailyCap }),
+    requiresContact: true,
+  },
+};
+
+const actionIds = Object.keys(actionUi) as ContentScheduleAutomationAction[];
+
+const actionMetadata = (row: ContentScheduleRow, action: ContentScheduleAutomationAction) =>
+  row.availableActions.find((item) => item.action === action);
+
+const isStoredActionConfigured = (row: ContentScheduleRow, action: ContentScheduleAutomationAction) => {
+  const config = actionUi[action];
+  return config.enabled(row) || isActionModeOn(config.mode(row)) || config.dailyCap(row) > 0;
+};
+
+const hasUnsupportedActionConfig = (row: ContentScheduleRow) =>
+  actionIds.some((action) => {
+    const metadata = actionMetadata(row, action);
+    if (!metadata) return isStoredActionConfigured(row, action);
+    const mode = actionUi[action].mode(row);
+    return (
+      (isActionModeOn(mode) && !metadata.allowedModes.includes(mode as Exclude<ContentScheduleActionMode, 'off'>)) ||
+      actionUi[action].dailyCap(row) > metadata.maxDailyCap
+    );
+  });
+
+const enabledActionSummary = (row: ContentScheduleRow) => {
+  if (!row.autoEnabled) return ['总开关关闭'];
+  return row.availableActions.flatMap((metadata) => {
+    const config = actionUi[metadata.action];
+    const mode = config.mode(row);
+    if (!isActionModeOn(mode) || !metadata.allowedModes.includes(mode as Exclude<ContentScheduleActionMode, 'off'>)) {
+      return [];
+    }
+    return [`${config.label} · ${ACTION_MODE_LABELS[mode]} · ${config.dailyCap(row)}/日`];
+  });
+};
 
 function applySchedulePatch(row: ContentScheduleRow, patch: ContentSchedulePatch): ContentScheduleRow {
   const next: ContentScheduleRow = { ...row, ...patch };
@@ -144,15 +231,20 @@ function applySchedulePatch(row: ContentScheduleRow, patch: ContentSchedulePatch
 function ActionModeControl(props: {
   label: string;
   value: ContentScheduleActionMode;
+  allowedModes: ContentScheduleAvailableAction['allowedModes'];
   disabled?: boolean;
   onChange: (mode: ContentScheduleActionMode) => void;
 }) {
+  const options = [
+    { label: ACTION_MODE_LABELS.off, value: 'off' as const },
+    ...props.allowedModes.map((value) => ({ label: ACTION_MODE_LABELS[value], value })),
+  ];
   return (
     <Segmented<ContentScheduleActionMode>
       aria-label={props.label}
       className="content-schedule-mode"
       size="small"
-      options={ACTION_MODE_OPTIONS}
+      options={options}
       value={props.value}
       disabled={props.disabled}
       onChange={props.onChange}
@@ -295,6 +387,7 @@ export function ContentSchedulePage() {
   const sl = useSessionLimits();
   const global = useContentScheduleGlobal();
   const catalog = useContentSchedule();
+  const [platformFilter, setPlatformFilter] = useState('all');
 
   // ── 三态网格编辑弹窗：browse（活跃层）+ content（自动位，⊆ browse） ──
   const [gridOpen, setGridOpen] = useState(false);
@@ -401,12 +494,13 @@ export function ContentSchedulePage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true }),
   });
 
-  // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${'post'|'comment'}`（两动作各自独立）。
+  // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${action}`。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
-  const commitCap = (r: ContentScheduleRow, kind: 'post' | 'comment' | 'contact') => {
-    const key = `${r.accountId}:${kind}`;
-    const current = kind === 'post' ? r.postDailyCap : kind === 'comment' ? r.commentDailyCap : r.contactCommentDailyCap;
+  const commitCap = (r: ContentScheduleRow, action: ContentScheduleAutomationAction) => {
+    const key = `${r.accountId}:${action}`;
+    const config = actionUi[action];
+    const current = config.dailyCap(r);
     const draft = capDraft[key];
     if (draft == null || draft === current) {
       setCapDraft((d) => {
@@ -417,12 +511,7 @@ export function ContentSchedulePage() {
     }
     patchAccount.mutate({
       accountId: r.accountId,
-      patch:
-        kind === 'post'
-          ? { postDailyCap: draft }
-          : kind === 'comment'
-            ? { commentDailyCap: draft }
-            : { contactCommentDailyCap: draft },
+      patch: config.capPatch(draft),
     });
     setCapDraft((d) => {
       const { [key]: _drop, ...rest } = d;
@@ -434,11 +523,50 @@ export function ContentSchedulePage() {
   const previewContent = clampContent(previewBrowse, contentMaskForEdit(global.data?.contentActiveMask));
   const loadingGrid = sl.isLoading || global.isLoading;
 
+  const rows = catalog.data?.rows ?? [];
+  const platformOptions = useMemo(() => {
+    const known = new Set<string>(KNOWN_PLATFORM_OPTIONS);
+    const unknown = rows
+      .map((row) => row.platform)
+      .filter((platform) => platform && !known.has(platform))
+      .filter((platform, index, all) => all.indexOf(platform) === index)
+      .sort();
+    return [
+      { label: '全部平台', value: 'all' },
+      ...KNOWN_PLATFORM_OPTIONS.map((value) => ({ label: platformLabel(value), value })),
+      ...unknown.map((value) => ({ label: value, value })),
+    ];
+  }, [rows]);
+  const filteredRows = useMemo(
+    () => (platformFilter === 'all' ? rows : rows.filter((row) => row.platform === platformFilter)),
+    [platformFilter, rows],
+  );
+  const visibleActionIds = useMemo(() => {
+    const seen = new Set<ContentScheduleAutomationAction>();
+    const ordered: ContentScheduleAutomationAction[] = [];
+    for (const row of filteredRows) {
+      for (const metadata of row.availableActions) {
+        if (!seen.has(metadata.action)) {
+          seen.add(metadata.action);
+          ordered.push(metadata.action);
+        }
+      }
+    }
+    return ordered;
+  }, [filteredRows]);
+
   // 子开关（发帖/评论/联系评论）显示「有效态」= 总开关 && 本开关：总开关关时统一显示为关，与云端
   // 「总开关关=整账号不自动」（content-scheduler 账号级闸）一致；且不写库、保留各子开关记忆值，
   // 重开总开关即恢复。——消除「总开关关后子开关仍显示开却灰掉、关不掉」的假象（红线：不骗用户）。
-  const columns: ColumnsType<ContentScheduleRow> = useMemo(
-    () => [
+  const columns: ColumnsType<ContentScheduleRow> = useMemo(() => {
+    const platformColumn: ColumnsType<ContentScheduleRow>[number] = {
+      title: '平台',
+      key: 'platform',
+      width: 110,
+      render: (_: unknown, row) => <Tag color={PLATFORM_COLORS[row.platform]}>{platformLabel(row.platform)}</Tag>,
+    };
+    const commonColumns: ColumnsType<ContentScheduleRow> = [
+      platformColumn,
       {
         title: '账号',
         key: 'account',
@@ -455,6 +583,13 @@ export function ContentSchedulePage() {
             </Typography.Text>
           </Space>
         ),
+      },
+      {
+        title: '账号分组',
+        key: 'group',
+        width: 120,
+        render: (_: unknown, row) =>
+          row.groupLabel ? row.groupLabel : <Typography.Text type="secondary">未分组</Typography.Text>,
       },
       {
         title: '总开关',
@@ -487,127 +622,123 @@ export function ContentSchedulePage() {
           );
         },
       },
-      {
-        title: '自动发帖',
-        key: 'post',
-        width: 132,
-        render: (_: unknown, r) => (
-          <ActionModeControl
-            label={`自动发帖 ${r.accountId}`}
-            value={r.autoEnabled ? r.postMode : 'off'}
-            disabled={!r.autoEnabled}
-            onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('post', mode) })}
-          />
-        ),
-      },
-      {
-        title: '发帖日上限',
-        key: 'cap',
-        width: 96,
-        render: (_: unknown, r) => (
-          <InputNumber
-            min={0}
-            max={CAP_MAX}
-            precision={0}
-            disabled={!r.autoEnabled || !isActionModeOn(r.postMode)}
-            value={capDraft[`${r.accountId}:post`] ?? r.postDailyCap}
-            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:post`]: v }))}
-            onBlur={() => commitCap(r, 'post')}
-            onPressEnter={() => commitCap(r, 'post')}
-            style={{ width: 60 }}
-          />
-        ),
-      },
-      {
-        title: '自动评论',
-        key: 'comment',
-        width: 132,
-        render: (_: unknown, r) => (
-          <ActionModeControl
-            label={`自动评论 ${r.accountId}`}
-            value={r.autoEnabled ? r.commentMode : 'off'}
-            disabled={!r.autoEnabled}
-            onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('comment', mode) })}
-          />
-        ),
-      },
-      {
-        title: '评论日上限',
-        key: 'commentCap',
-        width: 96,
-        render: (_: unknown, r) => (
-          <InputNumber
-            min={0}
-            max={CAP_MAX}
-            precision={0}
-            disabled={!r.autoEnabled || !isActionModeOn(r.commentMode)}
-            value={capDraft[`${r.accountId}:comment`] ?? r.commentDailyCap}
-            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:comment`]: v }))}
-            onBlur={() => commitCap(r, 'comment')}
-            onPressEnter={() => commitCap(r, 'comment')}
-            style={{ width: 60 }}
-          />
-        ),
-      },
-      {
-        title: '自动联系评论',
-        key: 'contact',
-        width: 176,
-        render: (_: unknown, r) => (
-          <Space size={6}>
-            <ActionModeControl
-              label={`自动联系评论 ${r.accountId}`}
-              value={r.autoEnabled && r.hasContactInfo ? r.contactCommentMode : 'off'}
-              disabled={!r.autoEnabled || !r.hasContactInfo}
-              onChange={(mode) => patchAccount.mutate({ accountId: r.accountId, patch: modePatch('contact', mode) })}
-            />
-            {!r.hasContactInfo ? <MissingContactQuickConfig accountId={r.accountId} /> : null}
-          </Space>
-        ),
-      },
-      {
-        title: '联系评论日上限',
-        key: 'contactCap',
-        width: 120,
-        render: (_: unknown, r) => (
-          <InputNumber
-            min={0}
-            max={10}
-            precision={0}
-            disabled={!r.autoEnabled || !r.hasContactInfo || !isActionModeOn(r.contactCommentMode)}
-            value={capDraft[`${r.accountId}:contact`] ?? r.contactCommentDailyCap}
-            onChange={(v) => setCapDraft((d) => ({ ...d, [`${r.accountId}:contact`]: v }))}
-            onBlur={() => commitCap(r, 'contact')}
-            onPressEnter={() => commitCap(r, 'contact')}
-            style={{ width: 60 }}
-          />
-        ),
-      },
-      {
-        title: '最近修改',
-        key: 'audit',
-        width: 170,
-        render: (_: unknown, r) =>
-          r.configured && r.updatedAt ? (
-            <Space direction="vertical" size={0}>
+    ];
+    const auditColumn: ColumnsType<ContentScheduleRow>[number] = {
+      title: '最近修改',
+      key: 'audit',
+      width: 170,
+      render: (_: unknown, r) => (
+        <Space direction="vertical" size={0}>
+          {hasUnsupportedActionConfig(r) ? <Tag color="red">存在不支持的历史动作配置</Tag> : null}
+          {r.configured && r.updatedAt ? (
+            <>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {r.updatedBy ?? '—'}
               </Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                 {new Date(r.updatedAt).toLocaleString()}
               </Typography.Text>
-            </Space>
+            </>
           ) : (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               未配（不自动）
             </Typography.Text>
-          ),
-      },
-    ],
-    [capDraft, patchAccount, commitCap, openAccountGridEditor],
-  );
+          )}
+        </Space>
+      ),
+    };
 
-  const rows = catalog.data?.rows ?? [];
+    if (platformFilter === 'all') {
+      return [
+        ...commonColumns,
+        {
+          title: '已启用动作',
+          key: 'summary',
+          width: 240,
+          render: (_: unknown, row) => {
+            const summaries = enabledActionSummary(row);
+            if (row.availableActions.length === 0) {
+              return <Typography.Text type="secondary">暂无可配置自动化动作</Typography.Text>;
+            }
+            if (summaries.length === 0) return <Typography.Text type="secondary">暂无已启用动作</Typography.Text>;
+            return (
+              <Space direction="vertical" size={2}>
+                {summaries.map((summary) => <Tag key={summary}>{summary}</Tag>)}
+              </Space>
+            );
+          },
+        },
+        auditColumn,
+      ];
+    }
+
+    if (visibleActionIds.length === 0) {
+      return [
+        ...commonColumns,
+        {
+          title: '自动化动作',
+          key: 'empty-actions',
+          width: 220,
+          render: () => <Typography.Text type="secondary">暂无可配置自动化动作</Typography.Text>,
+        },
+        auditColumn,
+      ];
+    }
+
+    const actionColumns: ColumnsType<ContentScheduleRow> = visibleActionIds.map((action) => ({
+      title: actionUi[action].label,
+      key: action,
+      width: actionUi[action].requiresContact ? 230 : 190,
+      render: (_: unknown, row) => {
+        const metadata = actionMetadata(row, action);
+        if (!metadata) return <Typography.Text type="secondary">此账号不可配置</Typography.Text>;
+        const config = actionUi[action];
+        const storedMode = config.mode(row);
+        const modeSupported =
+          storedMode === 'off' || metadata.allowedModes.includes(storedMode as Exclude<ContentScheduleActionMode, 'off'>);
+        const contactReady = !config.requiresContact || row.hasContactInfo;
+        const effectiveMode = row.autoEnabled && contactReady && modeSupported ? storedMode : 'off';
+        const capKey = `${row.accountId}:${action}`;
+        return (
+          <Space direction="vertical" size={6}>
+            <Space size={6}>
+              <ActionModeControl
+                label={`${config.label} ${row.accountId}`}
+                value={effectiveMode}
+                allowedModes={metadata.allowedModes}
+                disabled={!row.autoEnabled || !contactReady}
+                onChange={(mode) =>
+                  patchAccount.mutate({ accountId: row.accountId, patch: config.modePatch(mode) })
+                }
+              />
+              {config.requiresContact && !row.hasContactInfo ? (
+                <MissingContactQuickConfig accountId={row.accountId} />
+              ) : null}
+            </Space>
+            <Space size={4}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>日上限</Typography.Text>
+              <InputNumber
+                aria-label={`${config.label}日上限 ${row.accountId}`}
+                min={0}
+                max={metadata.maxDailyCap}
+                precision={0}
+                disabled={!row.autoEnabled || !contactReady || !isActionModeOn(effectiveMode)}
+                value={capDraft[capKey] ?? config.dailyCap(row)}
+                onChange={(value) => setCapDraft((draft) => ({ ...draft, [capKey]: value }))}
+                onBlur={() => commitCap(row, action)}
+                onPressEnter={() => commitCap(row, action)}
+                status={config.dailyCap(row) > metadata.maxDailyCap ? 'error' : undefined}
+                style={{ width: 64 }}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>/ {metadata.maxDailyCap}</Typography.Text>
+            </Space>
+            {!modeSupported ? <Tag color="red">当前模式不受支持，请关闭后重配</Tag> : null}
+          </Space>
+        );
+      },
+    }));
+    return [...commonColumns, ...actionColumns, auditColumn];
+  }, [capDraft, commitCap, openAccountGridEditor, patchAccount, platformFilter, visibleActionIds]);
 
   // 读失败：不回落到编造的默认周历掩码（fail-open 全活跃会被当真实配置展示）——诚实报错 + 重试全部。
   // 与「真的读到空配置」（掩码为 null）区分：那种仍走 fail-open/fail-closed 默认，只有读失败才不许伪造。
@@ -660,10 +791,21 @@ export function ContentSchedulePage() {
         )}
       </Card>
 
-      <Card size="small" title="账号内容自动化">
+      <Card size="small" title="账号自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          「跟随全局」使用上方默认周历；点击「添加排期」可为该社媒账号单独配置活跃与内容时段，账号配置优先。每账号：总开关（默认关）→ 自动发帖 / 自动评论 / 自动联系评论各自选择关、开或免审，并配置日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动联系评论都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）；选择免审时只跳过飞书审批等待，不跳过风控配额、去重、页面核对和结果回执。联系评论开启须先配联系方式；建议一码一号，同一联系方式配多账号仍可开启但会提示风险。
+          默认“全部平台”只看跨平台公共摘要；选择单个平台后，才按 Cloud 声明展示该平台真实支持的动作、模式和日上限。“跟随全局”使用上方默认周历，账号自定义排期优先。触发时刻仍在可自动小时内按“账号 × 动作”错峰打散；免审只跳过审批等待，不跳过风控、去重、页面核对和结果回执。
         </Typography.Paragraph>
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Segmented<string>
+            aria-label="平台筛选"
+            value={platformFilter}
+            options={platformOptions}
+            onChange={setPlatformFilter}
+          />
+          <Typography.Text type="secondary" data-testid="platform-filter-count">
+            当前 {filteredRows.length} / 全部 {rows.length} 个账号
+          </Typography.Text>
+        </Space>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />
         ) : (
@@ -671,8 +813,14 @@ export function ContentSchedulePage() {
             rowKey="accountId"
             size="small"
             columns={columns}
-            dataSource={rows}
+            dataSource={filteredRows}
             pagination={false}
+            locale={{
+              emptyText:
+                platformFilter === 'all'
+                  ? '暂无账号'
+                  : `${platformLabel(platformFilter)}暂无账号`,
+            }}
           />
         )}
       </Card>

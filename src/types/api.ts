@@ -1255,6 +1255,18 @@ export interface PanelBotChatsResponse {
 
 export type ContentScheduleActionMode = 'off' | 'review' | 'auto_approve';
 
+/** Cloud 平台注册表声明的可排期动作；Console 只消费能力投影，不自行推断平台矩阵。 */
+export type ContentScheduleAutomationAction = 'post' | 'comment' | 'contact_comment';
+
+/** GET /api/content-schedule 每行携带的服务端权威动作能力。 */
+export interface ContentScheduleAvailableAction {
+  action: ContentScheduleAutomationAction;
+  /** 允许的非关闭模式；`off` 始终作为安全关闭值由页面补入。 */
+  allowedModes: Array<Exclude<ContentScheduleActionMode, 'off'>>;
+  /** 该平台/动作允许写入的服务端日上限。 */
+  maxDailyCap: number;
+}
+
 /**
  * 全局「内容可自动时段」周历格（GET/PUT /api/content-schedule/global）。
  * 与浏览掩码（SessionLimitView.activeWeekMask）物理分开、语义不同：本格治「何时允许自动发帖」。
@@ -1271,11 +1283,17 @@ export interface ContentScheduleGlobalView {
 /** 每账号内容排期一行（GET /api/content-schedule），含两层独立的账号覆盖与生效来源。 */
 export interface ContentScheduleRow {
   accountId: string;
+  /** Cloud 规范化的平台 id；未知平台保留诊断值且 availableActions 为空。 */
+  platform: string;
+  /** 账号当前分组；null=未分组。 */
+  groupLabel: string | null;
   label: string | null;
   nickname: string | null;
   operatorAlias: string | null;
   displayName: string;
   displayNameSource: AccountDisplayNameSource;
+  /** 服务端权威的可配置排期动作；Console 不维护平台动作矩阵。 */
+  availableActions: ContentScheduleAvailableAction[];
   /** 总开关：false=该账号完全不自动（零回归默认）。 */
   autoEnabled: boolean;
   /** 发帖开关。 */
