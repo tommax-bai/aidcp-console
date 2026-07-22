@@ -46,7 +46,7 @@ function makeSummary(overrides: Partial<DashboardSummary> = {}): DashboardSummar
   return {
     asOf: AS_OF,
     edgesOnline: 0,
-    totals: { view: 0, like: 0, collect: 0, comment: 0, follow: 0, publish: 0, comment_like: 0, join_group: 0, dm_reply: 0 },
+    totals: { view: 0, search: 0, like: 0, collect: 0, comment: 0, follow: 0, publish: 0, comment_like: 0, join_group: 0, dm_reply: 0 },
     totalsByAccount: [],
     likeRate: { likes: 0, views: 0, rate: null, healthy: null },
     accounts: [],
@@ -91,6 +91,20 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
     // 等页面数据渲染完（新鲜度标识出现）再断言提示缺席。
     await screen.findByText('自动刷新中');
     expect(screen.queryByText(/系统当前未在浏览/)).toBeNull();
+  });
+
+  it('搜索作为独立今日行为显示全局用量、账号上限与饱和状态', async () => {
+    const totals = { view: 0, search: 2, like: 0, collect: 0, comment: 0, follow: 0, publish: 0, comment_like: 0, join_group: 0, dm_reply: 0 };
+    const quotas = { view: 20, search: 10, like: 10, collect: 5, comment: 5, follow: 3, publish: 1, comment_like: 5, join_group: 1, dm_reply: 5 };
+    state.summary = makeSummary({
+      totals,
+      totalsByAccount: [{ accountId: 'account-search', totals, quotas, saturated: ['search'] }],
+    });
+    renderPage();
+
+    const usage = await screen.findByText((_, element) => element?.tagName === 'SPAN' && element.textContent === '2 / 10');
+    expect(usage.style.color).toBeTruthy();
+    expect(screen.getAllByText('搜索').length).toBeGreaterThanOrEqual(2);
   });
 });
 

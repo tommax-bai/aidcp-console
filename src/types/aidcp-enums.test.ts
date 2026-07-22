@@ -19,7 +19,7 @@ describe('aidcp-enums 镜像（D11 漂移哨兵）', () => {
     // 防「改镜像忘改期望」；cloud 真正漂移由下方 live 对拍（AIDCP_PANEL_URL）检出。
     expect([...RISK_STATUSES]).toEqual(['normal', 'warned', 'restricted', 'frozen']);
     expect([...RISK_QUOTA_LEVELS]).toEqual(['conservative', 'normal', 'aggressive']);
-    expect([...RISK_ACTIONS]).toEqual(['like', 'collect', 'comment', 'follow', 'publish', 'view', 'comment_like', 'join_group', 'dm_reply']);
+    expect([...RISK_ACTIONS]).toEqual(['like', 'collect', 'comment', 'follow', 'publish', 'view', 'search', 'comment_like', 'join_group', 'dm_reply']);
     expect([...ALERT_SEVERITIES]).toEqual(['P0', 'P1', 'P2', 'P3']);
     // 面板角色/模型配置枚举镜像（change console-panel-config-enum-fingerprint）。
     expect([...LLM_KINDS]).toEqual(['text', 'image', 'vision', 'none']);

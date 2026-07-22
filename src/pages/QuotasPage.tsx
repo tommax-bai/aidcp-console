@@ -27,13 +27,13 @@ const QUOTA_MAX = 100_000;
 // 那会与「全站绿=正常状态」语义冲突）。公用枚举无展示排序，故本页仅保留 order 附加。
 const TIER_ORDER: Record<QuotaTier, number> = { conservative: 1, normal: 2, aggressive: 3 };
 const ACTION_ORDER: Record<QuotaAction, number> = {
-  view: 1, like: 2, collect: 3, comment: 4, comment_like: 5, dm_reply: 6, join_group: 7, follow: 8, publish: 9,
+  view: 1, search: 2, like: 3, collect: 4, comment: 5, comment_like: 6, dm_reply: 7, join_group: 8, follow: 9, publish: 10,
 };
 const actionOrder = (action: string): number => ACTION_ORDER[action as QuotaAction] ?? Number.MAX_SAFE_INTEGER;
 
 const rowKey = (r: { tier: string; action: string }) => `${r.tier}:${r.action}`;
 
-/** 单场互动预算七项 + 中文标签（顺序即展示顺序，与 cloud SessionInteractionBudget 对齐）。 */
+/** 单场行为预算七项 + 中文标签（顺序即展示顺序，与 cloud SessionInteractionBudget 对齐）。 */
 const SL_BUDGET_FIELDS: Array<{ key: keyof SessionInteractionBudget; label: string }> = [
   { key: 'likes', label: '点赞' },
   { key: 'collects', label: '收藏' },
@@ -525,7 +525,7 @@ export function QuotasPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="配置对所有账号生效的全局单场会话时长（分钟）与单场互动预算（点赞/收藏/关注/搜索/评论/评论赞/加群）。改完下场会话即生效（热加载、无需重启）。未配置时用系统内置默认（= 当前真生效）。此项原按账号，现已收敛为全局通用单例。"
+          message="配置对所有账号生效的全局单场会话时长（分钟）与单场行为预算（点赞/收藏/关注/搜索/评论/评论赞/加群）。改完下场会话即生效（热加载、无需重启）。未配置时用系统内置默认（= 当前真生效）。此项原按账号，现已收敛为全局通用单例。"
         />
         {sl.isLoading || !sl.data ? (
           <Skeleton active />
@@ -703,7 +703,7 @@ export function QuotasPage() {
         {editingSL && (
           <Form layout="vertical" requiredMark={false}>
             <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-              对所有账号生效。单场时长须为 ≥1 的整数（分钟）；各项互动预算须为 ≥0 的整数；均 ≤100000。保存前服务端会再校验。
+              对所有账号生效。单场时长须为 ≥1 的整数（分钟）；各项行为预算须为 ≥0 的整数；均 ≤100000。保存前服务端会再校验。
             </Typography.Paragraph>
             <Form.Item label="单场时长（分钟）">
               <InputNumber value={slDuration ?? undefined} onChange={(v) => setSlDuration(v ?? null)} min={1} max={QUOTA_MAX} precision={0} style={{ width: 200 }} />

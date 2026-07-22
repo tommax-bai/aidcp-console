@@ -1051,7 +1051,7 @@ export interface FacebookGroupMembershipRow {
 
 // 单场会话上限配置（全局单例，change restore-auto-resume-and-global-safety-config）。与 cloud SessionLimitView 手动对齐。
 
-/** 单场互动预算（七项，与 cloud SessionInteractionBudget 一致）。 */
+/** 单场行为预算（七项，与 cloud SessionInteractionBudget 一致）。 */
 export interface SessionInteractionBudget {
   likes: number;
   collects: number;

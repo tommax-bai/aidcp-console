@@ -218,6 +218,16 @@ describe('QuotasPage 动作镜像与未知值回落', () => {
     state.putImpl = () => Promise.resolve({});
   });
 
+  it('search 显示为独立配额动作，混合会话预算使用行为术语', async () => {
+    state.quotaRows = [quotaRow('search')];
+    renderPage();
+
+    expect(await screen.findByText('单场行为预算', { exact: false })).toBeTruthy();
+    const labels = await screen.findAllByText('搜索');
+    expect(labels.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('单场互动预算', { exact: false })).toBeNull();
+  });
+
   it('dm_reply 显示中文动作，编辑弹窗标题不出现 undefined', async () => {
     state.quotaRows = [quotaRow('dm_reply')];
     renderPage();

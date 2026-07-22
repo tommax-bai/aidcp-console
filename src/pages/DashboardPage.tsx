@@ -15,6 +15,7 @@ import type { DashboardSummary } from '../types/api';
 
 const METRICS: { key: string; get: (s: DashboardSummary) => number }[] = [
   { key: '浏览', get: (s) => s.totals.view },
+  { key: '搜索', get: (s) => s.totals.search },
   { key: '点赞', get: (s) => s.totals.like },
   { key: '收藏', get: (s) => s.totals.collect },
   { key: '评论', get: (s) => s.totals.comment },

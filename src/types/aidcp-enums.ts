@@ -11,7 +11,7 @@ export type RiskStatus = (typeof RISK_STATUSES)[number];
 export const RISK_QUOTA_LEVELS = ['conservative', 'normal', 'aggressive'] as const;
 export type RiskQuotaLevel = (typeof RISK_QUOTA_LEVELS)[number];
 
-export const RISK_ACTIONS = ['like', 'collect', 'comment', 'follow', 'publish', 'view', 'comment_like', 'join_group', 'dm_reply'] as const;
+export const RISK_ACTIONS = ['like', 'collect', 'comment', 'follow', 'publish', 'view', 'search', 'comment_like', 'join_group', 'dm_reply'] as const;
 export type RiskAction = (typeof RISK_ACTIONS)[number];
 
 export const ALERT_SEVERITIES = ['P0', 'P1', 'P2', 'P3'] as const;
@@ -65,6 +65,7 @@ export const RISK_ACTION_COLOR: Record<RiskAction, string> = {
   follow: 'green',
   publish: 'purple',
   view: 'default',
+  search: 'geekblue',
   comment_like: 'cyan', // 评论赞（change console-cloud-panel-hardening #4；灰度 AIDCP_COMMENT_LIKE）
   join_group: 'lime',
   dm_reply: 'orange',
@@ -110,6 +111,7 @@ export const RISK_ACTION_LABEL: Record<RiskAction, string> = {
   follow: '关注',
   publish: '发布',
   view: '浏览',
+  search: '搜索',
   comment_like: '评论赞', // change console-cloud-panel-hardening #4
   join_group: '加群',
   dm_reply: '私信回复',

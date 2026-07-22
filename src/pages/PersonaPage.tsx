@@ -19,7 +19,7 @@ const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
 /**
  * 账号人设配置页（change account-persona-config，stream F）。
  * - 按账号配置「人设」（identity / interests / behavior_guidelines 等，YAML 文本）。
- *   注：单场会话上限（时长 + 互动预算）已从人设迁出到「安全限额 · 单场会话上限」页（change session-limits-to-quota-layer）。
+ *   注：单场会话上限（时长 + 行为预算）已从人设迁出到「安全限额 · 单场会话上限」页（change session-limits-to-quota-layer）。
  * - 系统不存在默认/兜底人设——未绑定人设的账号
  *   浏览/发布/评论一律被诚实拒绝运行；列表如实标注绑定状态（未绑定=红）。
  * - 清空编辑器并保存 = 显式解绑，服务端删绑定行后返回 source=none 真态。
