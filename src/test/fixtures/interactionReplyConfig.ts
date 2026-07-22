@@ -236,6 +236,7 @@ export function frozenInteractionFixtures(accountId = 'acct_wc_demo') {
         before: '谢谢示例观众的喜欢，欢迎继续交流。',
         after: '谢谢你的喜欢，欢迎继续交流。',
         fallbackUsed: false,
+        fallbackReason: 'none',
         meaningChanged: false,
         introducedClaims: [],
       },

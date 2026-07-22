@@ -228,6 +228,16 @@ export type PreviewContextsResponse = InternalApiEnvelope<{
   items: PreviewContext[];
 }>;
 
+export type PreviewPolishFallbackReason =
+  | 'none'
+  | 'timeout'
+  | 'upstream_error'
+  | 'invalid_json'
+  | 'invalid_schema'
+  | 'too_long'
+  | 'knowledge_answer_missing'
+  | 'candidate_rejected';
+
 export interface PreviewResult {
   accountId: string;
   configVersion: number;
@@ -237,6 +247,7 @@ export interface PreviewResult {
     before: string;
     after: string;
     fallbackUsed: boolean;
+    fallbackReason: PreviewPolishFallbackReason;
     meaningChanged: boolean;
     introducedClaims: string[];
   } | null;

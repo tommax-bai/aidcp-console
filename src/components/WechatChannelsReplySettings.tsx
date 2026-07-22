@@ -85,6 +85,7 @@ import type {
   PreviewAction,
   PreviewConfigUse,
   PreviewContext,
+  PreviewPolishFallbackReason,
   PreviewResult,
   ReplyConfigSnapshot,
   ReplyIntent,
@@ -139,6 +140,15 @@ const RISK_LEVEL_META: Record<RiskLevel, { label: string; color: string }> = {
   medium: { label: '中风险', color: 'gold' },
   high: { label: '高风险', color: 'red' },
   unknown: { label: '风险未知', color: 'default' },
+};
+const PREVIEW_POLISH_FALLBACK_LABEL: Record<Exclude<PreviewPolishFallbackReason, 'none'>, string> = {
+  timeout: 'AI 超时，已回退模板',
+  upstream_error: 'AI 服务异常，已回退模板',
+  invalid_json: 'AI 返回格式无效，已回退模板',
+  invalid_schema: 'AI 返回字段无效，已回退模板',
+  too_long: 'AI 回复仍超过字数上限，已回退模板',
+  knowledge_answer_missing: 'AI 未回答问题，已回退模板',
+  candidate_rejected: 'AI 候选被安全规则拒绝，已回退模板',
 };
 const INTENTS: ReplyIntent[] = [
   'gratitude',
@@ -2068,6 +2078,7 @@ function PreviewFlow({ result, templates, rules }: { result: PreviewResult; temp
   const riskMeta = RISK_LEVEL_META[result.risk.level];
   const rule = rules.find((item) => item.ruleId === result.matchedRule?.ruleId);
   const template = templates.find((item) => item.templateId === result.template?.templateId);
+  const polishFallbackReason = result.polish?.fallbackReason ?? (result.polish?.fallbackUsed ? 'invalid_schema' : 'none');
   return (
     <Card size="small" title={<Space><CheckCircleOutlined />Cloud 预览结果 · 配置 v{result.configVersion}</Space>}>
       <Steps
@@ -2092,9 +2103,13 @@ function PreviewFlow({ result, templates, rules }: { result: PreviewResult; temp
               <div className="reply-config__diff-grid">
                 <div><Typography.Text type="secondary">润色前</Typography.Text><Typography.Paragraph>{result.polish.before}</Typography.Paragraph></div>
                 <div><Typography.Text type="secondary">润色后</Typography.Text><Typography.Paragraph>{result.polish.after}</Typography.Paragraph></div>
-                {result.polish.fallbackUsed ? <Tag color="gold">已回退原模板</Tag> : null}
+                {polishFallbackReason !== 'none'
+                  ? <Tag color="gold">{labelOf(PREVIEW_POLISH_FALLBACK_LABEL, polishFallbackReason)}</Tag>
+                  : result.polish.before === result.polish.after
+                    ? <Tag color="blue">AI 判断无需改写</Tag>
+                    : null}
                 {result.polish.meaningChanged ? <Tag color="red">检测到改义</Tag> : null}
-                {result.polish.introducedClaims.map((claim) => <Tag key={claim} color="red">新增承诺：{claim}</Tag>)}
+                {result.polish.introducedClaims.map((claim) => <Tag key={claim} color="gold">AI 新增事实：{claim}</Tag>)}
               </div>
             ) : '该路径未运行 AI 润色',
           },

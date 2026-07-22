@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountsPage } from '../pages/AccountsPage';
 import { frozenInteractionFixtures, panelAccount } from '../test/fixtures/interactionReplyConfig';
-import type { PreviewAction } from '../types/interactionReplyConfig';
+import type { PreviewAction, PreviewPolishFallbackReason } from '../types/interactionReplyConfig';
 import { WechatChannelsReplySettings } from './WechatChannelsReplySettings';
 
 interface ServerOptions {
@@ -20,6 +20,8 @@ interface ServerOptions {
   conflictOnPolicy?: boolean;
   stateConflictOnPolicy?: boolean;
   previewAction?: PreviewAction;
+  previewFallbackReason?: PreviewPolishFallbackReason;
+  previewSameText?: boolean;
   slowAccountId?: string;
   missingConfig?: boolean;
   initializeDenied?: boolean;
@@ -191,6 +193,13 @@ function createServer(options: ServerOptions = {}) {
     if (endpoint === 'reply-preview' && method === 'POST') {
       if (options.previewDenied) return interactionError('INTERACTION_PERMISSION_DENIED', 403);
       const preview = structuredClone(store.preview);
+      if (preview.data.polish && options.previewFallbackReason) {
+        preview.data.polish.fallbackReason = options.previewFallbackReason;
+        preview.data.polish.fallbackUsed = options.previewFallbackReason !== 'none';
+      }
+      if (preview.data.polish && options.previewSameText) {
+        preview.data.polish.after = preview.data.polish.before;
+      }
       if (options.previewAction === 'no_match') {
         preview.data.matchedRule = null;
         preview.data.template = null;
@@ -906,6 +915,31 @@ describe('WechatChannelsReplySettings', () => {
     expect(server.calls.some((call) => call.path.includes('/send'))).toBe(false);
     fireEvent.change(screen.getByLabelText('模拟互动内容'), { target: { value: '修改后的模拟内容' } });
     expect(screen.queryByText(expectedLabel)).toBeNull();
+  });
+
+  it.each([
+    ['knowledge_answer_missing', 'AI 未回答问题，已回退模板'],
+    ['too_long', 'AI 回复仍超过字数上限，已回退模板'],
+    ['candidate_rejected', 'AI 候选被安全规则拒绝，已回退模板'],
+  ] as const)('explains polish fallback %s without exposing a discarded candidate', async (previewFallbackReason, expectedLabel) => {
+    createServer({ previewFallbackReason, previewSameText: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+    fireEvent.change(await screen.findByLabelText('模拟互动内容'), { target: { value: '适合几岁的孩子啊' } });
+    fireEvent.click(screen.getByRole('button', { name: /运行无副作用预览/ }));
+    expect(await screen.findByText(expectedLabel)).toBeTruthy();
+    expect(screen.queryByText('已丢弃的 AI 候选正文')).toBeNull();
+  });
+
+  it('states when AI ran successfully and judged that no rewrite was needed', async () => {
+    createServer({ previewFallbackReason: 'none', previewSameText: true });
+    renderDrawer();
+    await waitForConfig();
+    fireEvent.click(screen.getByRole('tab', { name: '模拟预览' }));
+    fireEvent.change(await screen.findByLabelText('模拟互动内容'), { target: { value: '谢谢分享' } });
+    fireEvent.click(screen.getByRole('button', { name: /运行无副作用预览/ }));
+    expect(await screen.findByText('AI 判断无需改写')).toBeTruthy();
   });
 
   it('fail-closes preview permission without inventing a result', async () => {
