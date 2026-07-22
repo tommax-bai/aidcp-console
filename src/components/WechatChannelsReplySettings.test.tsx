@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountsPage } from '../pages/AccountsPage';
 import { frozenInteractionFixtures, panelAccount } from '../test/fixtures/interactionReplyConfig';
 import type { PreviewAction, PreviewPolishFallbackReason } from '../types/interactionReplyConfig';
+import { AccountsTable } from './AccountsTable';
 import { WechatChannelsReplySettings } from './WechatChannelsReplySettings';
 
 interface ServerOptions {
@@ -365,7 +366,7 @@ beforeEach(() => {
 });
 
 describe('WechatChannelsReplySettings', () => {
-  it('keeps only named runtime control and moves account actions into fact columns', async () => {
+  it('puts Facebook and Video Channels entries in one configuration column', async () => {
     createServer();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -382,6 +383,31 @@ describe('WechatChannelsReplySettings', () => {
     expect(screen.getAllByRole('button', { name: '运行控制' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: '回复设置' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '操作' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '运行控制' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: '配置' })).toBeTruthy();
+
+    const headers = screen.getAllByRole('columnheader');
+    const platformColumnIndex = headers.findIndex((header) => header.textContent?.includes('平台'));
+    const configurationColumnIndex = headers.findIndex((header) => header.textContent === '配置');
+    expect(platformColumnIndex).toBeGreaterThanOrEqual(0);
+    expect(configurationColumnIndex).toBeGreaterThanOrEqual(0);
+
+    const wechatRow = document.querySelector<HTMLElement>('tr[data-row-key="acct_wc_demo"]');
+    const facebookRow = document.querySelector<HTMLElement>('tr[data-row-key="fb_demo"]');
+    const xhsRow = document.querySelector<HTMLElement>('tr[data-row-key="xhs_demo"]');
+    expect(wechatRow).toBeTruthy();
+    expect(facebookRow).toBeTruthy();
+    expect(xhsRow).toBeTruthy();
+
+    const wechatCells = within(wechatRow as HTMLElement).getAllByRole('cell');
+    const facebookCells = within(facebookRow as HTMLElement).getAllByRole('cell');
+    const xhsCells = within(xhsRow as HTMLElement).getAllByRole('cell');
+    expect(within(wechatCells[configurationColumnIndex]).getByRole('button', { name: '运行控制' })).toBeTruthy();
+    expect(within(facebookCells[configurationColumnIndex]).getByRole('button', { name: 'FB配置' })).toBeTruthy();
+    expect(xhsCells[configurationColumnIndex].textContent).toContain('—');
+    expect(within(facebookCells[platformColumnIndex]).getByText('Facebook')).toBeTruthy();
+    expect(within(facebookCells[platformColumnIndex]).queryByRole('button', { name: 'FB配置' })).toBeNull();
+
     const riskTriggers = screen.getAllByRole('button', { name: '调整风控：正常' });
     const tierTriggers = screen.getAllByRole('button', { name: '调整档位：正常' });
     expect(riskTriggers).toHaveLength(3);
@@ -391,6 +417,16 @@ describe('WechatChannelsReplySettings', () => {
     fireEvent.click(tierTriggers[0]);
     expect(await screen.findByText('保守')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'FB配置' })).toHaveLength(1);
+  });
+
+  it('keeps the configuration column opt-in for read-only account tables', () => {
+    render(
+      <MemoryRouter>
+        <AccountsTable accounts={[panelAccount()]} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('columnheader', { name: '配置' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '运行控制' })).toBeNull();
   });
 
   it('loads frozen v1 slices and saves policy draft with aggregate expectedVersion', async () => {

@@ -152,8 +152,7 @@ export function AccountsTable({
   operatorStatusControl,
   riskStatusControl,
   quotaTierControl,
-  platformAddon,
-  runtimeControl,
+  configurationControl,
   commentApprovalControl,
   onEditGroup,
   onEditContact,
@@ -165,10 +164,8 @@ export function AccountsTable({
   operatorStatusControl?: (account: PanelAccount) => ReactNode;
   riskStatusControl?: (account: PanelAccount) => ReactNode;
   quotaTierControl?: (account: PanelAccount) => ReactNode;
-  /** 平台专属配置入口附着平台标签，不创建通用操作列。 */
-  platformAddon?: (account: PanelAccount) => ReactNode;
-  /** 视频号账号的具名运行控制列。 */
-  runtimeControl?: (account: PanelAccount) => ReactNode;
+  /** 账号页按平台注入账号级配置入口；不传则只读视图不增加配置列。 */
+  configurationControl?: (account: PanelAccount) => ReactNode;
   /** 账号级评论审批策略（仅账号配置页注入；其它表格保持零回归）。 */
   commentApprovalControl?: (account: PanelAccount) => ReactNode;
   /**
@@ -276,11 +273,6 @@ export function AccountsTable({
     const dataIndex = (column as { dataIndex?: string }).dataIndex;
     const key = (column as { key?: string }).key;
     if (dataIndex === 'groupLabel') return groupColumn;
-    if (dataIndex === 'platform' && platformAddon) {
-      return { ...column, render: (platform: string, account: PanelAccount) => (
-        <Space size={2} wrap={false}>{platformTag(platform)}{platformAddon(account)}</Space>
-      ) };
-    }
     if (dataIndex === 'operatorStatus' && operatorStatusControl) {
       return { ...column, render: (_: unknown, account: PanelAccount) => operatorStatusControl(account) };
     }
@@ -329,8 +321,13 @@ export function AccountsTable({
     : null;
 
   const withContactColumn: ColumnsType<PanelAccount> = contactColumn ? [...baseCols, contactColumn] : baseCols;
-  const runtimeColumn: ColumnsType<PanelAccount>[number] | null = runtimeControl
-    ? { title: '运行控制', key: 'runtimeControl', width: 92, render: (_, account) => runtimeControl(account) }
+  const configurationColumn: ColumnsType<PanelAccount>[number] | null = configurationControl
+    ? {
+        title: '配置',
+        key: 'configuration',
+        width: 92,
+        render: (_, account) => configurationControl(account) ?? dash,
+      }
     : null;
   const commentApprovalColumn: ColumnsType<PanelAccount>[number] | null = commentApprovalControl
     ? { title: '评论审批', key: 'commentApproval', width: 150, render: (_, account) => commentApprovalControl(account) }
@@ -338,7 +335,7 @@ export function AccountsTable({
   const cols: ColumnsType<PanelAccount> = [
     ...withContactColumn,
     ...(commentApprovalColumn ? [commentApprovalColumn] : []),
-    ...(runtimeColumn ? [runtimeColumn] : []),
+    ...(configurationColumn ? [configurationColumn] : []),
     viewsColumn,
   ];
   return (

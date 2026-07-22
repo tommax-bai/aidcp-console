@@ -109,10 +109,15 @@ export function AccountsPage() {
           operatorStatusControl={operatorStatusControl}
           riskStatusControl={(account) => <RiskStatusControl account={account} />}
           quotaTierControl={(account) => <QuotaTierControl account={account} />}
-          platformAddon={(account) => account.platform === 'facebook'
-            ? <FacebookSearchConfig account={account} compactTrigger /> : null}
-          runtimeControl={(account) => account.platform === 'wechat_channels'
-            ? <Button size="small" onClick={() => setRuntimeAccount(account)}>运行控制</Button> : null}
+          configurationControl={(account) => {
+            if (account.platform === 'wechat_channels') {
+              return <Button size="small" onClick={() => setRuntimeAccount(account)}>运行控制</Button>;
+            }
+            if (account.platform === 'facebook') {
+              return <FacebookSearchConfig account={account} compactTrigger />;
+            }
+            return null;
+          }}
           commentApprovalControl={(account) => {
             if (approvalPolicies.isError) return <Tag color="error">策略不可用</Tag>;
             const policy = policyByAccount.get(account.accountId);
