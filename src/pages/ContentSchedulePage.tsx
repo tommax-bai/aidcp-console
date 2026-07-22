@@ -7,6 +7,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Popover,
   Segmented,
   Skeleton,
@@ -43,6 +44,72 @@ const contentMaskForEdit = (m: string | null | undefined) => (m && isValidMask(m
 /** 结构约束：内容位 ⊆ 活跃位（休眠格的自动标记一律裁掉）。 */
 const clampContent = (browse: string, content: string) =>
   Array.from(content, (c, i) => (c === '1' && browse[i] === '1' ? '1' : '0')).join('');
+
+function ScheduleGridEditor(props: {
+  browseMask: string;
+  contentMask: string;
+  onChange: (browseMask: string, contentMask: string) => void;
+}) {
+  const update = (browseMask: string, contentMask: string) =>
+    props.onChange(browseMask, clampContent(browseMask, contentMask));
+
+  /** 点格三态循环：休眠 → 活跃 → 活跃+自动 → 休眠。 */
+  const cycleCell = (day: number, hour: number) => {
+    const i = cellIdx(day, hour);
+    const browseOn = props.browseMask[i] === '1';
+    const contentOn = props.contentMask[i] === '1';
+    if (!browseOn) update(setCell(props.browseMask, day, hour, true), props.contentMask);
+    else if (!contentOn) update(props.browseMask, setCell(props.contentMask, day, hour, true));
+    else update(setCell(props.browseMask, day, hour, false), setCell(props.contentMask, day, hour, false));
+  };
+
+  /** 行 / 列整体推进：有休眠 → 全活跃；无休眠但有未标自动 → 全自动；全自动 → 全休眠。 */
+  const cycleGroup = (cells: Array<[number, number]>) => {
+    const anyDormant = cells.some(([d, h]) => props.browseMask[cellIdx(d, h)] !== '1');
+    const anyUnmarked = cells.some(([d, h]) => props.contentMask[cellIdx(d, h)] !== '1');
+    let browse = props.browseMask;
+    let content = props.contentMask;
+    for (const [day, hour] of cells) {
+      if (anyDormant) browse = setCell(browse, day, hour, true);
+      else if (anyUnmarked) content = setCell(content, day, hour, true);
+      else {
+        browse = setCell(browse, day, hour, false);
+        content = setCell(content, day, hour, false);
+      }
+    }
+    update(browse, content);
+  };
+
+  return (
+    <Space direction="vertical" size={10} style={{ width: '100%' }}>
+      <Space wrap>
+        <Button size="small" onClick={() => update(FULL_ACTIVE_MASK, props.contentMask)}>
+          全部活跃
+        </Button>
+        <Button size="small" onClick={() => update(workdayMask(), props.contentMask)}>
+          工作时间
+        </Button>
+        <Button size="small" onClick={() => update(EMPTY_MASK, EMPTY_MASK)}>
+          全部休眠
+        </Button>
+        <Button size="small" onClick={() => update(props.browseMask, EMPTY_MASK)}>
+          清空自动位
+        </Button>
+        <Typography.Text type="secondary">
+          活跃 {countActive(props.browseMask)} / 168，其中可自动 {countActive(clampContent(props.browseMask, props.contentMask))}
+        </Typography.Text>
+      </Space>
+      <WeekActiveGrid
+        mask={props.browseMask}
+        overlayMask={clampContent(props.browseMask, props.contentMask)}
+        overlayTitle="可自动发内容"
+        onToggleCell={cycleCell}
+        onToggleRow={(day) => cycleGroup(Array.from({ length: 24 }, (_, hour) => [day, hour] as [number, number]))}
+        onToggleCol={(hour) => cycleGroup(Array.from({ length: 7 }, (_, day) => [day, hour] as [number, number]))}
+      />
+    </Space>
+  );
+}
 
 /** 排期 catalog 同样只消费 Cloud 的统一展示名；旧 DTO 回落 accountId。 */
 const displayName = (r: ContentScheduleRow) => r.displayName?.trim() || r.accountId;
@@ -233,6 +300,9 @@ export function ContentSchedulePage() {
   const [gridOpen, setGridOpen] = useState(false);
   const [browseMask, setBrowseMask] = useState(FULL_ACTIVE_MASK);
   const [contentMask, setContentMask] = useState(EMPTY_MASK);
+  const [accountGridRow, setAccountGridRow] = useState<ContentScheduleRow | null>(null);
+  const [accountBrowseMask, setAccountBrowseMask] = useState(FULL_ACTIVE_MASK);
+  const [accountContentMask, setAccountContentMask] = useState(EMPTY_MASK);
 
   const saveGrid = useMutation({
     // 串行双写（两字段各有拥有端点，非原子）：任一失败诚实报错并整体重取真态；
@@ -261,40 +331,38 @@ export function ContentSchedulePage() {
     setGridOpen(true);
   };
 
-  /** 点格三态循环：休眠 → 活跃 → 活跃+自动 → 休眠。 */
-  const cycleCell = (day: number, hour: number) => {
-    const i = cellIdx(day, hour);
-    const b = browseMask[i] === '1';
-    const c = contentMask[i] === '1';
-    if (!b) {
-      setBrowseMask((m) => setCell(m, day, hour, true)); // 休眠 → 活跃
-    } else if (!c) {
-      setContentMask((m) => setCell(m, day, hour, true)); // 活跃 → 活跃+自动
-    } else {
-      setBrowseMask((m) => setCell(m, day, hour, false)); // 活跃+自动 → 休眠（自动位随之裁掉）
-      setContentMask((m) => setCell(m, day, hour, false));
-    }
+  const openAccountGridEditor = (row: ContentScheduleRow) => {
+    const browse = browseMaskForEdit(row.effectiveActiveWeekMask);
+    setAccountGridRow(row);
+    setAccountBrowseMask(browse);
+    setAccountContentMask(clampContent(browse, contentMaskForEdit(row.effectiveContentActiveMask)));
   };
 
-  /** 行 / 列整体推进（同一三态循环）：有休眠 → 全活跃；无休眠但有未标自动 → 全活跃+自动；全自动 → 全休眠。 */
-  const cycleGroup = (cells: Array<[number, number]>) => {
-    const anyDormant = cells.some(([d, h]) => browseMask[cellIdx(d, h)] !== '1');
-    const anyUnmarked = cells.some(([d, h]) => contentMask[cellIdx(d, h)] !== '1');
-    let b = browseMask;
-    let c = contentMask;
-    for (const [d, h] of cells) {
-      if (anyDormant) {
-        b = setCell(b, d, h, true);
-      } else if (anyUnmarked) {
-        c = setCell(c, d, h, true);
-      } else {
-        b = setCell(b, d, h, false);
-        c = setCell(c, d, h, false);
-      }
-    }
-    setBrowseMask(b);
-    setContentMask(clampContent(b, c));
-  };
+  const saveAccountGrid = useMutation({
+    mutationFn: ({
+      accountId,
+      activeWeekMask,
+      contentActiveMask,
+    }: {
+      accountId: string;
+      activeWeekMask: string | null;
+      contentActiveMask: string | null;
+    }) =>
+      apiPut(`/api/content-schedule/${encodeURIComponent(accountId)}`, {
+        activeWeekMask,
+        contentActiveMask,
+      }),
+    onSuccess: (_data, variables) => {
+      const inherited = variables.activeWeekMask === null && variables.contentActiveMask === null;
+      message.success(inherited ? '已恢复跟随全局排期' : '已保存账号排期，下场会话 / 下个排期槽即生效');
+      setAccountGridRow(null);
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+    },
+    onError: (error) => {
+      message.error(`账号排期保存失败：${errorText(error)}`);
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+    },
+  });
 
   // ── 每账号策略写入（乐观：点下去即翻，后台对账，失败回滚） ──
   const patchAccount = useMutation({
@@ -398,6 +466,26 @@ export function ContentSchedulePage() {
             onChange={(v) => patchAccount.mutate({ accountId: r.accountId, patch: { autoEnabled: v } })}
           />
         ),
+      },
+      {
+        title: '排期',
+        key: 'schedule',
+        width: 126,
+        render: (_: unknown, r) => {
+          const customized = r.hasActiveOverrideMask || r.hasContentOverrideMask;
+          return (
+            <Space direction="vertical" size={4}>
+              <Tag color={customized ? 'blue' : 'default'}>{customized ? '账号自定义' : '跟随全局'}</Tag>
+              <Button
+                size="small"
+                aria-label={`${customized ? '编辑' : '添加'}账号排期 ${r.accountId}`}
+                onClick={() => openAccountGridEditor(r)}
+              >
+                {customized ? '编辑' : '添加排期'}
+              </Button>
+            </Space>
+          );
+        },
       },
       {
         title: '自动发帖',
@@ -516,7 +604,7 @@ export function ContentSchedulePage() {
           ),
       },
     ],
-    [capDraft, patchAccount, commitCap],
+    [capDraft, patchAccount, commitCap, openAccountGridEditor],
   );
 
   const rows = catalog.data?.rows ?? [];
@@ -542,7 +630,7 @@ export function ContentSchedulePage() {
         type="info"
         showIcon
         message="活跃时段与内容自动化"
-        description="一张周历管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容。每个动作可选「关 / 开 / 免审」：开=生成后发飞书审批，免审=不等审批、发飞书通知后直接进入发布/评论步骤。休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（无新素材、日上限、风控、页面核对仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
+        description="全局周历是所有账号的默认值；账号表可单独添加排期，账号自定义优先，恢复全局后立即重新继承。每张周历都管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容。每个动作可选「关 / 开 / 免审」；休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（无新素材、日上限、风控、页面核对仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
       />
 
       <Card
@@ -574,7 +662,7 @@ export function ContentSchedulePage() {
 
       <Card size="small" title="账号内容自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          每账号：总开关（默认关）→ 自动发帖 / 自动评论 / 自动联系评论各自选择关、开或免审，并配置日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动联系评论都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）；选择免审时只跳过飞书审批等待，不跳过风控配额、去重、页面核对和结果回执。联系评论额外规矩：开启须先配联系方式（未配硬拒）；建议**一码一号**——同一联系方式配多账号仍可开启，但会提示防关联封号风险；日上限=每日自动尝试数（被拒/无目标也占额度），硬上限 10、建议 ≤3；改联系方式后请自查一码一号。
+          「跟随全局」使用上方默认周历；点击「添加排期」可为该社媒账号单独配置活跃与内容时段，账号配置优先。每账号：总开关（默认关）→ 自动发帖 / 自动评论 / 自动联系评论各自选择关、开或免审，并配置日上限。触发时刻在「可自动」小时内按「账号 × 动作」错峰打散、逐日变化。自动评论 / 自动联系评论都是「尝试」——自行搜索目标、可能 0 产出（如实回卡）；选择免审时只跳过飞书审批等待，不跳过风控配额、去重、页面核对和结果回执。联系评论开启须先配联系方式；建议一码一号，同一联系方式配多账号仍可开启但会提示风险。
         </Typography.Paragraph>
         {catalog.isLoading ? (
           <Skeleton active paragraph={{ rows: 4 }} />
@@ -610,32 +698,82 @@ export function ContentSchedulePage() {
             点格循环三态：休眠 → 活跃 → 活跃+可自动（白点）→ 休眠。点「天」名 / 小时号对整行 / 整列做同样推进。
             改绿格即改浏览会话时段（与「安全」页同一份数据）。自动位只能落在活跃格上，格子转休眠时自动位随之清除。
           </Typography.Text>
-          <Space wrap>
-            <Button size="small" onClick={() => { setBrowseMask(FULL_ACTIVE_MASK); setContentMask((c) => clampContent(FULL_ACTIVE_MASK, c)); }}>
-              全部活跃
-            </Button>
-            <Button size="small" onClick={() => { const b = workdayMask(); setBrowseMask(b); setContentMask((c) => clampContent(b, c)); }}>
-              工作时间
-            </Button>
-            <Button size="small" onClick={() => { setBrowseMask(EMPTY_MASK); setContentMask(EMPTY_MASK); }}>
-              全部休眠
-            </Button>
-            <Button size="small" onClick={() => setContentMask(EMPTY_MASK)}>
-              清空自动位
-            </Button>
-            <Typography.Text type="secondary">
-              活跃 {countActive(browseMask)} / 168，其中可自动 {countActive(clampContent(browseMask, contentMask))}
-            </Typography.Text>
-          </Space>
-          <WeekActiveGrid
-            mask={browseMask}
-            overlayMask={clampContent(browseMask, contentMask)}
-            overlayTitle="可自动发内容"
-            onToggleCell={cycleCell}
-            onToggleRow={(d) => cycleGroup(Array.from({ length: 24 }, (_, h) => [d, h] as [number, number]))}
-            onToggleCol={(h) => cycleGroup(Array.from({ length: 7 }, (_, d) => [d, h] as [number, number]))}
+          <ScheduleGridEditor
+            browseMask={browseMask}
+            contentMask={contentMask}
+            onChange={(browse, content) => {
+              setBrowseMask(browse);
+              setContentMask(content);
+            }}
           />
         </Space>
+      </Modal>
+
+      <Modal
+        title={`编辑账号排期${accountGridRow ? `：${displayName(accountGridRow)}` : ''}`}
+        open={accountGridRow !== null}
+        onCancel={() => {
+          if (!saveAccountGrid.isPending) setAccountGridRow(null);
+        }}
+        onOk={() => {
+          if (!accountGridRow) return;
+          if (!isValidMask(accountBrowseMask) || !isValidMask(accountContentMask)) {
+            message.error('掩码非法（须 168 位 0/1）');
+            return;
+          }
+          saveAccountGrid.mutate({
+            accountId: accountGridRow.accountId,
+            activeWeekMask: accountBrowseMask,
+            contentActiveMask: clampContent(accountBrowseMask, accountContentMask),
+          });
+        }}
+        confirmLoading={saveAccountGrid.isPending}
+        width={760}
+        okText="保存账号排期"
+        cancelText="取消"
+      >
+        {accountGridRow ? (
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <Alert
+              type="info"
+              showIcon
+              message="仅影响当前社媒账号"
+              description="保存后该账号的活跃与内容排期优先于全局；总开关、动作模式和日上限保持不变。"
+            />
+            {accountGridRow.hasActiveOverrideMask || accountGridRow.hasContentOverrideMask ? (
+              <Popconfirm
+                title="恢复跟随全局排期？"
+                description="将同时清空该账号的活跃与内容时段覆盖，其它自动化开关不变。"
+                okText="恢复全局"
+                cancelText="取消"
+                onConfirm={() =>
+                  saveAccountGrid.mutate({
+                    accountId: accountGridRow.accountId,
+                    activeWeekMask: null,
+                    contentActiveMask: null,
+                  })
+                }
+              >
+                <Button danger size="small" loading={saveAccountGrid.isPending}>
+                  恢复全局
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Typography.Text type="secondary">当前跟随全局；编辑器已按当前全局生效值初始化。</Typography.Text>
+            )}
+            <Typography.Text type="secondary">
+              点格循环三态：休眠 → 活跃 → 活跃+可自动（白点）→ 休眠。自动位只能落在活跃格上。
+            </Typography.Text>
+            <ScheduleGridEditor
+              browseMask={accountBrowseMask}
+              contentMask={accountContentMask}
+              onChange={(browse, content) => {
+                setAccountBrowseMask(browse);
+                setAccountContentMask(content);
+              }}
+            />
+          </Space>
+        ) : null}
       </Modal>
     </Space>
   );

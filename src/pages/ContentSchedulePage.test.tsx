@@ -69,6 +69,14 @@ function makeRow(overrides: Partial<ContentScheduleRow> = {}): ContentScheduleRo
     contactCommentMode: 'off',
     contactCommentDailyCap: 0,
     hasContactInfo: true,
+    activeWeekMask: null,
+    contentActiveMask: null,
+    effectiveActiveWeekMask: null,
+    effectiveContentActiveMask: null,
+    activeMaskSource: 'global',
+    contentMaskSource: 'global',
+    hasActiveOverrideMask: false,
+    hasContentOverrideMask: false,
     maskSource: 'global',
     hasOverrideMask: false,
     configured: true,
@@ -175,6 +183,81 @@ describe('ContentSchedulePage 乐观开关 + 有效态联动', () => {
       ]),
     );
     expect(selectedMode('自动评论 acc-1')).toBe('免审');
+  });
+});
+
+describe('ContentSchedulePage 账号级活跃与内容排期', () => {
+  const ALL_ON = '1'.repeat(168);
+  const ALL_OFF = '0'.repeat(168);
+
+  beforeEach(() => {
+    state.rows = [makeRow()];
+    state.putImpl = () => Promise.resolve({});
+    state.putCalls = [];
+  });
+
+  it('未配置账号显示跟随全局；添加排期从全局生效值初始化并只原子写账号端点', async () => {
+    await renderSchedule();
+    expect(screen.getByText('跟随全局')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '添加账号排期 acc-1' }));
+    await screen.findByText('编辑账号排期：昵称A');
+    expect(screen.getByText('当前跟随全局；编辑器已按当前全局生效值初始化。')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '保存账号排期' }));
+    await waitFor(() =>
+      expect(state.putCalls).toEqual([
+        {
+          path: '/api/content-schedule/acc-1',
+          body: { activeWeekMask: ALL_ON, contentActiveMask: ALL_OFF },
+        },
+      ]),
+    );
+  });
+
+  it('账号自定义排期可确认恢复全局，两层覆盖同时清空且不改动作开关', async () => {
+    state.rows = [
+      makeRow({
+        activeWeekMask: ALL_OFF,
+        contentActiveMask: ALL_OFF,
+        effectiveActiveWeekMask: ALL_OFF,
+        effectiveContentActiveMask: ALL_OFF,
+        activeMaskSource: 'override',
+        contentMaskSource: 'override',
+        hasActiveOverrideMask: true,
+        hasContentOverrideMask: true,
+        maskSource: 'override',
+        hasOverrideMask: true,
+      }),
+    ];
+    await renderSchedule();
+    expect(screen.getByText('账号自定义')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑账号排期 acc-1' }));
+    fireEvent.click(await screen.findByRole('button', { name: '恢复全局' }));
+    const confirmButtons = await screen.findAllByRole('button', { name: '恢复全局' });
+    fireEvent.click(confirmButtons.at(-1)!);
+
+    await waitFor(() =>
+      expect(state.putCalls).toEqual([
+        {
+          path: '/api/content-schedule/acc-1',
+          body: { activeWeekMask: null, contentActiveMask: null },
+        },
+      ]),
+    );
+  });
+
+  it('账号排期保存失败不关闭编辑器、不伪装成功', async () => {
+    state.putImpl = () => Promise.reject(new Error('boom'));
+    await renderSchedule();
+
+    fireEvent.click(screen.getByRole('button', { name: '添加账号排期 acc-1' }));
+    fireEvent.click(await screen.findByRole('button', { name: '保存账号排期' }));
+
+    await screen.findByText(/账号排期保存失败/);
+    expect(screen.getByText('编辑账号排期：昵称A')).not.toBeNull();
+    expect(state.putCalls[0]?.path).toBe('/api/content-schedule/acc-1');
   });
 });
 

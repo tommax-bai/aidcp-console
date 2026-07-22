@@ -1268,10 +1268,7 @@ export interface ContentScheduleGlobalView {
   updatedBy: string | null;
 }
 
-/**
- * 每账号内容排期一行（GET /api/content-schedule）。Phase 1 只暴露发帖字段。
- * 时段来源 maskSource：'override'=该账号自定义时段（v1 无编辑入口，仅回显）、'global'=继承全局内容格。
- */
+/** 每账号内容排期一行（GET /api/content-schedule），含两层独立的账号覆盖与生效来源。 */
 export interface ContentScheduleRow {
   accountId: string;
   label: string | null;
@@ -1298,7 +1295,19 @@ export interface ContentScheduleRow {
   contactCommentDailyCap: number;
   /** 该账号是否已配联系方式（联系评论开关前置徽标）。 */
   hasContactInfo: boolean;
+  /** 原始账号覆盖；null = 对应层继承全局。 */
+  activeWeekMask: string | null;
+  contentActiveMask: string | null;
+  /** Cloud 解析后的生效值；活跃 null=全天开放，内容 null=完全不自动。 */
+  effectiveActiveWeekMask: string | null;
+  effectiveContentActiveMask: string | null;
+  activeMaskSource: 'override' | 'global';
+  contentMaskSource: 'override' | 'global';
+  hasActiveOverrideMask: boolean;
+  hasContentOverrideMask: boolean;
+  /** 旧字段兼容：等价于内容时段来源。 */
   maskSource: 'override' | 'global';
+  /** 旧字段兼容：等价于 hasContentOverrideMask。 */
   hasOverrideMask: boolean;
   /** 侧表有行（false=纯默认=未配）。 */
   configured: boolean;
@@ -1323,7 +1332,9 @@ export interface ContentSchedulePatch {
   contactCommentEnabled?: boolean;
   contactCommentMode?: ContentScheduleActionMode;
   contactCommentDailyCap?: number;
-  /** 每账号时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。v1 前端不写此字段（留缝）。 */
+  /** 每账号活跃时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。 */
+  activeWeekMask?: string | null;
+  /** 每账号内容时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。 */
   contentActiveMask?: string | null;
 }
 
