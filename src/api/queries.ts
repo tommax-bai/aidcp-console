@@ -40,6 +40,7 @@ import type {
   ClientUserMutationResponse,
   ClientScopeMutationResponse,
   DownloadsManifest,
+  ApprovalPolicyCatalog,
 } from '../types/api';
 
 export function useVersion() {
@@ -169,6 +170,13 @@ export function useNotificationRoutes() {
   return useQuery({
     queryKey: ['notification', 'routes'],
     queryFn: () => apiGet<{ routes: PanelGroupRoute[] }>('/api/notification/routes'),
+  });
+}
+
+export function useApprovalPolicies() {
+  return useQuery({
+    queryKey: ['approval-policies'],
+    queryFn: () => apiGet<ApprovalPolicyCatalog>('/api/approval-policies'),
   });
 }
 

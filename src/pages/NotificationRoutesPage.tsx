@@ -3,16 +3,21 @@ import { App, Alert, Card, Select, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useAccounts, useNotificationRoutes, useBotChats } from '../api/queries';
+import { useAccounts, useApprovalPolicies, useNotificationRoutes, useBotChats } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
-import type { PanelGroupRoute, PanelBotChat } from '../types/api';
+import type {
+  GroupPublishApprovalDelivery,
+  GroupPublishApprovalPolicy,
+  PanelGroupRoute,
+  PanelBotChat,
+} from '../types/api';
 
 /**
  * 通知路由页（change feishu-per-team-notification-routing）。
  * - 账号按分组标签 `group_label` 归团队；每个团队映射到一个飞书群（可为对外共享的客户外部群）。
  * - 账号的「评论 / @」入站通知按此路由到对应群；未映射 / 映射不到 → 落默认群（绝不静默丢）。
  * - 目标只能从「机器人当前所在群」里选（opaque chat_id，非枚举）——杜绝手贴 raw chat_id 贴错群（→ 跨客户 PII 泄漏）。
- * - 审批卡 / 运维告警 / 命令回执仍走默认（管理）群，不受本页路由影响。
+ * - 来源会话优先；无来源会话时按账号团队群，再回落默认群。
  */
 
 interface RouteRow {
@@ -20,6 +25,9 @@ interface RouteRow {
   accountCount: number;
   chatId: string | null;
   route: PanelGroupRoute | null;
+  delivery: GroupPublishApprovalDelivery;
+  activeAccountCount: number;
+  reachableAccountCount: number;
 }
 
 function chatOptionLabel(c: PanelBotChat): string {
@@ -39,6 +47,7 @@ export function NotificationRoutesPage() {
   const accounts = useAccounts();
   const routes = useNotificationRoutes();
   const botChats = useBotChats();
+  const approvalPolicies = useApprovalPolicies();
 
   // 非乐观：round-trip 后拉真态，诚实文案（对齐 group-label 编辑）。
   const save = useMutation({
@@ -51,23 +60,44 @@ export function NotificationRoutesPage() {
     onError: () => message.error('保存失败，请重试'),
   });
 
+  const saveDelivery = useMutation({
+    mutationFn: (v: { groupLabel: string; delivery: GroupPublishApprovalDelivery }) =>
+      apiPut<{ policy: GroupPublishApprovalPolicy }>('/api/approval-policies/group-publish', v),
+    onSuccess: (res) => {
+      message.success(res.policy.delivery === 'client_only' ? '已设置为仅客户端审核' : '已恢复客户端 + 飞书双入口');
+      void qc.invalidateQueries({ queryKey: ['approval-policies'] });
+    },
+    onError: () => message.error('稿件审核入口保存失败，当前真态未改变'),
+  });
+
   const rows = useMemo<RouteRow[]>(() => {
     const routeByLabel = new Map<string, PanelGroupRoute>();
     for (const r of routes.data?.routes ?? []) routeByLabel.set(r.groupLabel, r);
+    const policyByLabel = new Map<string, GroupPublishApprovalPolicy>();
+    for (const policy of approvalPolicies.data?.groups ?? []) policyByLabel.set(policy.groupLabel, policy);
     // 团队键来源：账号的非空 group_label（统计账号数）∪ 已存在的路由键（含无账号的历史遗留，供清理）。
     const counts = new Map<string, number>();
     for (const a of accounts.data?.accounts ?? []) {
       const key = (a.groupLabel ?? '').trim();
       if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
     }
-    const labels = new Set<string>([...counts.keys(), ...routeByLabel.keys()]);
+    const labels = new Set<string>([...counts.keys(), ...routeByLabel.keys(), ...policyByLabel.keys()]);
     return [...labels]
       .sort((a, b) => a.localeCompare(b))
       .map((groupLabel) => {
         const route = routeByLabel.get(groupLabel) ?? null;
-        return { groupLabel, accountCount: counts.get(groupLabel) ?? 0, chatId: route?.chatId ?? null, route };
+        const policy = policyByLabel.get(groupLabel);
+        return {
+          groupLabel,
+          accountCount: counts.get(groupLabel) ?? 0,
+          chatId: route?.chatId ?? null,
+          route,
+          delivery: policy?.delivery ?? 'client_and_feishu',
+          activeAccountCount: policy?.activeAccountCount ?? 0,
+          reachableAccountCount: policy?.reachableAccountCount ?? 0,
+        };
       });
-  }, [accounts.data, routes.data]);
+  }, [accounts.data, routes.data, approvalPolicies.data]);
 
   if (routes.isError) return <QueryError title="通知路由加载失败" onRetry={() => void routes.refetch()} />;
 
@@ -125,6 +155,40 @@ export function NotificationRoutesPage() {
       ),
     },
     {
+      title: '稿件审核入口',
+      dataIndex: 'delivery',
+      width: 275,
+      render: (delivery: GroupPublishApprovalDelivery, row) => {
+        const incomplete = row.reachableAccountCount < row.activeAccountCount;
+        return (
+          <div>
+            <Select<GroupPublishApprovalDelivery>
+              aria-label={`分组 ${row.groupLabel} 稿件审核入口`}
+              size="small"
+              style={{ width: 210 }}
+              value={delivery}
+              disabled={saveDelivery.isPending || approvalPolicies.isLoading}
+              options={[
+                { value: 'client_and_feishu', label: '客户端 + 飞书' },
+                { value: 'client_only', label: '仅客户端' },
+              ]}
+              onChange={(value) => saveDelivery.mutate({ groupLabel: row.groupLabel, delivery: value })}
+            />
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                客户端可审批 {row.reachableAccountCount}/{row.activeAccountCount} 个活跃账号
+              </Typography.Text>
+            </div>
+            {delivery === 'client_only' && incomplete && (
+              <Typography.Text type="danger" style={{ fontSize: 11 }}>
+                未覆盖账号仍会回退发送飞书卡
+              </Typography.Text>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'chatId',
       width: 130,
@@ -151,8 +215,17 @@ export function NotificationRoutesPage() {
             每个团队的账号「评论 / @」通知投到对应群；未映射的落<strong>默认群：{defaultChatId ? defaultGroupName : '（未设置默认群）'}</strong>、绝不丢。
           </span>
         }
-        description="团队键来自账号的「分组标签」（在账号页编辑）。目标只能从机器人当前所在群里选——请先把机器人拉进该群。审批卡 / 运维告警 / 命令回执仍走默认（管理）群，不受此页影响。"
+        description="团队键来自账号页的「分组标签」。飞书命令产生的卡优先回命令来源会话；无来源会话的通知、审批卡与账号告警按团队群路由，未命中再落默认群。选择「仅客户端」只抑制客户归属可证账号的无来源稿件按钮卡，不影响评论免审通知、结果、失败、告警或命令回执。"
       />
+      {approvalPolicies.isError && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="稿件审核入口策略暂不可用"
+          description="路由配置仍可编辑；Cloud 会保守保留飞书稿件审批卡，不会产生隐藏待审稿。"
+        />
+      )}
       {namesUnavailable && chats.length > 0 && (
         <Alert
           type="warning"
@@ -174,7 +247,7 @@ export function NotificationRoutesPage() {
       <Table<RouteRow>
         rowKey="groupLabel"
         size="small"
-        loading={accounts.isLoading || routes.isLoading}
+        loading={accounts.isLoading || routes.isLoading || approvalPolicies.isLoading}
         dataSource={rows}
         columns={columns}
         pagination={false}

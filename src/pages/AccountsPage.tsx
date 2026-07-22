@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { App, Button, Card, Popconfirm, Tag } from 'antd';
+import { Alert, App, Button, Card, Popconfirm, Select, Tag, Tooltip } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
-import { useAccounts } from '../api/queries';
+import { useAccounts, useApprovalPolicies } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import {
   AccountsTable,
@@ -13,11 +13,12 @@ import {
 } from '../components';
 import { accountName } from '../types/accountDisplay';
 import { OPERATOR_STATUS_LABEL, labelOf } from '../types/aidcp-enums';
-import type { PanelAccount } from '../types/api';
+import type { AccountCommentApprovalMode, AccountCommentApprovalPolicy, PanelAccount } from '../types/api';
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
 export function AccountsPage() {
   const { data, isLoading, isError, refetch } = useAccounts();
+  const approvalPolicies = useApprovalPolicies();
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [runtimeAccount, setRuntimeAccount] = useState<PanelAccount | null>(null);
@@ -62,6 +63,20 @@ export function AccountsPage() {
     onError: () => message.error('联系方式保存失败'),
   });
 
+  const commentPolicyCmd = useMutation({
+    mutationFn: (v: { accountId: string; mode: AccountCommentApprovalMode }) =>
+      apiPut<{ policy: AccountCommentApprovalPolicy }>('/api/approval-policies/account-comment', v),
+    onSuccess: (res) => {
+      message.success(res.policy.mode === 'auto_approve_all' ? '已开启账号全局评论免审' : '已恢复按来源规则审批');
+      void qc.invalidateQueries({ queryKey: ['approval-policies'] });
+    },
+    onError: () => message.error('评论审批策略保存失败，当前真态未改变'),
+  });
+
+  const policyByAccount = new Map(
+    (approvalPolicies.data?.accounts ?? []).map((policy) => [policy.accountId, policy]),
+  );
+
   const operatorStatusControl = (account: PanelAccount) => {
     const paused = account.operatorStatus === 'paused';
     return (
@@ -88,6 +103,13 @@ export function AccountsPage() {
   return (
     <div className="page-stack">
       <Card size="small" title="账号">
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="账号全局免审会覆盖所有评论来源"
+          description="开启后，普通浏览、排期、联系评论、强制互动、结构化委托和飞书手工 /comment 都不再等待按钮审批；系统仍会先发免审通知，通知失败不发评论，风控与提交确认保持不变。"
+        />
         <AccountsTable
           accounts={data?.accounts ?? []}
           loading={isLoading}
@@ -98,6 +120,27 @@ export function AccountsPage() {
             ? <FacebookSearchConfig account={account} compactTrigger /> : null}
           runtimeControl={(account) => account.platform === 'wechat_channels'
             ? <Button size="small" onClick={() => setRuntimeAccount(account)}>运行控制</Button> : null}
+          commentApprovalControl={(account) => {
+            if (approvalPolicies.isError) return <Tag color="error">策略不可用</Tag>;
+            const policy = policyByAccount.get(account.accountId);
+            return (
+              <Tooltip title="全局免审包含飞书手工 /comment；通知失败仍不提交">
+                <Select<AccountCommentApprovalMode>
+                  aria-label={`账号 ${account.accountId} 评论审批`}
+                  size="small"
+                  style={{ width: 142 }}
+                  loading={approvalPolicies.isLoading}
+                  disabled={approvalPolicies.isLoading || commentPolicyCmd.isPending}
+                  value={policy?.mode ?? 'source_rules'}
+                  options={[
+                    { value: 'source_rules', label: '按来源规则' },
+                    { value: 'auto_approve_all', label: '全局免审（含 /comment）' },
+                  ]}
+                  onChange={(mode) => commentPolicyCmd.mutate({ accountId: account.accountId, mode })}
+                />
+              </Tooltip>
+            );
+          }}
           onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
           onEditContact={(accountId, contactInfo) => contactCmd.mutate({ accountId, contactInfo })}
         />

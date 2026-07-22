@@ -1251,6 +1251,32 @@ export interface PanelGroupRoute {
   updatedAt: number;
 }
 
+export type AccountCommentApprovalMode = 'source_rules' | 'auto_approve_all';
+export type GroupPublishApprovalDelivery = 'client_and_feishu' | 'client_only';
+
+export interface AccountCommentApprovalPolicy {
+  accountId: string;
+  mode: AccountCommentApprovalMode;
+  configured: boolean;
+  updatedBy: string | null;
+  updatedAt: number | null;
+}
+
+export interface GroupPublishApprovalPolicy {
+  groupLabel: string;
+  delivery: GroupPublishApprovalDelivery;
+  configured: boolean;
+  updatedBy: string | null;
+  updatedAt: number | null;
+  activeAccountCount: number;
+  reachableAccountCount: number;
+}
+
+export interface ApprovalPolicyCatalog {
+  accounts: AccountCommentApprovalPolicy[];
+  groups: GroupPublishApprovalPolicy[];
+}
+
 /** 机器人当前所在的一个群（供路由目标下拉；杜绝手贴 raw chat_id）。 */
 export interface PanelBotChat {
   chatId: string;
