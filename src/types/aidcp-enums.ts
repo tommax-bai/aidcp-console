@@ -66,7 +66,7 @@ export const RISK_ACTION_COLOR: Record<RiskAction, string> = {
   publish: 'purple',
   view: 'default',
   search: 'geekblue',
-  comment_like: 'cyan', // 评论赞（change console-cloud-panel-hardening #4；灰度 AIDCP_COMMENT_LIKE）
+  comment_like: 'cyan', // 评论赞
   join_group: 'lime',
   dm_reply: 'orange',
 };
