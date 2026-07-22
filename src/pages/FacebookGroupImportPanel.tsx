@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Button, Input, Segmented, Select, Space, Typography, Upload } from 'antd';
+import { Alert, Button, Input, Segmented, Select, Space, Switch, Typography, Upload } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
 import {
   DownloadOutlined,
@@ -29,7 +29,11 @@ export interface FacebookGroupImportPanelProps {
   facets?: FacebookGroupTargetFacets;
   facetsLoading?: boolean;
   importing?: boolean;
-  onImport: (items: FacebookGroupImportItem[], mode: FacebookGroupImportMode) => Promise<void>;
+  onImport: (
+    items: FacebookGroupImportItem[],
+    mode: FacebookGroupImportMode,
+    accountGroupLabels?: string[],
+  ) => Promise<void>;
 }
 
 function errorText(error: unknown): string {
@@ -51,6 +55,8 @@ export function FacebookGroupImportPanel({
   const [csvSelection, setCsvSelection] = useState<CsvSelection>();
   const [csvError, setCsvError] = useState<string>();
   const [readingCsv, setReadingCsv] = useState(false);
+  const [replaceScopes, setReplaceScopes] = useState(false);
+  const [accountGroupLabels, setAccountGroupLabels] = useState<string[]>([]);
 
   const regionOptions = useMemo(
     () => (facets?.regions ?? []).map((item) => ({ value: item.region, label: item.region })),
@@ -60,6 +66,23 @@ export function FacebookGroupImportPanel({
     () => (facets?.directions ?? []).map((item) => ({ value: item, label: item })),
     [facets],
   );
+  const accountGroupOptions = useMemo(
+    () => (facets?.accountGroupLabels ?? []).map((item) => ({ value: item, label: item })),
+    [facets],
+  );
+
+  const importItems = (
+    items: FacebookGroupImportItem[],
+    importMode: FacebookGroupImportMode,
+  ) =>
+    replaceScopes
+      ? onImport(items, importMode, accountGroupLabels)
+      : onImport(items, importMode);
+
+  const resetScopeDraft = () => {
+    setReplaceScopes(false);
+    setAccountGroupLabels([]);
+  };
   const parkOptions = useMemo(
     () =>
       singleRegion
@@ -77,11 +100,12 @@ export function FacebookGroupImportPanel({
     if (singleDirection) item.direction = singleDirection;
 
     try {
-      await onImport([item], 'single');
+      await importItems([item], 'single');
       setSingleUrl('');
       setSingleRegion(undefined);
       setSinglePark(undefined);
       setSingleDirection(undefined);
+      resetScopeDraft();
     } catch {
       // The page mutation owns operator-facing request errors.
     }
@@ -114,9 +138,10 @@ export function FacebookGroupImportPanel({
   const submitCsv = async () => {
     if (!csvSelection) return;
     try {
-      await onImport(csvSelection.items, 'csv');
+      await importItems(csvSelection.items, 'csv');
       setCsvSelection(undefined);
       setCsvError(undefined);
+      resetScopeDraft();
     } catch {
       // The page mutation owns operator-facing request errors.
     }
@@ -134,6 +159,38 @@ export function FacebookGroupImportPanel({
           ]}
           onChange={setMode}
         />
+      </div>
+
+      <div className="facebook-group-import__scope">
+        <Space size={8} wrap>
+          <Switch
+            aria-label="本次设置适用账号分组"
+            checked={replaceScopes}
+            onChange={setReplaceScopes}
+          />
+          <Typography.Text>本次设置适用账号分组</Typography.Text>
+        </Space>
+        <Select
+          aria-label="导入适用账号分组"
+          mode="multiple"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          value={accountGroupLabels}
+          options={accountGroupOptions}
+          placeholder="选择一个或多个账号分组"
+          disabled={!replaceScopes}
+          loading={facetsLoading}
+          onChange={setAccountGroupLabels}
+          style={{ minWidth: 280 }}
+        />
+        <Typography.Text type="secondary">
+          {replaceScopes
+            ? accountGroupLabels.length > 0
+              ? `将统一归属到 ${accountGroupLabels.length} 个账号分组`
+              : '将明确清空适用分组；未设置范围的群组不会被自动加入'
+            : '保持已存在群组的适用分组不变；新群组将保持未设置范围'}
+        </Typography.Text>
       </div>
 
       {mode === 'single' ? (

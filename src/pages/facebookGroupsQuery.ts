@@ -5,6 +5,7 @@ export interface FacebookGroupListQuery {
   region?: string;
   park?: string;
   direction?: string;
+  accountGroupLabel?: string;
 }
 
 export const GROUP_PAGE_SIZE = 30;
@@ -18,5 +19,6 @@ export function facebookGroupListPath(input: FacebookGroupListQuery): string {
   if (input.region) q.set('region', input.region);
   if (input.park) q.set('park', input.park);
   if (input.direction) q.set('direction', input.direction);
+  if (input.accountGroupLabel) q.set('accountGroupLabel', input.accountGroupLabel);
   return `/api/facebook/groups?${q.toString()}`;
 }

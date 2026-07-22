@@ -30,6 +30,8 @@ import type {
   ContentScheduleActionMode,
   ContentScheduleAutomationAction,
   ContentScheduleAvailableAction,
+  FacebookJoinGroupAutomationPatch,
+  FacebookJoinGroupAutomationWriteResult,
 } from '../types/api';
 import {
   WeekActiveGrid,
@@ -143,6 +145,8 @@ const platformLabel = (platform: string) => PLATFORM_LABELS[platform] ?? platfor
 
 const isActionModeOn = (mode: ContentScheduleActionMode) => mode !== 'off';
 
+type ModeAutomationAction = Exclude<ContentScheduleAutomationAction, 'join_group'>;
+
 interface ActionUiConfig {
   label: string;
   enabled: (row: ContentScheduleRow) => boolean;
@@ -154,7 +158,7 @@ interface ActionUiConfig {
 }
 
 /** 动作字段适配，不表达任何平台支持关系；平台能力只认 availableActions。 */
-const actionUi: Record<ContentScheduleAutomationAction, ActionUiConfig> = {
+const actionUi: Record<ModeAutomationAction, ActionUiConfig> = {
   post: {
     label: '自动发帖',
     enabled: (row) => row.postEnabled,
@@ -182,12 +186,19 @@ const actionUi: Record<ContentScheduleAutomationAction, ActionUiConfig> = {
   },
 };
 
-const actionIds = Object.keys(actionUi) as ContentScheduleAutomationAction[];
+const modeActionIds = Object.keys(actionUi) as ModeAutomationAction[];
+const actionIds: ContentScheduleAutomationAction[] = [...modeActionIds, 'join_group'];
+const actionLabel = (action: ContentScheduleAutomationAction) =>
+  action === 'join_group' ? '自动加群' : actionUi[action].label;
 
 const actionMetadata = (row: ContentScheduleRow, action: ContentScheduleAutomationAction) =>
   row.availableActions.find((item) => item.action === action);
 
 const isStoredActionConfigured = (row: ContentScheduleRow, action: ContentScheduleAutomationAction) => {
+  if (action === 'join_group') {
+    const config = row.joinGroupAutomation;
+    return Boolean(config && (config.enabled || config.dailyCap > 0 || config.weekMask !== null));
+  }
   const config = actionUi[action];
   return config.enabled(row) || isActionModeOn(config.mode(row)) || config.dailyCap(row) > 0;
 };
@@ -196,6 +207,10 @@ const hasUnsupportedActionConfig = (row: ContentScheduleRow) =>
   actionIds.some((action) => {
     const metadata = actionMetadata(row, action);
     if (!metadata) return isStoredActionConfigured(row, action);
+    if (action === 'join_group') {
+      if (!row.joinGroupAutomation) return true;
+      return row.joinGroupAutomation.dailyCap > metadata.maxDailyCap;
+    }
     const mode = actionUi[action].mode(row);
     return (
       (isActionModeOn(mode) && !metadata.allowedModes.includes(mode as Exclude<ContentScheduleActionMode, 'off'>)) ||
@@ -206,6 +221,11 @@ const hasUnsupportedActionConfig = (row: ContentScheduleRow) =>
 const enabledActionSummary = (row: ContentScheduleRow) => {
   if (!row.autoEnabled) return ['总开关关闭'];
   return row.availableActions.flatMap((metadata) => {
+    if (metadata.action === 'join_group') {
+      const config = row.joinGroupAutomation;
+      if (!config?.enabled || config.dailyCap <= 0) return [];
+      return [`自动加群 · 开 · ${config.dailyCap}/日${config.scopeReady ? '' : ' · 范围未就绪'}`];
+    }
     const config = actionUi[metadata.action];
     const mode = config.mode(row);
     if (!isActionModeOn(mode) || !metadata.allowedModes.includes(mode as Exclude<ContentScheduleActionMode, 'off'>)) {
@@ -494,10 +514,42 @@ export function ContentSchedulePage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true }),
   });
 
+  // 自动加群是 Facebook 专用、服务端派生有效值的独立配置；只在 Cloud 确认回执后更新，避免乐观伪造范围/风控结果。
+  const [joinMaskRow, setJoinMaskRow] = useState<ContentScheduleRow | null>(null);
+  const [joinMaskDraft, setJoinMaskDraft] = useState(EMPTY_MASK);
+  const patchJoinGroup = useMutation({
+    mutationFn: ({ accountId, patch }: { accountId: string; patch: FacebookJoinGroupAutomationPatch }) =>
+      apiPut<FacebookJoinGroupAutomationWriteResult>(
+        `/api/content-schedule/${encodeURIComponent(accountId)}/join-group`,
+        patch,
+      ),
+    onSuccess: (result, variables) => {
+      qc.setQueryData<ContentScheduleCatalog>(['config', 'content-schedule'], (old) =>
+        old
+          ? {
+              ...old,
+              rows: old.rows.map((row) =>
+                row.accountId === variables.accountId
+                  ? { ...row, joinGroupAutomation: result.joinGroupAutomation }
+                  : row,
+              ),
+            }
+          : old,
+      );
+      if (Object.prototype.hasOwnProperty.call(variables.patch, 'weekMask')) setJoinMaskRow(null);
+      message.success('自动加群配置已保存');
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+    },
+    onError: (error) => {
+      message.error(`自动加群配置保存失败：${errorText(error)}`);
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+    },
+  });
+
   // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${action}`。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
-  const commitCap = (r: ContentScheduleRow, action: ContentScheduleAutomationAction) => {
+  const commitCap = (r: ContentScheduleRow, action: ModeAutomationAction) => {
     const key = `${r.accountId}:${action}`;
     const config = actionUi[action];
     const current = config.dailyCap(r);
@@ -517,6 +569,39 @@ export function ContentSchedulePage() {
       const { [key]: _drop, ...rest } = d;
       return rest;
     });
+  };
+
+  const commitJoinCap = (row: ContentScheduleRow) => {
+    const config = row.joinGroupAutomation;
+    if (!config) return;
+    const key = `${row.accountId}:join_group`;
+    const draft = capDraft[key];
+    if (draft == null || draft === config.dailyCap) {
+      setCapDraft((current) => {
+        const { [key]: _drop, ...rest } = current;
+        return rest;
+      });
+      return;
+    }
+    patchJoinGroup.mutate({ accountId: row.accountId, patch: { dailyCap: draft } });
+    setCapDraft((current) => {
+      const { [key]: _drop, ...rest } = current;
+      return rest;
+    });
+  };
+
+  const openJoinMaskEditor = (row: ContentScheduleRow) => {
+    const config = row.joinGroupAutomation;
+    if (!config) return;
+    setJoinMaskDraft(contentMaskForEdit(config.weekMask ?? config.effectiveWeekMask));
+    setJoinMaskRow(row);
+  };
+
+  const toggleJoinMaskCells = (cells: Array<[number, number]>) => {
+    const turnOn = cells.some(([day, hour]) => joinMaskDraft[cellIdx(day, hour)] !== '1');
+    let next = joinMaskDraft;
+    for (const [day, hour] of cells) next = setCell(next, day, hour, turnOn);
+    setJoinMaskDraft(next);
   };
 
   const previewBrowse = browseMaskForEdit(sl.data?.activeWeekMask);
@@ -558,7 +643,7 @@ export function ContentSchedulePage() {
   // 子开关（发帖/评论/联系评论）显示「有效态」= 总开关 && 本开关：总开关关时统一显示为关，与云端
   // 「总开关关=整账号不自动」（content-scheduler 账号级闸）一致；且不写库、保留各子开关记忆值，
   // 重开总开关即恢复。——消除「总开关关后子开关仍显示开却灰掉、关不掉」的假象（红线：不骗用户）。
-  const columns: ColumnsType<ContentScheduleRow> = useMemo(() => {
+  const columns: ColumnsType<ContentScheduleRow> = (() => {
     const platformColumn: ColumnsType<ContentScheduleRow>[number] = {
       title: '平台',
       key: 'platform',
@@ -686,12 +771,84 @@ export function ContentSchedulePage() {
     }
 
     const actionColumns: ColumnsType<ContentScheduleRow> = visibleActionIds.map((action) => ({
-      title: actionUi[action].label,
+      title: actionLabel(action),
       key: action,
-      width: actionUi[action].requiresContact ? 230 : 190,
+      width: action === 'join_group' ? 300 : actionUi[action].requiresContact ? 230 : 190,
       render: (_: unknown, row) => {
         const metadata = actionMetadata(row, action);
         if (!metadata) return <Typography.Text type="secondary">此账号不可配置</Typography.Text>;
+        if (action === 'join_group') {
+          const config = row.joinGroupAutomation;
+          if (!config) return <Tag color="red">Cloud 未返回自动加群配置</Tag>;
+          const capKey = `${row.accountId}:join_group`;
+          const recent = config.recentResult;
+          return (
+            <Space direction="vertical" size={6} style={{ maxWidth: 290 }}>
+              <Space size={8} wrap>
+                <Switch
+                  aria-label={`自动加群 ${row.accountId}`}
+                  checked={config.enabled}
+                  disabled={!row.autoEnabled}
+                  loading={patchJoinGroup.isPending}
+                  onChange={(enabled) => patchJoinGroup.mutate({ accountId: row.accountId, patch: { enabled } })}
+                />
+                {!row.autoEnabled ? <Tag>总开关关闭</Tag> : null}
+                <Tag color={config.scopeReady ? 'green' : 'warning'}>
+                  {config.scopeReady ? `范围就绪 ${config.scopedTargetCount}` : '范围未就绪'}
+                </Tag>
+              </Space>
+              {!config.scopeReady ? (
+                <Typography.Text type="warning" style={{ fontSize: 12 }}>
+                  {config.accountGroupLabel ? '当前账号分组没有可用群组' : '账号未归属分组'}
+                </Typography.Text>
+              ) : null}
+              <Space size={4} wrap>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>日上限</Typography.Text>
+                <InputNumber
+                  aria-label={`自动加群日上限 ${row.accountId}`}
+                  min={0}
+                  max={metadata.maxDailyCap}
+                  precision={0}
+                  disabled={!row.autoEnabled || !config.enabled}
+                  value={capDraft[capKey] ?? config.dailyCap}
+                  onChange={(value) => setCapDraft((draft) => ({ ...draft, [capKey]: value }))}
+                  onBlur={() => commitJoinCap(row)}
+                  onPressEnter={() => commitJoinCap(row)}
+                  status={config.dailyCap > metadata.maxDailyCap ? 'error' : undefined}
+                  style={{ width: 64 }}
+                />
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  / {metadata.maxDailyCap}，有效 {config.effectiveDailyCap}
+                </Typography.Text>
+              </Space>
+              <Space size={6} wrap>
+                <Tag color={config.weekMaskSource === 'custom' ? 'blue' : 'default'}>
+                  {config.weekMaskSource === 'custom' ? '自定义加群时段' : '跟随内容时段'}
+                </Tag>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  有效 {countActive(contentMaskForEdit(config.effectiveWeekMask))} / 168 小时
+                </Typography.Text>
+                <Button size="small" onClick={() => openJoinMaskEditor(row)}>
+                  {config.weekMaskSource === 'custom' ? '编辑时段' : '设置时段'}
+                </Button>
+              </Space>
+              {recent ? (
+                <Space direction="vertical" size={0}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    最近执行：{recent.outcome}{recent.reason ? ` · ${recent.reason}` : ''} · {new Date(recent.createdAt).toLocaleString()}
+                  </Typography.Text>
+                  {recent.groupUrl ? (
+                    <a href={recent.groupUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                      查看目标群组
+                    </a>
+                  ) : null}
+                </Space>
+              ) : (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>最近执行：暂无</Typography.Text>
+              )}
+            </Space>
+          );
+        }
         const config = actionUi[action];
         const storedMode = config.mode(row);
         const modeSupported =
@@ -738,7 +895,7 @@ export function ContentSchedulePage() {
       },
     }));
     return [...commonColumns, ...actionColumns, auditColumn];
-  }, [capDraft, commitCap, openAccountGridEditor, patchAccount, platformFilter, visibleActionIds]);
+  })();
 
   // 读失败：不回落到编造的默认周历掩码（fail-open 全活跃会被当真实配置展示）——诚实报错 + 重试全部。
   // 与「真的读到空配置」（掩码为 null）区分：那种仍走 fail-open/fail-closed 默认，只有读失败才不许伪造。
@@ -761,7 +918,7 @@ export function ContentSchedulePage() {
         type="info"
         showIcon
         message="活跃时段与内容自动化"
-        description="全局周历是所有账号的默认值；账号表可单独添加排期，账号自定义优先，恢复全局后立即重新继承。每张周历都管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容。每个动作可选「关 / 开 / 免审」；休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（无新素材、日上限、风控、页面核对仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
+        description="全局周历是所有账号的默认值；账号表可单独添加排期，账号自定义优先，恢复全局后立即重新继承。每张周历都管两层：绿格=账号活跃（允许浏览会话）；绿格里的白点=该小时还允许自动发内容。常规内容动作可选「关 / 开 / 免审」，平台专用动作按 Cloud 声明展示自己的开关、上限和时段；休眠格绝不自动（云端强制）。手动 /publish、/comment 不受时段限制。点=「允许自动尝试」，非保证发出（日上限、风控、目标范围、页面核对仍会拦）。需云端开启 AIDCP_CONTENT_SCHEDULE_AUTO 后排期才驱动触发。"
       />
 
       <Card
@@ -793,7 +950,7 @@ export function ContentSchedulePage() {
 
       <Card size="small" title="账号自动化">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          默认“全部平台”只看跨平台公共摘要；选择单个平台后，才按 Cloud 声明展示该平台真实支持的动作、模式和日上限。“跟随全局”使用上方默认周历，账号自定义排期优先。触发时刻仍在可自动小时内按“账号 × 动作”错峰打散；免审只跳过审批等待，不跳过风控、去重、页面核对和结果回执。
+          默认“全部平台”只看跨平台公共摘要；选择单个平台后，才按 Cloud 声明展示该平台真实支持的动作及其专用配置。“跟随全局”使用上方默认周历，账号自定义排期优先。触发时刻仍在可自动小时内按“账号 × 动作”错峰打散；免审只跳过审批等待，不跳过风控、去重、页面核对和结果回执。
         </Typography.Paragraph>
         <Space wrap style={{ marginBottom: 12 }}>
           <Segmented<string>
@@ -919,6 +1076,61 @@ export function ContentSchedulePage() {
                 setAccountBrowseMask(browse);
                 setAccountContentMask(content);
               }}
+            />
+          </Space>
+        ) : null}
+      </Modal>
+
+      <Modal
+        title={`自动加群时段${joinMaskRow ? `：${displayName(joinMaskRow)}` : ''}`}
+        open={joinMaskRow !== null}
+        onCancel={() => {
+          if (!patchJoinGroup.isPending) setJoinMaskRow(null);
+        }}
+        onOk={() => {
+          if (!joinMaskRow) return;
+          if (!isValidMask(joinMaskDraft)) {
+            message.error('掩码非法（须 168 位 0/1）');
+            return;
+          }
+          patchJoinGroup.mutate({ accountId: joinMaskRow.accountId, patch: { weekMask: joinMaskDraft } });
+        }}
+        confirmLoading={patchJoinGroup.isPending}
+        width={760}
+        okText="保存自定义时段"
+        cancelText="取消"
+      >
+        {joinMaskRow?.joinGroupAutomation ? (
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <Alert
+              type="info"
+              showIcon
+              message="自动加群时段只会进一步收窄内容自动化时段"
+              description="最终执行时段由 Cloud 取账号内容时段与这里的交集；手动 /comment --join 不受此配置影响。"
+            />
+            <Space wrap>
+              <Button size="small" onClick={() => setJoinMaskDraft(FULL_ACTIVE_MASK)}>全部时段</Button>
+              <Button size="small" onClick={() => setJoinMaskDraft(workdayMask())}>工作时间</Button>
+              <Button size="small" onClick={() => setJoinMaskDraft(EMPTY_MASK)}>全部关闭</Button>
+              <Typography.Text type="secondary">已选 {countActive(joinMaskDraft)} / 168 小时</Typography.Text>
+              {joinMaskRow.joinGroupAutomation.weekMaskSource === 'custom' ? (
+                <Popconfirm
+                  title="恢复跟随内容自动化时段？"
+                  okText="恢复跟随"
+                  cancelText="取消"
+                  onConfirm={() =>
+                    patchJoinGroup.mutate({ accountId: joinMaskRow.accountId, patch: { weekMask: null } })
+                  }
+                >
+                  <Button danger size="small" loading={patchJoinGroup.isPending}>恢复跟随内容时段</Button>
+                </Popconfirm>
+              ) : null}
+            </Space>
+            <WeekActiveGrid
+              mask={joinMaskDraft}
+              onToggleCell={(day, hour) => setJoinMaskDraft(setCell(joinMaskDraft, day, hour, joinMaskDraft[cellIdx(day, hour)] !== '1'))}
+              onToggleRow={(day) => toggleJoinMaskCells(Array.from({ length: 24 }, (_, hour) => [day, hour] as [number, number]))}
+              onToggleCol={(hour) => toggleJoinMaskCells(Array.from({ length: 7 }, (_, day) => [day, hour] as [number, number]))}
             />
           </Space>
         ) : null}

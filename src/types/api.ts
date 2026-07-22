@@ -959,6 +959,8 @@ export type FacebookGroupMembershipStatus =
 
 export interface FacebookGroupTargetRow {
   groupUrl: string;
+  /** 适用 Facebook 账号分组的完整集合；空数组=不会进入自动/裸 --join 候选池。 */
+  accountGroupLabels: string[];
   groupName: string | null;
   region: string | null;
   park: string | null;
@@ -1002,6 +1004,21 @@ export interface FacebookGroupRegionFacet {
 export interface FacebookGroupTargetFacets {
   regions: FacebookGroupRegionFacet[];
   directions: string[];
+  /** 当前至少由一个 Facebook 账号使用的可选分组。 */
+  accountGroupLabels: string[];
+  /** 没有任何账号分组范围的目标数。 */
+  unscopedTargetCount: number;
+}
+
+export interface FacebookGroupTargetScopeReadback {
+  groupUrl: string;
+  accountGroupLabels: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface FacebookGroupTargetScopeReplaceResult {
+  items: FacebookGroupTargetScopeReadback[];
 }
 
 export interface FacebookGroupAccountProgress {
@@ -1256,7 +1273,7 @@ export interface PanelBotChatsResponse {
 export type ContentScheduleActionMode = 'off' | 'review' | 'auto_approve';
 
 /** Cloud 平台注册表声明的可排期动作；Console 只消费能力投影，不自行推断平台矩阵。 */
-export type ContentScheduleAutomationAction = 'post' | 'comment' | 'contact_comment';
+export type ContentScheduleAutomationAction = 'post' | 'comment' | 'contact_comment' | 'join_group';
 
 /** GET /api/content-schedule 每行携带的服务端权威动作能力。 */
 export interface ContentScheduleAvailableAction {
@@ -1280,6 +1297,30 @@ export interface ContentScheduleGlobalView {
   updatedBy: string | null;
 }
 
+/** Facebook 最近一次 scheduled 自动加群审计；人工/旧来源不得混入。 */
+export interface FacebookJoinGroupRecentResult {
+  outcome: string;
+  reason: string | null;
+  groupUrl: string | null;
+  createdAt: string;
+}
+
+/** GET /api/content-schedule 中仅 Facebook 行携带的领域聚合配置。 */
+export interface FacebookJoinGroupAutomationView {
+  enabled: boolean;
+  dailyCap: number;
+  effectiveDailyCap: number;
+  weekMask: string | null;
+  weekMaskSource: 'content' | 'custom';
+  effectiveWeekMask: string | null;
+  accountGroupLabel: string | null;
+  scopedTargetCount: number;
+  scopeReady: boolean;
+  recentResult: FacebookJoinGroupRecentResult | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 /** 每账号内容排期一行（GET /api/content-schedule），含两层独立的账号覆盖与生效来源。 */
 export interface ContentScheduleRow {
   accountId: string;
@@ -1294,6 +1335,8 @@ export interface ContentScheduleRow {
   displayNameSource: AccountDisplayNameSource;
   /** 服务端权威的可配置排期动作；Console 不维护平台动作矩阵。 */
   availableActions: ContentScheduleAvailableAction[];
+  /** 仅 Facebook 行返回；非 Facebook 不伪造该领域配置。 */
+  joinGroupAutomation?: FacebookJoinGroupAutomationView;
   /** 总开关：false=该账号完全不自动（零回归默认）。 */
   autoEnabled: boolean;
   /** 发帖开关。 */
@@ -1354,6 +1397,17 @@ export interface ContentSchedulePatch {
   activeWeekMask?: string | null;
   /** 每账号内容时段覆盖：168 位 '0'/'1'，或 null=清空覆盖=继承全局。 */
   contentActiveMask?: string | null;
+}
+
+/** PUT /api/content-schedule/:accountId/join-group；字段均可部分提交，服务端整块校验。 */
+export interface FacebookJoinGroupAutomationPatch {
+  enabled?: boolean;
+  dailyCap?: number;
+  weekMask?: string | null;
+}
+
+export interface FacebookJoinGroupAutomationWriteResult {
+  joinGroupAutomation: FacebookJoinGroupAutomationView;
 }
 
 // ── 客户端用户（对外客户鉴权后台，change edge-client-customer-auth）────────────

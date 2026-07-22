@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Card, Empty, Select, Space, Switch, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Empty, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { LinkOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { apiGet, apiPatch, apiPost } from '../api/client';
+import { apiGet, apiPatch, apiPost, apiPut } from '../api/client';
 import { useDashboardSummary } from '../api/queries';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type {
@@ -16,6 +16,7 @@ import type {
   FacebookGroupTargetList,
   FacebookGroupTargetListRow,
   FacebookGroupTargetRow,
+  FacebookGroupTargetScopeReplaceResult,
 } from '../types/api';
 import { FacebookGroupImportPanel, type FacebookGroupImportMode } from './FacebookGroupImportPanel';
 import type { FacebookGroupImportItem } from './facebookGroupImportParser';
@@ -86,12 +87,17 @@ export function FacebookGroupsPage() {
   const [region, setRegion] = useState<string | undefined>();
   const [park, setPark] = useState<string | undefined>();
   const [direction, setDirection] = useState<string | undefined>();
+  const [accountGroupLabel, setAccountGroupLabel] = useState<string | undefined>();
+  const [selectedGroupUrls, setSelectedGroupUrls] = useState<React.Key[]>([]);
+  const [scopeDraft, setScopeDraft] = useState<string[]>([]);
   const [page, setPage] = useState(1);
 
   const groups = useQuery({
-    queryKey: ['facebook', 'groups', status, enabled, region, park, direction, page],
+    queryKey: ['facebook', 'groups', status, enabled, region, park, direction, accountGroupLabel, page],
     queryFn: () => {
-      return apiGet<FacebookGroupTargetList>(facebookGroupListPath({ status, enabled, region, park, direction, page }));
+      return apiGet<FacebookGroupTargetList>(
+        facebookGroupListPath({ status, enabled, region, park, direction, accountGroupLabel, page }),
+      );
     },
   });
 
@@ -115,10 +121,15 @@ export function FacebookGroupsPage() {
   };
 
   const importGroups = useMutation({
-    mutationFn: (input: { items: FacebookGroupImportItem[]; mode: FacebookGroupImportMode }) =>
+    mutationFn: (input: {
+      items: FacebookGroupImportItem[];
+      mode: FacebookGroupImportMode;
+      accountGroupLabels?: string[];
+    }) =>
       apiPost<FacebookGroupImportResult>('/api/facebook/groups/import', {
         items: input.items,
         importBatch: `console-${input.mode}-${dayjs().format('YYYYMMDD-HHmmss')}`,
+        ...(input.accountGroupLabels !== undefined ? { accountGroupLabels: input.accountGroupLabels } : {}),
       }),
     onSuccess: (res) => {
       message.success(`已导入 ${res.imported} 个，更新 ${res.updated ?? 0} 个，重复 ${res.duplicate} 个，无效 ${res.invalid} 个`);
@@ -135,6 +146,18 @@ export function FacebookGroupsPage() {
     onError: () => message.error('保存失败，状态未改变'),
   });
 
+  const replaceScopes = useMutation({
+    mutationFn: (input: { groupUrls: string[]; accountGroupLabels: string[] }) =>
+      apiPut<FacebookGroupTargetScopeReplaceResult>('/api/facebook/groups/scopes', input),
+    onSuccess: (res) => {
+      message.success(`已更新 ${res.items.length} 个群组的适用账号分组`);
+      setSelectedGroupUrls([]);
+      setScopeDraft([]);
+      invalidateGroups();
+    },
+    onError: () => message.error('适用账号分组保存失败，未改变原配置'),
+  });
+
   const reclaim = useMutation({
     mutationFn: () => apiPost<{ reclaimed: number }>('/api/facebook/groups/reclaim-stale', { ttlMs: 30 * 60_000 }),
     onSuccess: (res) => {
@@ -146,6 +169,7 @@ export function FacebookGroupsPage() {
 
   const regionOptions = (facets.data?.regions ?? []).map((item) => ({ value: item.region, label: item.region }));
   const directionOptions = (facets.data?.directions ?? []).map((item) => ({ value: item, label: item }));
+  const accountGroupOptions = (facets.data?.accountGroupLabels ?? []).map((item) => ({ value: item, label: item }));
   const parkOptions = region
     ? (facets.data?.regions.find((item) => item.region === region)?.parks ?? []).map((item) => ({ value: item, label: item }))
     : [];
@@ -195,6 +219,19 @@ export function FacebookGroupsPage() {
           {!row.region && !row.park && !row.direction ? '—' : null}
         </Space>
       ),
+    },
+    {
+      title: '适用账号分组',
+      dataIndex: 'accountGroupLabels',
+      minWidth: 190,
+      render: (labels: string[]) =>
+        labels.length > 0 ? (
+          <Space size={[0, 4]} wrap>
+            {labels.map((label) => <Tag key={label} color="blue">{label}</Tag>)}
+          </Space>
+        ) : (
+          <Tag color="warning">未设置适用分组</Tag>
+        ),
     },
     {
       title: '状态',
@@ -292,15 +329,33 @@ export function FacebookGroupsPage() {
             facets={facets.data}
             facetsLoading={facets.isLoading}
             importing={importGroups.isPending}
-            onImport={(items, mode) => importGroups.mutateAsync({ items, mode }).then(() => undefined)}
+            onImport={(items, mode, accountGroupLabels) =>
+              importGroups.mutateAsync({ items, mode, accountGroupLabels }).then(() => undefined)
+            }
           />
 
+          {(facets.data?.unscopedTargetCount ?? 0) > 0 ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={`有 ${facets.data?.unscopedTargetCount ?? 0} 个群组未设置适用账号分组`}
+              description="这些群组不会被账号自动加群选中。可在下方勾选群组后批量设置范围。"
+            />
+          ) : null}
+
           <Space wrap>
-            <Select<StatusFilter> value={status} options={statusOptions} style={{ width: 150 }} onChange={(v) => { setStatus(v); setPage(1); }} />
+            <Select<StatusFilter>
+              aria-label="群组状态筛选"
+              value={status}
+              options={statusOptions}
+              style={{ width: 150 }}
+              onChange={(v) => { setStatus(v); setPage(1); setSelectedGroupUrls([]); }}
+            />
             <Select<EnabledFilter>
               value={enabled}
               style={{ width: 130 }}
-              onChange={(v) => { setEnabled(v); setPage(1); }}
+              aria-label="群组启用态筛选"
+              onChange={(v) => { setEnabled(v); setPage(1); setSelectedGroupUrls([]); }}
               options={[
                 { value: 'all', label: '全部启用态' },
                 { value: 'true', label: '仅启用' },
@@ -309,6 +364,7 @@ export function FacebookGroupsPage() {
             />
             <Select
               allowClear
+              aria-label="群组区域筛选"
               showSearch
               value={region}
               options={regionOptions}
@@ -319,10 +375,12 @@ export function FacebookGroupsPage() {
                 setRegion(v);
                 setPark(undefined);
                 setPage(1);
+                setSelectedGroupUrls([]);
               }}
             />
             <Select
               allowClear
+              aria-label="群组园区筛选"
               showSearch
               value={park}
               options={parkOptions}
@@ -330,18 +388,69 @@ export function FacebookGroupsPage() {
               style={{ width: 190 }}
               disabled={!region}
               loading={facets.isLoading}
-              onChange={(v) => { setPark(v); setPage(1); }}
+              onChange={(v) => { setPark(v); setPage(1); setSelectedGroupUrls([]); }}
             />
             <Select
               allowClear
+              aria-label="群组方向筛选"
               showSearch
               value={direction}
               options={directionOptions}
               placeholder="全部方向"
               style={{ width: 160 }}
               loading={facets.isLoading}
-              onChange={(v) => { setDirection(v); setPage(1); }}
+              onChange={(v) => { setDirection(v); setPage(1); setSelectedGroupUrls([]); }}
             />
+            <Select
+              aria-label="适用账号分组筛选"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={accountGroupLabel}
+              options={accountGroupOptions}
+              placeholder="全部账号分组"
+              style={{ width: 190 }}
+              loading={facets.isLoading}
+              onChange={(v) => {
+                setAccountGroupLabel(v);
+                setPage(1);
+                setSelectedGroupUrls([]);
+              }}
+            />
+          </Space>
+
+          <Space wrap>
+            <Typography.Text>已选 {selectedGroupUrls.length} 个群组</Typography.Text>
+            <Select
+              aria-label="批量适用账号分组"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={scopeDraft}
+              options={accountGroupOptions}
+              placeholder="选择一个或多个账号分组"
+              style={{ minWidth: 280 }}
+              loading={facets.isLoading}
+              onChange={setScopeDraft}
+            />
+            <Button
+              type="primary"
+              danger={scopeDraft.length === 0}
+              loading={replaceScopes.isPending}
+              disabled={selectedGroupUrls.length === 0}
+              onClick={() =>
+                replaceScopes.mutate({
+                  groupUrls: selectedGroupUrls.map(String),
+                  accountGroupLabels: scopeDraft,
+                })
+              }
+            >
+              {scopeDraft.length === 0 ? '清空所选群组范围' : '替换所选群组范围'}
+            </Button>
+            <Typography.Text type="secondary">
+              留空并保存会清空范围，群组将不再参与自动加群。
+            </Typography.Text>
           </Space>
 
           <Table<FacebookGroupTargetListRow>
@@ -349,15 +458,23 @@ export function FacebookGroupsPage() {
             rowKey={(r) => r.groupUrl}
             columns={columns}
             dataSource={groups.data?.items ?? []}
+            rowSelection={{
+              selectedRowKeys: selectedGroupUrls,
+              preserveSelectedRowKeys: false,
+              onChange: setSelectedGroupUrls,
+            }}
             loading={groups.isLoading}
             locale={{ emptyText: <Empty description="暂无群组" /> }}
-            scroll={{ x: 1440 }}
+            scroll={{ x: 1640 }}
             pagination={{
               current: page,
               pageSize: GROUP_PAGE_SIZE,
               total: groups.data?.total ?? 0,
               showSizeChanger: false,
-              onChange: setPage,
+              onChange: (nextPage) => {
+                setPage(nextPage);
+                setSelectedGroupUrls([]);
+              },
             }}
           />
         </Space>

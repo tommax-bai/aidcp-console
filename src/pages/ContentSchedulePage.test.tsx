@@ -43,6 +43,27 @@ const xiaohongshuActions: ContentScheduleAvailableAction[] = [
   { action: 'comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 50 },
   { action: 'contact_comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 10 },
 ];
+const FULL_MASK = '1'.repeat(168);
+
+const facebookJoinConfig = {
+  enabled: true,
+  dailyCap: 2,
+  effectiveDailyCap: 1,
+  weekMask: null,
+  weekMaskSource: 'content' as const,
+  effectiveWeekMask: FULL_MASK,
+  accountGroupLabel: null,
+  scopedTargetCount: 0,
+  scopeReady: false,
+  recentResult: {
+    outcome: 'no_targets',
+    reason: 'scope_not_ready',
+    groupUrl: null,
+    createdAt: '2026-07-22T02:00:00.000Z',
+  },
+  updatedAt: null,
+  updatedBy: null,
+};
 
 vi.mock('../api/client', async () => ({
   // 保留真实 ApiError（errorText 的 `err instanceof ApiError` 依赖它——否则被 mock 成 undefined 会抛）。
@@ -154,7 +175,9 @@ describe('ContentSchedulePage 平台感知视图', () => {
         availableActions: [
           { action: 'post', allowedModes: ['review'], maxDailyCap: 2 },
           { action: 'comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 4 },
+          { action: 'join_group', allowedModes: [], maxDailyCap: 10 },
         ],
+        joinGroupAutomation: facebookJoinConfig,
         postDailyCap: 1,
       }),
       makeRow({
@@ -197,6 +220,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.queryByText('昵称A')).toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动发帖' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动评论' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '自动加群' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '自动联系评论' })).toBeNull();
     expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
     expect(screen.getByText('/ 2')).not.toBeNull();
@@ -208,6 +232,92 @@ describe('ContentSchedulePage 平台感知视图', () => {
       expect(state.putCalls).toContainEqual({
         path: '/api/content-schedule/fb-1',
         body: { postDailyCap: 2 },
+      }),
+    );
+  });
+
+  it('Facebook 自动加群展示服务端有效值、范围就绪态和最近排期结果', async () => {
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    expect(screen.getByText('范围未就绪')).not.toBeNull();
+    expect(screen.getByText('账号未归属分组')).not.toBeNull();
+    expect(screen.getByText('/ 10，有效 1')).not.toBeNull();
+    expect(screen.getByText(/最近执行：no_targets · scope_not_ready/)).not.toBeNull();
+    expect(screen.getByText('跟随内容时段')).not.toBeNull();
+  });
+
+  it('Facebook 自动加群通过独立端点保存开关与日上限', async () => {
+    state.putImpl = (_path, body) =>
+      Promise.resolve({ joinGroupAutomation: { ...facebookJoinConfig, ...(body as object) } });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    const capInput = screen.getByLabelText('自动加群日上限 fb-1');
+    fireEvent.change(capInput, { target: { value: '4' } });
+    fireEvent.blur(capInput);
+    await waitFor(() =>
+      expect(state.putCalls).toContainEqual({
+        path: '/api/content-schedule/fb-1/join-group',
+        body: { dailyCap: 4 },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('switch', { name: '自动加群 fb-1' }));
+    await waitFor(() =>
+      expect(state.putCalls).toContainEqual({
+        path: '/api/content-schedule/fb-1/join-group',
+        body: { enabled: false },
+      }),
+    );
+  });
+
+  it('Facebook 自动加群可保存自定义周历', async () => {
+    state.putImpl = (_path, body) =>
+      Promise.resolve({ joinGroupAutomation: { ...facebookJoinConfig, ...(body as object), weekMaskSource: 'custom' } });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    fireEvent.click(screen.getByRole('button', { name: '设置时段' }));
+    await screen.findByText('自动加群时段：Facebook账号');
+    fireEvent.click(screen.getByRole('button', { name: '保存自定义时段' }));
+
+    await waitFor(() =>
+      expect(state.putCalls).toContainEqual({
+        path: '/api/content-schedule/fb-1/join-group',
+        body: { weekMask: FULL_MASK },
+      }),
+    );
+  });
+
+  it('Facebook 自动加群可明确恢复继承内容时段', async () => {
+    state.rows = state.rows.map((row) =>
+      (row as ContentScheduleRow).accountId === 'fb-1'
+        ? {
+            ...(row as ContentScheduleRow),
+            joinGroupAutomation: {
+              ...facebookJoinConfig,
+              weekMask: FULL_MASK,
+              weekMaskSource: 'custom' as const,
+            },
+          }
+        : row,
+    );
+    state.putImpl = () =>
+      Promise.resolve({
+        joinGroupAutomation: { ...facebookJoinConfig, weekMask: null, weekMaskSource: 'content' },
+      });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑时段' }));
+    fireEvent.click(await screen.findByRole('button', { name: '恢复跟随内容时段' }));
+    fireEvent.click(await screen.findByRole('button', { name: '恢复跟随' }));
+
+    await waitFor(() =>
+      expect(state.putCalls).toContainEqual({
+        path: '/api/content-schedule/fb-1/join-group',
+        body: { weekMask: null },
       }),
     );
   });

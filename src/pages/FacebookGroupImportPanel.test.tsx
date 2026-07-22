@@ -33,6 +33,8 @@ const facets: FacebookGroupTargetFacets = {
     { region: '北宁区域', parks: ['周山工业区/VSIP 1'] },
   ],
   directions: ['机械和电气'],
+  accountGroupLabels: ['越南销售一组', '越南销售二组'],
+  unscopedTargetCount: 2,
 };
 
 function renderPanel(onImport = vi.fn(() => Promise.resolve())) {
@@ -131,6 +133,37 @@ describe('FacebookGroupImportPanel', () => {
     expect(await screen.findByText('仅支持 CSV 文件')).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /导入文件$/ }).disabled).toBe(true);
     expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it('preserves scope by default and can explicitly replace or clear it', async () => {
+    const onImport = renderPanel();
+    fireEvent.change(screen.getByRole('textbox', { name: '群组 URL' }), {
+      target: { value: 'https://www.facebook.com/groups/789' },
+    });
+    fireEvent.click(screen.getByRole('switch', { name: '本次设置适用账号分组' }));
+    await chooseOption('导入适用账号分组', '越南销售一组');
+    fireEvent.click(screen.getByRole('button', { name: /添加$/ }));
+
+    await waitFor(() =>
+      expect(onImport).toHaveBeenCalledWith(
+        [{ url: 'https://www.facebook.com/groups/789' }],
+        'single',
+        ['越南销售一组'],
+      ),
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: '群组 URL' }), {
+      target: { value: 'https://www.facebook.com/groups/790' },
+    });
+    fireEvent.click(screen.getByRole('switch', { name: '本次设置适用账号分组' }));
+    fireEvent.click(screen.getByRole('button', { name: /添加$/ }));
+    await waitFor(() =>
+      expect(onImport).toHaveBeenLastCalledWith(
+        [{ url: 'https://www.facebook.com/groups/790' }],
+        'single',
+        [],
+      ),
+    );
   });
 
   it('downloads the CSV template from file mode', () => {
