@@ -16,8 +16,8 @@ export const REPLY_PROCESSING_MODE_META: Record<ReplyProcessingMode, { label: st
     description: '生成草稿，人工确认后才尝试发送。',
   },
   auto: {
-    label: '低风险模板自动发送',
-    description: '只有低风险模板原文可自动发送，其他内容转人工审核。',
+    label: '低风险回复自动发送',
+    description: '规则选择自动回复且通过 AI 与安全检查后直接发送，其他内容转人工审核。',
   },
 };
 

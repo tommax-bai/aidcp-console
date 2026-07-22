@@ -131,7 +131,7 @@ const DM_PREVIEW_PERMISSION_ERROR = '当前后台账号缺少私信预览权限�
 const PREVIEW_ACTION_META: Record<PreviewAction, { label: string; color: string }> = {
   draft: { label: '生成草稿', color: 'blue' },
   review_required: { label: '需要人工审核', color: 'gold' },
-  would_auto_send: { label: '符合自动发送条件', color: 'green' },
+  would_auto_send: { label: '可自动回复（将直接发送）', color: 'green' },
   no_match: { label: '没有命中规则', color: 'default' },
   blocked: { label: '被风险门禁阻断', color: 'red' },
 };
@@ -293,7 +293,7 @@ function channelProcessingSummary(
   if (processingMode === 'off') return '已选参与，当前账号不自动处理';
   if (processingMode === 'draft') return '处理，只生成草稿';
   if (processingMode === 'review') return '处理，全部人工审核';
-  return allowAutoSend ? '处理，低风险模板可自动发送' : '处理，全部人工审核';
+  return allowAutoSend ? '处理，低风险回复可自动发送' : '处理，全部人工审核';
 }
 
 interface TemplateEditorState {
@@ -899,10 +899,7 @@ export function WechatChannelsReplySettings({
     const candidate = {
       ...rule,
       name: rule.name.trim(),
-      actions: {
-        ...rule.actions,
-        allowAutoSend: rule.actions.polish ? false : rule.actions.allowAutoSend,
-      },
+      actions: { ...rule.actions },
     };
     const peers = snapshot.rules.filter((item) => item.ruleId !== candidate.ruleId);
     if (findObviousRuleConflicts([...peers, candidate]).length) {
@@ -1097,8 +1094,8 @@ export function WechatChannelsReplySettings({
       render: (_, row) => (
         <Space wrap>
           <Tag>{snapshot?.templates.find((item) => item.templateId === row.actions.templateId)?.name ?? row.actions.templateId}</Tag>
-          {row.actions.polish ? <Tag color="blue">AI 润色 · 必须人工</Tag> : <Tag>模板原文</Tag>}
-          {row.actions.allowAutoSend ? <Tag color="green">继承上层自动范围</Tag> : <Tag color="gold">必须人工审核</Tag>}
+          {row.actions.polish ? <Tag color="blue">AI 回复 / 润色</Tag> : <Tag>模板原文</Tag>}
+          {row.actions.allowAutoSend ? <Tag color="green">自动回复</Tag> : <Tag color="gold">人工审核</Tag>}
             {row.actions.forceHumanTags.map((tag) => <Tag key={tag} color="gold">{labelOf(RISK_TAG_LABEL, tag)}</Tag>)}
         </Space>
       ),
@@ -1285,7 +1282,7 @@ export function WechatChannelsReplySettings({
                           channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], aiPolishEnabled: event.target.checked } },
                         },
                       }))}
-                    >允许规则使用 AI 润色{channel === 'dm' ? '（v1 私信关闭）' : '（使用后必须人工审核）'}</Checkbox>
+                    >允许规则使用 AI 润色{channel === 'dm' ? '（v1 私信关闭）' : '（发送方式由规则选择）'}</Checkbox>
                     {processingMode === 'auto' ? (
                       <Checkbox
                         checked={policy.channels[channel].allowAutoSend}
@@ -1297,7 +1294,7 @@ export function WechatChannelsReplySettings({
                             channels: { ...current.policy.channels, [channel]: { ...current.policy.channels[channel], allowAutoSend: event.target.checked } },
                           },
                         }))}
-                      >此渠道的低风险模板可自动发送</Checkbox>
+                      >此渠道的低风险回复可自动发送</Checkbox>
                     ) : null}
                   </Space>
                 </Card>
@@ -1725,7 +1722,7 @@ export function WechatChannelsReplySettings({
       snapshot.runtime.writePaused ? '暂停写入' : '允许写入'}`]),
     `评论：${channelProcessingSummary(snapshot.policy.channels.comment.enabled, snapshot.policy.channels.comment.allowAutoSend, publishProcessingMode)}`,
     `私信：${channelProcessingSummary(snapshot.policy.channels.dm.enabled, snapshot.policy.channels.dm.allowAutoSend, publishProcessingMode)}`,
-    `启用规则：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend && !rule.actions.polish).length} 条继承自动范围，${snapshot.rules.filter((rule) => rule.enabled && (!rule.actions.allowAutoSend || rule.actions.polish)).length} 条必须人工`,
+    `规则发送方式：${snapshot.rules.filter((rule) => rule.enabled && rule.actions.allowAutoSend).length} 条自动回复，${snapshot.rules.filter((rule) => rule.enabled && !rule.actions.allowAutoSend).length} 条人工审核`,
   ] : [];
 
   return (
@@ -2053,16 +2050,20 @@ function RuleEditorModal({
         <Space direction="vertical">
           <Checkbox
             checked={rule.actions.polish}
-            onChange={(event) => setActions(event.target.checked
-              ? { polish: true, allowAutoSend: false }
-              : { polish: false })}
-          >使用 AI 润色（必须人工审核）</Checkbox>
-          <Checkbox
-            checked={rule.actions.polish || !rule.actions.allowAutoSend}
-            disabled={rule.actions.polish}
-            onChange={(event) => setActions({ allowAutoSend: !event.target.checked })}
-          >此规则必须人工审核</Checkbox>
-          <Typography.Text type="secondary">取消后仅继承账号和渠道的自动化上限，不代表一定自动发送。</Typography.Text>
+            onChange={(event) => setActions({ polish: event.target.checked })}
+          >使用 AI 回复 / 润色</Checkbox>
+          <Form.Item label="发送方式" className="reply-config__section-alert">
+            <Radio.Group
+              aria-label="规则发送方式"
+              value={rule.actions.allowAutoSend ? 'auto' : 'review'}
+              onChange={(event) => setActions({ allowAutoSend: event.target.value === 'auto' })}
+              options={[
+                { value: 'review', label: '人工审核' },
+                { value: 'auto', label: '自动回复' },
+              ]}
+            />
+          </Form.Item>
+          <Typography.Text type="secondary">自动回复会在 AI 与安全检查通过后直接发送；仍受账号处理方式、渠道范围、运行控制和 Cloud 硬门禁约束。</Typography.Text>
         </Space>
         <Form.Item label="命中这些风险标签时强制人工" className="reply-config__section-alert">
               <Select aria-label="强制人工风险标签" mode="multiple" value={rule.actions.forceHumanTags} options={RISK_TAGS.map((value) => ({ value, label: labelOf(RISK_TAG_LABEL, value) }))} onChange={(forceHumanTags) => setActions({ forceHumanTags })} />

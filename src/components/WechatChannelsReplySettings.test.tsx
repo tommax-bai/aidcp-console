@@ -452,13 +452,13 @@ describe('WechatChannelsReplySettings', () => {
     expect(screen.getByText(/检测到历史组合，已按不扩权原则显示为/)).toBeTruthy();
     expect(screen.queryByRole('switch', { name: '生成草稿' })).toBeNull();
     expect(screen.queryByText('配置层发送开关；不能绕过即时写总闸。')).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: '此渠道的低风险模板可自动发送' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: '此渠道的低风险回复可自动发送' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('radio', { name: /低风险模板自动发送/ }));
-    expect(screen.getAllByRole('checkbox', { name: '此渠道的低风险模板可自动发送' })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('radio', { name: /低风险回复自动发送/ }));
+    expect(screen.getAllByRole('checkbox', { name: '此渠道的低风险回复可自动发送' })).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('radio', { name: /人工审核后发送/ }));
-    expect(screen.queryByRole('checkbox', { name: '此渠道的低风险模板可自动发送' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: '此渠道的低风险回复可自动发送' })).toBeNull();
   });
 
   it('renders system circuit separately from the manual write gate and shows the recovery path', async () => {
@@ -868,7 +868,7 @@ describe('WechatChannelsReplySettings', () => {
     });
   });
 
-  it('presents rule automation as a restriction and forces AI-polished rules to human review', async () => {
+  it('keeps AI polish independent from the selected human-review or automatic-reply mode', async () => {
     const server = createServer();
     renderDrawer();
     await waitForConfig();
@@ -879,28 +879,31 @@ describe('WechatChannelsReplySettings', () => {
 
     const editorTitle = await screen.findByText('编辑匹配规则');
     const dialog = editorTitle.closest('.ant-modal') as HTMLElement;
-    const polish = within(dialog).getByRole('checkbox', { name: '使用 AI 润色（必须人工审核）' }) as HTMLInputElement;
-    const mustReview = within(dialog).getByRole('checkbox', { name: '此规则必须人工审核' }) as HTMLInputElement;
+    const polish = within(dialog).getByRole('checkbox', { name: '使用 AI 回复 / 润色' }) as HTMLInputElement;
+    const review = within(dialog).getByRole('radio', { name: '人工审核' }) as HTMLInputElement;
+    const auto = within(dialog).getByRole('radio', { name: '自动回复' }) as HTMLInputElement;
     expect(polish.checked).toBe(true);
-    expect(mustReview.checked).toBe(true);
-    expect(mustReview.disabled).toBe(true);
+    expect(review.checked).toBe(true);
+    expect(auto.checked).toBe(false);
 
+    fireEvent.click(auto);
+    expect(auto.checked).toBe(true);
+    expect(polish.checked).toBe(true);
     fireEvent.click(polish);
-    expect(mustReview.disabled).toBe(false);
-    fireEvent.click(mustReview);
-    expect(mustReview.checked).toBe(false);
+    expect(polish.checked).toBe(false);
     fireEvent.click(polish);
-    expect(mustReview.checked).toBe(true);
-    expect(mustReview.disabled).toBe(true);
+    expect(polish.checked).toBe(true);
+    expect(auto.checked).toBe(true);
 
     fireEvent.click(within(dialog).getByRole('button', { name: '保存草稿' }));
     await waitFor(() => expect(server.calls.some((call) => call.path.includes('/reply-rules/') && call.method === 'PUT')).toBe(true));
     const call = server.calls.find((item) => item.path.includes('/reply-rules/') && item.method === 'PUT');
-    expect(call?.body).toMatchObject({ rule: { actions: { polish: true, allowAutoSend: false } } });
+    expect(call?.body).toMatchObject({ rule: { actions: { polish: true, allowAutoSend: true } } });
   });
 
   it.each([
     ['review_required', '需要人工审核'],
+    ['would_auto_send', '可自动回复（将直接发送）'],
     ['no_match', '没有命中规则'],
     ['blocked', '被风险门禁阻断'],
   ] as const)('renders preview state %s and never calls a send endpoint', async (previewAction, expectedLabel) => {
