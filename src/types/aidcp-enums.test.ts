@@ -50,6 +50,11 @@ describe('aidcp-enums 镜像（D11 漂移哨兵）', () => {
     // #5/#6：图片厂商全集 + DTO 字段指纹对拍（console 镜像须与 cloud live 一致）。
     expect(body.enums.imageProvider).toContain('volcengine');
     expect(body.dtoFields.panelAccount).toContain('accountId');
+    // change risk-target-follows-active-session：console 已消费 currentDriverTarget（驱动 target 只读展示），
+    // 该字段由 cloud panel DTO 权威产出。此断言是「console 不得单独领先 cloud 上线」的唯一机械防线——
+    // 指向未落配对 cloud change 的 live 云端时必然失败（其指纹仍是 executionTarget/riskWritable），
+    // 把「静默漂移 + 驱动 target 恒显无会话」变成一次响亮失败。CI 无 AIDCP_PANEL_URL 时整块跳过、不影响三件套。
+    expect(body.dtoFields.panelAccount).toContain('currentDriverTarget');
     // 配置枚举哨兵（change console-panel-config-enum-fingerprint）：镜像须与 cloud live 全集一致。
     expect(body.enums.llmKind).toEqual([...LLM_KINDS]);
     expect(body.enums.effectiveSource).toEqual([...MODEL_EFFECTIVE_SOURCES]);
