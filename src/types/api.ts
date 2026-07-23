@@ -76,16 +76,13 @@ export interface PanelAccount {
   /** 需设置人设（派生）：未绑且非 default。手工镜像 cloud panel-store.ts PanelAccount，两处须同步防漂移。 */
   needsPersonaSetup: boolean;
   /**
-   * 账号归属的执行目标（change risk-state-cross-process-integrity）：`dev` / `ol` / null=未归属。
-   * **服务端权威**：MUST NOT 由 console 从别的字段推断；未归属 MUST 显示为「未归属」，
-   * MUST NOT 伪装成当前 target。滚动升级旧 Cloud 可能暂缺 → 可选。
+   * 当前驱动该账号的会话所在执行目标（change risk-target-follows-active-session）：`dev` / `ol` /
+   * null=当前无活跃会话。归属跟随「当次会话」——哪个客户端握手就归哪个 target（分时、合法），
+   * 不再是静态占位、也不再有「手动改归属」或「非属主只读」。**服务端权威、纯只读展示**：console
+   * MUST NOT 据此禁用任何写操作（风控写是账号级配置，跨进程写安全由 cloud 条件写保证）。
+   * 滚动升级旧 Cloud 可能暂缺 → 可选。手工镜像 cloud panel-store.ts PanelAccount，两处须同步防漂移。
    */
-  executionTarget?: 'dev' | 'ol' | null;
-  /**
-   * 本后台对该账号是否有风控写权（服务端权威）。false ⇒ 禁用风控写操作并指向真实属主。
-   * 滚动升级旧 Cloud 可能暂缺 → 缺省按可写处理（与本 change 之前逐位一致）。
-   */
-  riskWritable?: boolean;
+  currentDriverTarget?: 'dev' | 'ol' | null;
   /** 环境是独立可删除资产；账号只展示当前生命周期摘要。滚动升级旧 Cloud 可能暂缺。 */
   environmentSummary?: { activeCount: number; deletingCount: number; onlineCount: number };
 }

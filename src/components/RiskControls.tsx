@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Dropdown, Input, Modal, Space, Tag, Tooltip } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ApiError, apiPost } from '../api/client';
+import { apiPost } from '../api/client';
 import type { PanelAccount } from '../types/api';
 import {
   RISK_QUOTA_LEVELS,
@@ -13,62 +13,44 @@ import { QuotaTierBadge } from './QuotaTierBadge';
 import { RiskStatusBadge } from './RiskStatusBadge';
 
 /**
- * 账号归属（change risk-state-cross-process-integrity）。
+ * 当前驱动 target（change risk-target-follows-active-session）。
  *
- * 同一个账号在平台眼里只有一份活动预算，因此它只能由一套云端的自动化驱动。归属事实由服务端权威给出
- * （`executionTarget` / `riskWritable`），**console MUST NOT 自己推断**。
- *
- * 未归属 MUST 显示为「未归属」而不是伪装成当前后台：那不是一个空值，那是「还没有任何一套云端
- * 真实驱动过它」这个确切事实。
+ * 归属跟随「当次会话」：哪个客户端此刻握手，账号就归那个 target（分时、合法），而不是静态占位后
+ * 永久固定。因此这里只做**纯信息展示**——告诉运营「现在是哪套云端在驱动这个账号」，null=当前无
+ * 活跃会话。**绝不据此禁用任何风控写操作**：风控状态 / 配额档是账号级配置，任何后台都能改，跨进程
+ * 写的安全由 cloud 侧「每 target 单写者锁 + 带当前会话 target 谓词的条件写」保证，不靠 UI 禁用。
  */
-export function ownershipHint(account: PanelAccount): string {
-  if (account.executionTarget === undefined || account.executionTarget === null) {
-    return '该账号尚未归属任何一套云端的自动化；等它在某套云端上真实连上一次即可自动归属。';
-  }
-  return `该账号归属 ${account.executionTarget}，请在 ${account.executionTarget} 后台操作。`;
+export function driverTargetLabel(account: PanelAccount): string {
+  return account.currentDriverTarget ? `${account.currentDriverTarget} 驱动中` : '当前无活跃会话';
 }
 
-/** 服务端说 false 才算不可写；字段缺失（旧 Cloud）按可写处理，与本 change 之前逐位一致。 */
-export function isRiskWritable(account: PanelAccount): boolean {
-  return account.riskWritable !== false;
+export function driverTargetHint(account: PanelAccount): string {
+  return account.currentDriverTarget
+    ? `当前由 ${account.currentDriverTarget} 的会话驱动这个账号。风控写操作是账号级配置，任何后台都能改。`
+    : '当前没有任何会话在驱动这个账号。';
 }
 
-/**
- * 只读呈现：拿掉下拉与可点样式，并把归属**直接显示在行上**（不只挂在 hover 提示里）——
- * 运营需要一眼看出「这行为什么是灰的」，而不是先去猜、再去悬停。
- */
-function ReadOnlyRisk({ account, children }: { account: PanelAccount; children: React.ReactNode }) {
-  const owner = account.executionTarget ?? null;
+/** 当前驱动 target 的只读展示：纯信息，不做任何写禁用。 */
+function DriverTargetTag({ account }: { account: PanelAccount }) {
+  const driving = account.currentDriverTarget ?? null;
   return (
-    <Tooltip title={ownershipHint(account)}>
-      <span
-        data-testid="risk-readonly"
-        aria-disabled="true"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: 0.6 }}
+    <Tooltip title={driverTargetHint(account)}>
+      <Tag
+        data-testid="risk-driver-target"
+        style={{ marginInlineEnd: 0, opacity: driving ? 1 : 0.55 }}
       >
-        {children}
-        <Tag>{owner ? `归属 ${owner}` : '未归属'}</Tag>
-      </span>
+        {driverTargetLabel(account)}
+      </Tag>
     </Tooltip>
   );
-}
-
-/**
- * 归属类拒绝的诚实呈现（MUST NOT 显示成功、MUST NOT 静默无反应）。
- * 服务端把「真实属主是谁、该去哪操作」写在 body.message 里，这里原样上屏。
- */
-function ownershipRefusal(err: unknown): string | null {
-  if (!(err instanceof ApiError) || err.status !== 409) return null;
-  if (err.message !== 'risk_state_not_owned' && err.message !== 'owner_change_blocked_by_active_session') {
-    return null;
-  }
-  return err.serverMessage ?? '该账号不归本后台管，操作未执行。';
 }
 
 /**
  * 风控写控件（V1 task 10.1）：status 迁移（枚举种类）与 quota-tier 是**两个独立控件**。
  * 非乐观——round-trip 后才显示真态；status 迁移被状态机拒绝时渲染 refused（区别于成功）。
  * operator_override_recover 走 Modal 强制填审计理由。
+ *
+ * 归属跟随当次会话后，风控写不再按归属禁用（账号级配置）。行上额外展示「当前驱动 target」纯信息。
  */
 export function RiskStatusControl({ account }: { account: PanelAccount }) {
   const { message } = App.useApp();
@@ -91,52 +73,42 @@ export function RiskStatusControl({ account }: { account: PanelAccount }) {
       else message.warning(`已拒绝（仍为 ${label}）`);
       invalidate();
     },
-    onError: (err) => {
-      const refusal = ownershipRefusal(err);
-      // 可区分的失败态：归属拒绝不是「改失败了再试一次」，而是「这台后台没有写它的权力」。
-      if (refusal) message.warning(refusal);
-      else message.error('风控状态修改失败');
-    },
+    onError: () => message.error('风控状态修改失败'),
   });
-
-  if (!isRiskWritable(account)) {
-    return (
-      <ReadOnlyRisk account={account}>
-        {account.riskStatus ? <RiskStatusBadge status={account.riskStatus} /> : <Tag>未上报</Tag>}
-      </ReadOnlyRisk>
-    );
-  }
 
   return (
     <>
-      <Dropdown
-        trigger={['click']}
-        menu={{
-          items: [
-            { key: 'manual_restrict', label: '受限' },
-            { key: 'manual_freeze', label: '冻结', danger: true },
-            { key: 'operator_override_recover', label: '强制恢复（特权覆盖）…' },
-          ],
-          onClick: ({ key }) => {
-            if (status.isPending) return;
-            if (key === 'operator_override_recover') {
-              setOverrideOpen(true);
-              return;
-            }
-            status.mutate({ kind: key });
-          },
-        }}
-      >
-        <button
-          type="button"
-          aria-label={`调整风控：${account.riskStatus ? labelOf(RISK_STATUS_LABEL, account.riskStatus) : '未上报'}`}
-          className="editable-cell"
-          disabled={status.isPending}
-          style={{ display: 'inline-flex', border: 0, padding: 0, background: 'transparent', cursor: status.isPending ? 'wait' : 'pointer' }}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <Dropdown
+          trigger={['click']}
+          menu={{
+            items: [
+              { key: 'manual_restrict', label: '受限' },
+              { key: 'manual_freeze', label: '冻结', danger: true },
+              { key: 'operator_override_recover', label: '强制恢复（特权覆盖）…' },
+            ],
+            onClick: ({ key }) => {
+              if (status.isPending) return;
+              if (key === 'operator_override_recover') {
+                setOverrideOpen(true);
+                return;
+              }
+              status.mutate({ kind: key });
+            },
+          }}
         >
-          {account.riskStatus ? <RiskStatusBadge status={account.riskStatus} /> : <Tag>未上报</Tag>}
-        </button>
-      </Dropdown>
+          <button
+            type="button"
+            aria-label={`调整风控：${account.riskStatus ? labelOf(RISK_STATUS_LABEL, account.riskStatus) : '未上报'}`}
+            className="editable-cell"
+            disabled={status.isPending}
+            style={{ display: 'inline-flex', border: 0, padding: 0, background: 'transparent', cursor: status.isPending ? 'wait' : 'pointer' }}
+          >
+            {account.riskStatus ? <RiskStatusBadge status={account.riskStatus} /> : <Tag>未上报</Tag>}
+          </button>
+        </Dropdown>
+        <DriverTargetTag account={account} />
+      </span>
       <Modal
         title="强制恢复 — 绕过风控恢复时间窗（特权操作）"
         open={overrideOpen}
@@ -172,20 +144,8 @@ export function QuotaTierControl({ account }: { account: PanelAccount }) {
       message.success(`配额档位已改为 ${label}`);
       void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
-    onError: (err) => {
-      const refusal = ownershipRefusal(err);
-      if (refusal) message.warning(refusal);
-      else message.error('配额档位修改失败');
-    },
+    onError: () => message.error('配额档位修改失败'),
   });
-
-  if (!isRiskWritable(account)) {
-    return (
-      <ReadOnlyRisk account={account}>
-        {account.riskQuotaLevel ? <QuotaTierBadge tier={account.riskQuotaLevel} /> : <Tag>未配置</Tag>}
-      </ReadOnlyRisk>
-    );
-  }
 
   return (
     <Dropdown
