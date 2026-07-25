@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { App, Dropdown, Input, Modal, Space, Tag, Tooltip } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../api/client';
+import { awaitRiskCommand, type RiskCommandAccepted, type RiskCommandOutcome } from '../api/riskCommand';
 import type { PanelAccount } from '../types/api';
 import {
   RISK_QUOTA_LEVELS,
@@ -45,6 +46,38 @@ function DriverTargetTag({ account }: { account: PanelAccount }) {
   );
 }
 
+type MessageApi = ReturnType<typeof App.useApp>['message'];
+
+/**
+ * 风控命令四态的统一渲染（cloud change cloud-coupling-phase5 · P5-1）。
+ *
+ * 四态 MUST 各走各的文案，一条都不能合并：
+ *   - applied     真的写成了 → 成功，文案里的状态取自单写者回读的真态；
+ *   - failed      单写者判失败 → 报错并显示原因；
+ *   - unknown     查无此命令 → 报错。它**不是**「还在处理」——提交那一步就没落住，
+ *                 当成处理中会让界面永远转圈、且永远不会有人发现；
+ *   - processing  轮询到超时仍未出结果 → 如实说仍在处理，MUST NOT 报成功。
+ */
+function renderRiskOutcome(
+  outcome: RiskCommandOutcome,
+  message: MessageApi,
+  successText: (o: Extract<RiskCommandOutcome, { state: 'applied' }>) => string,
+): void {
+  switch (outcome.state) {
+    case 'applied':
+      message.success(successText(outcome));
+      return;
+    case 'failed':
+      message.error(`未生效：${outcome.reason}`);
+      return;
+    case 'unknown':
+      message.error('未生效：这条修改没有被受理（命令不存在），请重试');
+      return;
+    default:
+      message.warning('仍在处理中 — 稍后刷新查看是否生效');
+  }
+}
+
 /**
  * 风控写控件（V1 task 10.1）：status 迁移（枚举种类）与 quota-tier 是**两个独立控件**。
  * 非乐观——round-trip 后才显示真态；status 迁移被状态机拒绝时渲染 refused（区别于成功）。
@@ -60,17 +93,22 @@ export function RiskStatusControl({ account }: { account: PanelAccount }) {
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['accounts'] });
 
+  // 云端已改异步（P5-1）：提交只拿 commandId，真态必须回读。提交成功 ≠ 写成功——
+  // 这里 MUST NOT 在 onSuccess 里报「已改为 X」，那一刻云端也还不知道结果。
   const status = useMutation({
-    mutationFn: (v: { kind: string; reason?: string }) =>
-      apiPost<{ changed: boolean; state: { status: string } }>(
+    mutationFn: async (v: { kind: string; reason?: string }) => {
+      const accepted = await apiPost<RiskCommandAccepted>(
         `/api/accounts/${account.accountId}/risk/status`,
         v,
-      ),
-    onSuccess: (res) => {
-      // refused 可辨：状态机拒绝（changed=false）渲染「已拒绝」，绝不当成功
-      const label = labelOf(RISK_STATUS_LABEL, res.state.status);
-      if (res.changed) message.success(`风控状态已改为 ${label}`);
-      else message.warning(`已拒绝（仍为 ${label}）`);
+      );
+      message.loading({ content: '风控状态修改已提交，处理中…', key: accepted.commandId, duration: 0 });
+      return { accepted, outcome: await awaitRiskCommand(accepted.commandId) };
+    },
+    onSuccess: ({ accepted, outcome }) => {
+      message.destroy(accepted.commandId);
+      renderRiskOutcome(outcome, message, (o) =>
+        `风控状态已改为 ${labelOf(RISK_STATUS_LABEL, o.status)}`,
+      );
       invalidate();
     },
     onError: () => message.error('风控状态修改失败'),
@@ -137,11 +175,19 @@ export function QuotaTierControl({ account }: { account: PanelAccount }) {
   const { message } = App.useApp();
   const qc = useQueryClient();
   const quota = useMutation({
-    mutationFn: (level: string) =>
-      apiPost<{ state: { quotaLevel: string } }>(`/api/accounts/${account.accountId}/risk/quota`, { level }),
-    onSuccess: (res) => {
-      const label = labelOf(RISK_QUOTA_LABEL, res.state.quotaLevel);
-      message.success(`配额档位已改为 ${label}`);
+    mutationFn: async (level: string) => {
+      const accepted = await apiPost<RiskCommandAccepted>(
+        `/api/accounts/${account.accountId}/risk/quota`,
+        { level },
+      );
+      message.loading({ content: '配额档位修改已提交，处理中…', key: accepted.commandId, duration: 0 });
+      return { accepted, outcome: await awaitRiskCommand(accepted.commandId) };
+    },
+    onSuccess: ({ accepted, outcome }) => {
+      message.destroy(accepted.commandId);
+      renderRiskOutcome(outcome, message, (o) =>
+        `配额档位已改为 ${labelOf(RISK_QUOTA_LABEL, o.quotaLevel)}`,
+      );
       void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
     onError: () => message.error('配额档位修改失败'),
