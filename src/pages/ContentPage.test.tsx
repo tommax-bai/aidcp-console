@@ -694,6 +694,43 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.queryByText('平台下发中')).toBeNull();
   });
 
+  it('durable dispatching 优先于矛盾的 evidence_unavailable 阶段', async () => {
+    const durable = journey({
+      journeyId: 'publish:durable',
+      runId: null,
+      recordId: 7,
+      active: true,
+      status: 'dispatching',
+      statusSummary: 'durable projection 已确认正在下发',
+      dispatchState: 'dispatching',
+      snapshot: null,
+    }, {
+      source: 'completed',
+      content: 'completed',
+      text_quality: 'completed',
+      visual_plan: 'completed',
+      image_review: 'completed',
+      package: 'completed',
+      approval: 'completed',
+      dispatch: 'evidence_unavailable',
+    });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      inFlightEvidence: { state: 'stale', asOf: 1_700_000_000_000 },
+      lifecycle: { status: 'running', active: [durable], recent: [] },
+    };
+    renderQueuePage();
+
+    expect(await screen.findByText('平台下发中')).toBeTruthy();
+    expect(screen.queryByText('下发状态暂不可用')).toBeNull();
+    const dispatchStage = screen.getByText('平台下发').closest('.publish-queue-stage');
+    expect(dispatchStage?.textContent).toContain('进行中');
+    expect(dispatchStage?.textContent).toContain('正在向平台下发');
+    expect(dispatchStage?.textContent).not.toContain('证据暂不可用');
+    expect(document.querySelector('.publish-queue-metric--active .publish-queue-metric__value')?.textContent).toBe('1');
+  });
+
   // ── change publish-approval-signal-to-database：已批准·待下发是独立可见状态 ──────────────
   it('已批准·待下发：与「等待审批」可区分，展示阻塞原因与等待时长', async () => {
     const pending = journey({

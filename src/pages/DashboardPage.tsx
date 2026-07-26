@@ -46,17 +46,24 @@ function edgePresenceView(s: DashboardSummary): {
   state: 'fresh' | 'unknown' | 'stale' | 'invalid';
   count: number | null;
 } {
+  const validCount = Number.isSafeInteger(s.edgesOnline) && (s.edgesOnline ?? -1) >= 0;
   const state = s.edgePresenceState
-    ?? (typeof s.edgesOnline === 'number' && Number.isFinite(s.edgesOnline) ? 'fresh' : 'unknown');
+    ?? (validCount ? 'fresh' : 'unknown');
   if (state !== 'fresh') return { state, count: null };
-  if (typeof s.edgesOnline !== 'number' || !Number.isFinite(s.edgesOnline) || s.edgesOnline < 0) {
-    return { state: 'invalid', count: null };
-  }
-  return { state, count: Math.floor(s.edgesOnline) };
+  return validCount ? { state, count: s.edgesOnline } : { state: 'invalid', count: null };
 }
 
 function normalizeMirrorServices(data: ConfigMirrorHealthResponse | undefined): ConfigMirrorServiceHealth[] {
-  if (Array.isArray(data?.services)) return data.services;
+  if (Array.isArray(data?.services)) {
+    return data.services.map((service) => {
+      const entries = Array.isArray(service.entries) ? service.entries : [];
+      return {
+        ...service,
+        deliveryState: Array.isArray(service.entries) ? service.deliveryState : 'invalid',
+        entries,
+      };
+    });
+  }
   if (Array.isArray(data?.entries)) {
     return [{
       sourceService: 'api',

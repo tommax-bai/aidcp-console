@@ -41,6 +41,7 @@ import type {
   ContentQueue,
   ContentQueueJourney,
   ContentQueueJourneyStatus,
+  ContentQueueStage,
   ContentQueueStageState,
   DelegatedTaskView,
 } from '../types/api';
@@ -213,12 +214,41 @@ function dispatchEvidenceUnavailable(
   journey: ContentQueueJourney,
   evidenceState: ContentQueue['inFlightEvidence'],
 ): boolean {
+  if (journey.dispatchState && DURABLE_DISPATCH_STATES.has(journey.dispatchState)) return false;
   if (journey.stages.some((stage) => stage.key === 'dispatch' && stage.state === 'evidence_unavailable')) {
     return true;
   }
   if (!evidenceState || evidenceState.state === 'fresh') return false;
-  if (journey.dispatchState && DURABLE_DISPATCH_STATES.has(journey.dispatchState)) return false;
   return journey.status === 'waiting_approval' || journey.status === 'dispatching';
+}
+
+function withDurableDispatchPrecedence(
+  journey: ContentQueueJourney,
+  stage: ContentQueueStage,
+): ContentQueueStage {
+  if (stage.state !== 'evidence_unavailable'
+      || !journey.dispatchState
+      || !DURABLE_DISPATCH_STATES.has(journey.dispatchState)) return stage;
+  if (stage.key === 'approval') {
+    return { ...stage, state: 'completed', summary: '人工审批已确认' };
+  }
+  if (stage.key !== 'dispatch') return stage;
+  if (journey.dispatchState === 'pending_dispatch') {
+    return { ...stage, state: 'pending', summary: '已批准，等待平台下发' };
+  }
+  if (journey.dispatchState === 'dispatching') {
+    return { ...stage, state: 'running', summary: '正在向平台下发' };
+  }
+  if (journey.dispatchState === 'void') {
+    return { ...stage, state: 'skipped', summary: '无需平台下发' };
+  }
+  if (journey.status === 'published') {
+    return { ...stage, state: 'completed', summary: '平台已确认发布' };
+  }
+  if (journey.status === 'failed') {
+    return { ...stage, state: 'failed', summary: '平台下发失败' };
+  }
+  return { ...stage, state: 'partial', summary: '平台已受理，等待最终结果' };
 }
 
 const LIFECYCLE_STAGE_STATE_LABEL: Record<ContentQueueStageState, string> = {
@@ -689,16 +719,18 @@ function LifecycleJourneyOverview(props: {
 
       <div className="publish-queue-stage-strip publish-queue-stage-strip--lifecycle" aria-label="发布生命周期八阶段">
         {journey.stages.map((stage, index) => {
+          const durableStage = withDurableDispatchPrecedence(journey, stage);
           const projectedStage = evidenceUnavailable
-            && (stage.key === 'dispatch' || (stage.key === 'approval' && stage.state === 'waiting_human'))
+            && (durableStage.key === 'dispatch'
+              || (durableStage.key === 'approval' && durableStage.state === 'waiting_human'))
             ? {
-                ...stage,
+                ...durableStage,
                 state: 'evidence_unavailable' as const,
                 summary: '下发状态暂不可用',
                 facts: [],
                 progress: undefined,
               }
-            : stage;
+            : durableStage;
           return (
           <div key={projectedStage.key} className={`publish-queue-stage publish-queue-stage--${projectedStage.state}`}>
             <div className="publish-queue-stage__top">

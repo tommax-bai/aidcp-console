@@ -124,6 +124,20 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
     },
   );
 
+  it('fresh presence 的小数计数转为 invalid，不 floor 成零', async () => {
+    state.summary = makeSummary({
+      edgesOnline: 0.4,
+      edgePresenceState: 'fresh',
+      edgePresenceAsOf: AS_OF,
+    });
+    renderPage();
+
+    expect(await screen.findByText('在线状态暂不可用')).toBeTruthy();
+    expect(screen.getByText(/Edge presence：invalid/)).toBeTruthy();
+    expect(screen.queryByText(/系统当前未在浏览/)).toBeNull();
+    expect(screen.queryByText(/0 个边缘端在线/)).toBeNull();
+  });
+
   it('配置镜像按 API/Automation 分域展示，delivery stale 不沿用旧 fresh entries', async () => {
     state.mirrorHealth = {
       services: [
@@ -147,6 +161,22 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
     expect(screen.getByText('Automation 消费镜像')).toBeTruthy();
     expect(screen.getByText('1 项 fresh · 0 项需关注')).toBeTruthy();
     expect(screen.getByText(/不沿用旧 entries 的 fresh 结论/)).toBeTruthy();
+  });
+
+  it('分服务 entries 为 null/非数组时按该服务 invalid 展示，不让整页白屏', async () => {
+    state.mirrorHealth = {
+      services: [
+        { sourceService: 'api', asOf: AS_OF, deliveryState: 'fresh', entries: null },
+        { sourceService: 'automation', asOf: AS_OF, deliveryState: 'fresh', entries: 'bad-shape' },
+      ],
+    };
+    renderPage();
+
+    expect(await screen.findByText('API 消费镜像')).toBeTruthy();
+    expect(screen.getByText('Automation 消费镜像')).toBeTruthy();
+    expect(screen.getAllByText('invalid')).toHaveLength(2);
+    expect(screen.getAllByText(/该服务段 delivery 暂不可用/)).toHaveLength(2);
+    expect(screen.queryByText('0 项 fresh · 0 项需关注')).toBeNull();
   });
 
   it('搜索作为独立今日行为显示全局用量、账号上限与饱和状态', async () => {
