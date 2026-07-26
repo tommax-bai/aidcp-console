@@ -652,6 +652,48 @@ describe('ContentPage 审批 CAS 链（change console-cloud-panel-hardening #32�
     expect(screen.getAllByText('已完成').length).toBeGreaterThan(0);
   });
 
+  it('in-flight 证据 stale 时不归类为等待人工/下发中，确定汇总显示未知', async () => {
+    const uncertain = journey({
+      journeyId: 'publish:unavailable',
+      runId: null,
+      recordId: 6,
+      active: true,
+      status: 'waiting_approval',
+      statusSummary: '旧投影仍写着等待审批，但 dispatcher 证据已经陈旧',
+      snapshot: null,
+    }, {
+      source: 'completed',
+      content: 'completed',
+      text_quality: 'completed',
+      visual_plan: 'completed',
+      image_review: 'completed',
+      package: 'completed',
+      approval: 'waiting_human',
+      dispatch: 'pending',
+    });
+    state.queue = {
+      status: 'completed',
+      snapshot: null,
+      inFlightEvidence: { state: 'stale', asOf: 1_700_000_000_000 },
+      lifecycle: { status: 'waiting_human', active: [uncertain], recent: [] },
+    };
+    renderQueuePage();
+
+    expect((await screen.findAllByText('下发状态暂不可用')).length).toBeGreaterThan(0);
+    const activeMetric = document.querySelector('.publish-queue-metric--active');
+    const waitingMetric = document.querySelector('.publish-queue-metric--human');
+    expect(activeMetric?.querySelector('.publish-queue-metric__value')?.textContent).toBe('—');
+    expect(waitingMetric?.querySelector('.publish-queue-metric__value')?.textContent).toBe('—');
+    expect(activeMetric?.textContent).toContain('未计入确定汇总');
+    expect(waitingMetric?.textContent).toContain('未归类为等待人工或下发中');
+    const dispatchStage = screen.getByText('平台下发').closest('.publish-queue-stage');
+    expect(dispatchStage?.textContent).toContain('证据暂不可用');
+    expect(dispatchStage?.textContent).not.toContain('未开始');
+    expect(screen.queryByRole('link', { name: '去内容页审批' })).toBeNull();
+    expect(screen.queryByText('等待审批')).toBeNull();
+    expect(screen.queryByText('平台下发中')).toBeNull();
+  });
+
   // ── change publish-approval-signal-to-database：已批准·待下发是独立可见状态 ──────────────
   it('已批准·待下发：与「等待审批」可区分，展示阻塞原因与等待时长', async () => {
     const pending = journey({

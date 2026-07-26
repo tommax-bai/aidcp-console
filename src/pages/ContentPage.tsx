@@ -38,6 +38,7 @@ import type {
   PanelPublish,
   PanelPublishSourceReference,
   PanelVisualReferenceAudit,
+  ContentQueue,
   ContentQueueJourney,
   ContentQueueJourneyStatus,
   ContentQueueStageState,
@@ -143,7 +144,8 @@ const JOURNEY_STATUS_LABEL: Record<ContentQueueJourneyStatus, string> = {
  * 状态标签：已批准但尚未真正开始下发时，MUST 与「等待审批」和「平台下发中」都可区分。
  * 缺 `dispatchState`（旧 cloud）→ 逐字回落既有标签。
  */
-function journeyStatusLabel(journey: ContentQueueJourney): string {
+function journeyStatusLabel(journey: ContentQueueJourney, evidenceUnavailable = false): string {
+  if (evidenceUnavailable) return '下发状态暂不可用';
   if (journey.status === 'dispatching' && journey.dispatchState === 'pending_dispatch') {
     return '已批准·待下发';
   }
@@ -205,6 +207,20 @@ function pendingDispatchView(journey: ContentQueueJourney): {
   };
 }
 
+const DURABLE_DISPATCH_STATES = new Set(['pending_dispatch', 'dispatching', 'consumed', 'void']);
+
+function dispatchEvidenceUnavailable(
+  journey: ContentQueueJourney,
+  evidenceState: ContentQueue['inFlightEvidence'],
+): boolean {
+  if (journey.stages.some((stage) => stage.key === 'dispatch' && stage.state === 'evidence_unavailable')) {
+    return true;
+  }
+  if (!evidenceState || evidenceState.state === 'fresh') return false;
+  if (journey.dispatchState && DURABLE_DISPATCH_STATES.has(journey.dispatchState)) return false;
+  return journey.status === 'waiting_approval' || journey.status === 'dispatching';
+}
+
 const LIFECYCLE_STAGE_STATE_LABEL: Record<ContentQueueStageState, string> = {
   pending: '未开始',
   running: '进行中',
@@ -214,6 +230,7 @@ const LIFECYCLE_STAGE_STATE_LABEL: Record<ContentQueueStageState, string> = {
   partial: '部分完成',
   failed: '失败',
   skipped: '已跳过',
+  evidence_unavailable: '证据暂不可用',
 };
 
 const LIFECYCLE_STAGE_STATE_COLOR: Record<ContentQueueStageState, string> = {
@@ -225,6 +242,7 @@ const LIFECYCLE_STAGE_STATE_COLOR: Record<ContentQueueStageState, string> = {
   partial: 'gold',
   failed: 'red',
   skipped: 'default',
+  evidence_unavailable: 'orange',
 };
 
 const QUEUED_PUBLISH_STATUSES = ['queued', 'planning', 'deferred'] as const;
@@ -609,8 +627,14 @@ function LifecycleJourneyOverview(props: {
   journey: ContentQueueJourney;
   resolveAccountName: (id: string) => string;
   showAccount?: boolean;
+  dispatchEvidenceUnavailable?: boolean;
 }) {
-  const { journey, resolveAccountName, showAccount = true } = props;
+  const {
+    journey,
+    resolveAccountName,
+    showAccount = true,
+    dispatchEvidenceUnavailable: evidenceUnavailable = false,
+  } = props;
   return (
     <div className="publish-queue-overview">
       {!journey.active ? (
@@ -638,12 +662,14 @@ function LifecycleJourneyOverview(props: {
         </div>
         <Space wrap size={[6, 6]} className="publish-queue-draft__facts">
           {showAccount ? <Tag>{resolveAccountName(journey.accountId)}</Tag> : null}
-          <Tag color={JOURNEY_STATUS_COLOR[journey.status]}>{journeyStatusLabel(journey)}</Tag>
+          <Tag color={evidenceUnavailable ? 'orange' : JOURNEY_STATUS_COLOR[journey.status]}>
+            {journeyStatusLabel(journey, evidenceUnavailable)}
+          </Tag>
           {journey.recordId != null ? <Tag>记录 #{journey.recordId}</Tag> : null}
           {(() => {
             // 已批准·待下发：与「等待审批」视觉可区分，并把阻塞原因与等待时长直接摆出来。
             // 无原因却久等 = 下发侧疑似失联 → 打 error 色告警标记（与云端阈值同轴）。
-            const pending = pendingDispatchView(journey);
+            const pending = evidenceUnavailable ? null : pendingDispatchView(journey);
             if (!pending) return null;
             return (
               <>
@@ -655,37 +681,49 @@ function LifecycleJourneyOverview(props: {
               </>
             );
           })()}
-          {journey.active && journey.status === 'waiting_approval' ? (
+          {journey.active && journey.status === 'waiting_approval' && !evidenceUnavailable ? (
             <Button type="primary" size="small" href="/content?status=pending_approval">去内容页审批</Button>
           ) : null}
         </Space>
       </div>
 
       <div className="publish-queue-stage-strip publish-queue-stage-strip--lifecycle" aria-label="发布生命周期八阶段">
-        {journey.stages.map((stage, index) => (
-          <div key={stage.key} className={`publish-queue-stage publish-queue-stage--${stage.state}`}>
+        {journey.stages.map((stage, index) => {
+          const projectedStage = evidenceUnavailable
+            && (stage.key === 'dispatch' || (stage.key === 'approval' && stage.state === 'waiting_human'))
+            ? {
+                ...stage,
+                state: 'evidence_unavailable' as const,
+                summary: '下发状态暂不可用',
+                facts: [],
+                progress: undefined,
+              }
+            : stage;
+          return (
+          <div key={projectedStage.key} className={`publish-queue-stage publish-queue-stage--${projectedStage.state}`}>
             <div className="publish-queue-stage__top">
               <span className="publish-queue-stage__index">{index + 1}</span>
-              <Typography.Text strong className="publish-queue-stage__label">{stage.label}</Typography.Text>
-              <Tag color={LIFECYCLE_STAGE_STATE_COLOR[stage.state]} className="publish-queue-stage__tag">
-                {labelOf(LIFECYCLE_STAGE_STATE_LABEL, stage.state)}
+              <Typography.Text strong className="publish-queue-stage__label">{projectedStage.label}</Typography.Text>
+              <Tag color={LIFECYCLE_STAGE_STATE_COLOR[projectedStage.state]} className="publish-queue-stage__tag">
+                {labelOf(LIFECYCLE_STAGE_STATE_LABEL, projectedStage.state)}
               </Tag>
             </div>
-            <Typography.Text type="secondary" className="publish-queue-stage__fields" title={stage.summary}>
-              {stage.summary}
+            <Typography.Text type="secondary" className="publish-queue-stage__fields" title={projectedStage.summary}>
+              {projectedStage.summary}
             </Typography.Text>
-            {stage.facts.length > 0 ? (
-              <Typography.Text className="publish-queue-stage__fact" title={stage.facts.join(' · ')}>
-                {stage.facts.join(' · ')}
+            {projectedStage.facts.length > 0 ? (
+              <Typography.Text className="publish-queue-stage__fact" title={projectedStage.facts.join(' · ')}>
+                {projectedStage.facts.join(' · ')}
               </Typography.Text>
             ) : null}
-            {stage.progress ? (
+            {projectedStage.progress ? (
               <Typography.Text type="secondary" className="publish-queue-stage__progress">
-                进度 {stage.progress.current}/{stage.progress.total}
+                进度 {projectedStage.progress.current}/{projectedStage.progress.total}
               </Typography.Text>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1252,6 +1290,10 @@ export function PublishQueuePage() {
   const lifecycle = queue.data?.lifecycle;
   const lifecycleActive = lifecycle?.active ?? [];
   const lifecycleRecent = lifecycle?.recent ?? [];
+  const inFlightEvidence = queue.data?.inFlightEvidence;
+  const uncertainActiveCount = lifecycleActive.filter(
+    (journey) => dispatchEvidenceUnavailable(journey, inFlightEvidence),
+  ).length;
   const activeAccountIds = Array.from(new Set(lifecycleActive.map((item) => item.accountId)));
   const visibleActiveAccountId = selectedActiveAccountId && activeAccountIds.includes(selectedActiveAccountId)
     ? selectedActiveAccountId
@@ -1282,14 +1324,18 @@ export function PublishQueuePage() {
   const queueActive = lifecycle ? lifecycleActive.length > 0 : queueRuns.length > 0 || !!queueSnapshot || queueStatus === 'running';
   const visibleQueueStatus = lifecycle?.status ?? queueStatus;
   const activeCount = lifecycle
-    ? lifecycleActive.length
+    ? uncertainActiveCount > 0
+      ? null
+      : lifecycleActive.length
     : queue.isLoading || queue.isError
       ? null
       : queueActive
         ? Math.max(queueRuns.length, 1)
         : 0;
   const waitingHumanCount = lifecycle
-    ? lifecycleActive.filter((item) => item.status === 'waiting_approval').length
+    ? uncertainActiveCount > 0
+      ? null
+      : lifecycleActive.filter((item) => item.status === 'waiting_approval').length
     : null;
   const queuedTaskCount = delegatedPublishTasks.isLoading || delegatedPublishTasks.isError
     ? null
@@ -1311,13 +1357,23 @@ export function PublishQueuePage() {
         <QueueMetric
           label="活跃稿件"
           value={activeCount}
-          detail={queue.isLoading ? '正在读取生命周期' : queue.isError ? '生命周期加载失败' : '生成、待审或下发中的稿件'}
+          detail={queue.isLoading
+            ? '正在读取生命周期'
+            : queue.isError
+              ? '生命周期加载失败'
+              : uncertainActiveCount > 0
+                ? `${uncertainActiveCount} 条下发证据暂不可用，未计入确定汇总`
+                : '生成、待审或下发中的稿件'}
           tone="active"
         />
         <QueueMetric
           label="等待人工"
           value={waitingHumanCount}
-          detail={lifecycle ? '需前往内容页审批' : '旧版 Cloud 未提供独立统计'}
+          detail={uncertainActiveCount > 0
+            ? '证据不可用，未归类为等待人工或下发中'
+            : lifecycle
+              ? '需前往内容页审批'
+              : '旧版 Cloud 未提供独立统计'}
           tone="human"
         />
         <QueueMetric
@@ -1328,13 +1384,24 @@ export function PublishQueuePage() {
         />
       </section>
 
+      {uncertainActiveCount > 0 ? (
+        <Alert
+          showIcon
+          type="warning"
+          message="下发状态暂不可用"
+          description="受影响稿件仍保留在明细中，但不会根据空 in-flight 集合推断等待人工、未下发或正在下发。"
+        />
+      ) : null}
+
       <Card
         size="small"
         title="队列详情"
         extra={(
           <Space size={4}>
-            <Tag color={(lifecycle ? LIFECYCLE_STATUS_COLOR : QUEUE_STATUS_COLOR)[visibleQueueStatus] ?? 'default'}>
-              {(lifecycle ? LIFECYCLE_STATUS_LABEL : QUEUE_STATUS_LABEL)[visibleQueueStatus] ?? visibleQueueStatus}
+            <Tag color={uncertainActiveCount > 0 ? 'orange' : (lifecycle ? LIFECYCLE_STATUS_COLOR : QUEUE_STATUS_COLOR)[visibleQueueStatus] ?? 'default'}>
+              {uncertainActiveCount > 0
+                ? '下发证据不可用'
+                : (lifecycle ? LIFECYCLE_STATUS_LABEL : QUEUE_STATUS_LABEL)[visibleQueueStatus] ?? visibleQueueStatus}
             </Tag>
             {queuedPublishTasks.length > 0 ? <Tag color="blue">排队任务 {queuedPublishTasks.length}</Tag> : null}
           </Space>
@@ -1378,11 +1445,16 @@ export function PublishQueuePage() {
                       journey={journey}
                       resolveAccountName={resolveAccountName}
                       showAccount={false}
+                      dispatchEvidenceUnavailable={dispatchEvidenceUnavailable(journey, inFlightEvidence)}
                     />
                   ))}
                 </div>
               ) : (
-                <LifecycleJourneyOverview journey={selectedJourney} resolveAccountName={resolveAccountName} />
+                <LifecycleJourneyOverview
+                  journey={selectedJourney}
+                  resolveAccountName={resolveAccountName}
+                  dispatchEvidenceUnavailable={dispatchEvidenceUnavailable(selectedJourney, inFlightEvidence)}
+                />
               )}
               <QueuedPublishTasksPanel
                 tasks={queuedPublishTasks}

@@ -25,11 +25,15 @@ if (typeof window.matchMedia !== 'function') {
     }) as unknown as MediaQueryList;
 }
 
-const state = vi.hoisted(() => ({ summary: undefined as unknown }));
+const state = vi.hoisted(() => ({
+  summary: undefined as unknown,
+  mirrorHealth: undefined as unknown,
+}));
 
 vi.mock('../api/client', () => ({
   apiGet: vi.fn((path: string) => {
     if (path === '/api/dashboard/summary') return Promise.resolve(state.summary);
+    if (path === '/api/config-mirrors') return Promise.resolve(state.mirrorHealth);
     // merge-monitor-into-dashboard：按笔记互动并入本页，页面挂载即拉取。
     if (path === '/api/monitor/interactions') return Promise.resolve({ interactions: [] });
     return Promise.reject(new Error(`unexpected apiGet ${path}`));
@@ -68,9 +72,19 @@ function renderPage(): void {
   );
 }
 
+function setFreshMirrorHealth(): void {
+  state.mirrorHealth = {
+    services: [
+      { sourceService: 'api', asOf: AS_OF, deliveryState: 'fresh', entries: [] },
+      { sourceService: 'automation', asOf: AS_OF, deliveryState: 'fresh', entries: [] },
+    ],
+  };
+}
+
 describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-clarity）', () => {
   beforeEach(() => {
     state.summary = makeSummary();
+    setFreshMirrorHealth();
   });
 
   it('呈现「数据截至 asOf / 自动刷新中」新鲜度标识', async () => {
@@ -93,6 +107,48 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
     expect(screen.queryByText(/系统当前未在浏览/)).toBeNull();
   });
 
+  it.each(['unknown', 'stale', 'invalid'] as const)(
+    'Edge presence=%s 时显示不可用，不把最后好值或空值压成零',
+    async (edgePresenceState) => {
+      state.summary = makeSummary({
+        edgesOnline: edgePresenceState === 'stale' ? 4 : null,
+        edgePresenceState,
+        edgePresenceAsOf: AS_OF - 60_000,
+      });
+      renderPage();
+
+      expect(await screen.findByText('在线状态暂不可用')).toBeTruthy();
+      expect(screen.queryByText(/系统当前未在浏览/)).toBeNull();
+      expect(screen.queryByText(/0 个边缘端在线/)).toBeNull();
+      expect(screen.queryByText(/4 个边缘端在线/)).toBeNull();
+    },
+  );
+
+  it('配置镜像按 API/Automation 分域展示，delivery stale 不沿用旧 fresh entries', async () => {
+    state.mirrorHealth = {
+      services: [
+        {
+          sourceService: 'api',
+          asOf: AS_OF,
+          deliveryState: 'fresh',
+          entries: [{ mirrorKey: 'persona_config', tier: 'gate', state: 'fresh' }],
+        },
+        {
+          sourceService: 'automation',
+          asOf: AS_OF - 60_000,
+          deliveryState: 'stale',
+          entries: [{ mirrorKey: 'content_schedule', tier: 'gate', state: 'fresh' }],
+        },
+      ],
+    };
+    renderPage();
+
+    expect(await screen.findByText('API 消费镜像')).toBeTruthy();
+    expect(screen.getByText('Automation 消费镜像')).toBeTruthy();
+    expect(screen.getByText('1 项 fresh · 0 项需关注')).toBeTruthy();
+    expect(screen.getByText(/不沿用旧 entries 的 fresh 结论/)).toBeTruthy();
+  });
+
   it('搜索作为独立今日行为显示全局用量、账号上限与饱和状态', async () => {
     const totals = { view: 0, search: 2, like: 0, collect: 0, comment: 0, follow: 0, publish: 0, comment_like: 0, join_group: 0, dm_reply: 0 };
     const quotas = { view: 20, search: 10, like: 10, collect: 5, comment: 5, follow: 3, publish: 1, comment_like: 5, join_group: 1, dm_reply: 5 };
@@ -111,6 +167,7 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
 describe('DashboardPage 并入监控内容（merge-monitor-into-dashboard）', () => {
   beforeEach(() => {
     state.summary = makeSummary();
+    setFreshMirrorHealth();
   });
 
   it('呈现「按笔记互动」「告警」「实时事件流」卡片；事件流默认折叠、不挂连接', async () => {

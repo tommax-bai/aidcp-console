@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Statistic, Tag, Typography } from 'antd';
-import { useDashboardSummary, useInteractions, useResolveAlert } from '../api/queries';
+import { useConfigMirrorHealth, useDashboardSummary, useInteractions, useResolveAlert } from '../api/queries';
 import {
   AccountsTable,
   AccountTotalsTable,
@@ -11,7 +11,11 @@ import {
   ProfileLink,
 } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
-import type { DashboardSummary } from '../types/api';
+import type {
+  ConfigMirrorHealthResponse,
+  ConfigMirrorServiceHealth,
+  DashboardSummary,
+} from '../types/api';
 
 const METRICS: { key: string; get: (s: DashboardSummary) => number }[] = [
   { key: '浏览', get: (s) => s.totals.view },
@@ -33,7 +37,41 @@ function healthLine(s: DashboardSummary): string {
   const warned = s.accounts.filter((a) => a.riskStatus === 'warned').length;
   const bad = s.accounts.filter((a) => a.riskStatus === 'restricted' || a.riskStatus === 'frozen').length;
   const band = s.likeRate.healthy == null ? '' : s.likeRate.healthy ? '健康' : '超出区间';
-  return `${s.edgesOnline} 个边缘端在线 · ${total} 个账号 · ${warned} 个预警 · ${bad} 个受限/冻结 · 点赞率 ${pct(s.likeRate.rate)} ${band}`;
+  const presence = edgePresenceView(s);
+  const edgeText = presence.state === 'fresh' ? `${presence.count} 个边缘端在线` : '边缘端在线状态暂不可用';
+  return `${edgeText} · ${total} 个账号 · ${warned} 个预警 · ${bad} 个受限/冻结 · 点赞率 ${pct(s.likeRate.rate)} ${band}`;
+}
+
+function edgePresenceView(s: DashboardSummary): {
+  state: 'fresh' | 'unknown' | 'stale' | 'invalid';
+  count: number | null;
+} {
+  const state = s.edgePresenceState
+    ?? (typeof s.edgesOnline === 'number' && Number.isFinite(s.edgesOnline) ? 'fresh' : 'unknown');
+  if (state !== 'fresh') return { state, count: null };
+  if (typeof s.edgesOnline !== 'number' || !Number.isFinite(s.edgesOnline) || s.edgesOnline < 0) {
+    return { state: 'invalid', count: null };
+  }
+  return { state, count: Math.floor(s.edgesOnline) };
+}
+
+function normalizeMirrorServices(data: ConfigMirrorHealthResponse | undefined): ConfigMirrorServiceHealth[] {
+  if (Array.isArray(data?.services)) return data.services;
+  if (Array.isArray(data?.entries)) {
+    return [{
+      sourceService: 'api',
+      asOf: typeof data.asOf === 'number' ? data.asOf : null,
+      deliveryState: 'fresh',
+      entries: data.entries,
+    }];
+  }
+  return [];
+}
+
+function evidenceTime(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? new Date(value).toLocaleTimeString('zh-CN', { hour12: false })
+    : '未知';
 }
 
 /**
@@ -43,12 +81,15 @@ function healthLine(s: DashboardSummary): string {
  */
 export function DashboardPage() {
   const { data, isLoading, isError, refetch } = useDashboardSummary();
+  const mirrorHealth = useConfigMirrorHealth();
   const interactions = useInteractions();
   const resolveAlert = useResolveAlert();
   // 实时事件流默认折叠：展开才挂载、才建立实时连接（排障工具，不抢「5 秒看健康」的版面）。
   const [streamOpen, setStreamOpen] = useState(false);
   // 告警/互动条目账号名走统一诚实回落（真名→运营名→ID）：行内只带 accountId，真名从同份汇总的账号列表 join。
   const nameOf = makeAccountNamer(data?.accounts ?? []);
+  const presence = data ? edgePresenceView(data) : null;
+  const mirrorServices = normalizeMirrorServices(mirrorHealth.data);
 
   return (
     <div className="page-stack">
@@ -87,7 +128,7 @@ export function DashboardPage() {
       </Card>
 
       {/* change dashboard-refresh-clarity：无边缘在线时如实归因「无新数据」——诚实呈现，绝不伪造活跃感。 */}
-      {data && data.edgesOnline === 0 && (
+      {data && presence?.state === 'fresh' && presence.count === 0 && (
         <Alert
           type="info"
           showIcon
@@ -95,11 +136,19 @@ export function DashboardPage() {
           description="看板仍在自动刷新（上方「数据截至」时间持续推进）；边缘端上线并开始浏览后，各项计数才会有新变化。"
         />
       )}
+      {data && presence?.state !== 'fresh' && (
+        <Alert
+          type="warning"
+          showIcon
+          message="在线状态暂不可用"
+          description={`Edge presence：${presence?.state ?? 'unknown'}；owner 数据时刻 ${evidenceTime(data.edgePresenceAsOf)}。当前不显示零在线或离线结论。`}
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col>
           <Card size="small" loading={isLoading}>
-            <Statistic title="在线边缘端" value={data?.edgesOnline ?? 0} />
+            <Statistic title="在线边缘端" value={presence?.state === 'fresh' ? presence.count ?? '—' : '—'} />
           </Card>
         </Col>
         {METRICS.map((m) => (
@@ -120,6 +169,49 @@ export function DashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      <Card size="small" title="配置镜像健康（按消费服务）" loading={mirrorHealth.isLoading}>
+        {mirrorHealth.isError || mirrorServices.length === 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="分域镜像健康暂不可用"
+            description="当前不会把缺失的服务段合并成“全部正常”。"
+          />
+        ) : (
+          <Row gutter={[12, 12]}>
+            {mirrorServices.map((service) => {
+              const available = service.deliveryState === 'fresh';
+              const fresh = available ? service.entries.filter((entry) => entry.state === 'fresh').length : null;
+              const stale = available ? service.entries.length - (fresh ?? 0) : null;
+              return (
+                <Col key={service.sourceService} xs={24} md={12}>
+                  <Card
+                    size="small"
+                    title={service.sourceService === 'api' ? 'API 消费镜像' : service.sourceService === 'automation' ? 'Automation 消费镜像' : service.sourceService}
+                    extra={<Tag color={available ? 'green' : 'orange'}>{service.deliveryState}</Tag>}
+                  >
+                    <Space direction="vertical" size={4}>
+                      <Typography.Text type="secondary">
+                        source 数据截至 {evidenceTime(service.asOf)}
+                      </Typography.Text>
+                      {available ? (
+                        <Typography.Text>
+                          {fresh} 项 fresh · {stale} 项需关注
+                        </Typography.Text>
+                      ) : (
+                        <Typography.Text type="warning">
+                          该服务段 delivery 暂不可用；不沿用旧 entries 的 fresh 结论
+                        </Typography.Text>
+                      )}
+                    </Space>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
+        )}
+      </Card>
 
       <Card size="small" title="各账号状态（按级别排序）">
         {data && data.accounts.length > 0 ? (

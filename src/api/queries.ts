@@ -6,6 +6,7 @@ import { apiGet, apiPost, apiPatch, apiPut } from './client';
 import type {
   VersionPayload,
   DashboardSummary,
+  ConfigMirrorHealthResponse,
   PanelAccount,
   PanelPublish,
   ContentQueue,
@@ -153,6 +154,15 @@ export function useDashboardSummary() {
     queryFn: () => apiGet<DashboardSummary>('/api/dashboard/summary'),
     // change dashboard-refresh-clarity：10s 轮询 + 回窗即刷（块级覆盖 main.tsx 全局 false），
     // 配合响应 asOf 渲染「数据截至 …」——每轮刷新 asOf 推进即证明界面未冻结。
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useConfigMirrorHealth() {
+  return useQuery({
+    queryKey: ['config', 'mirror-health'],
+    queryFn: () => apiGet<ConfigMirrorHealthResponse>('/api/config-mirrors'),
     refetchInterval: 10_000,
     refetchOnWindowFocus: true,
   });

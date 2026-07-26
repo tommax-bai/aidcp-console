@@ -322,7 +322,13 @@ export interface CaptchaAssistIncident {
 
 export interface DashboardSummary {
   asOf: number;
-  edgesOnline: number;
+  /**
+   * Edge presence is evidence-bearing in 4b. `null` is unavailable, never zero.
+   * The state fields stay optional while Console and Cloud roll independently.
+   */
+  edgesOnline: number | null;
+  edgePresenceState?: 'fresh' | 'unknown' | 'stale' | 'invalid';
+  edgePresenceAsOf?: number | null;
   totals: TodayTotals;
   /** V1 task 9.6：真按账号切片（归因已流通）。 */
   totalsByAccount: AccountTotals[];
@@ -553,7 +559,8 @@ export type ContentQueueStageState =
   | 'completed'
   | 'partial'
   | 'failed'
-  | 'skipped';
+  | 'skipped'
+  | 'evidence_unavailable';
 
 export interface ContentQueueStage {
   key: 'source' | 'content' | 'text_quality' | 'visual_plan' | 'image_review' | 'package' | 'approval' | 'dispatch';
@@ -614,6 +621,11 @@ export interface ContentQueueLifecycle {
   recent: ContentQueueJourney[];
 }
 
+export interface ContentQueueInFlightEvidence {
+  state: 'fresh' | 'unknown' | 'stale' | 'invalid';
+  asOf: number | null;
+}
+
 /**
  * in-flight 发布队列（orchestrator getStatus，change parallel-rewrite-drafts 兼容形状）。
  * 旧字段 status/snapshot=聚合视图（最新启动的 running 轮，无 running 则最近终态）；runs=全部在跑轮。
@@ -625,6 +637,40 @@ export interface ContentQueue {
   runs?: ContentQueueRun[];
   /** Cloud-owned eight-stage lifecycle; absent while rolling back to an older cloud. */
   lifecycle?: ContentQueueLifecycle;
+  /** 4b additive dispatcher evidence; absent while rolling back to an older Cloud. */
+  inFlightEvidence?: ContentQueueInFlightEvidence;
+}
+
+export interface ConfigMirrorHealthEntry {
+  mirrorKey: string;
+  tier: 'gate' | 'parameter';
+  state: 'fresh' | 'stale' | 'unknown' | 'invalid';
+  version?: number | null;
+  lastComparedAt?: number | null;
+  lastReloadedAt?: number | null;
+  reloadFailingSince?: number | null;
+  haltsOnStale?: boolean;
+  staleForMs?: number;
+}
+
+export interface ConfigMirrorServiceHealth {
+  sourceService: 'api' | 'automation' | string;
+  asOf: number | null;
+  deliveryState: 'fresh' | 'stale' | 'unknown' | 'invalid';
+  entries: ConfigMirrorHealthEntry[];
+}
+
+/**
+ * 4b per-consumer health response. Legacy monolith fields remain optional so a
+ * rolling Console can present the one known local section without inventing an
+ * automation section.
+ */
+export interface ConfigMirrorHealthResponse {
+  services?: ConfigMirrorServiceHealth[];
+  asOf?: number;
+  enabled?: boolean;
+  pollMs?: number;
+  entries?: ConfigMirrorHealthEntry[];
 }
 
 // ── 精选内容后台管理（change curated-content-admin-page）────────────────────────
