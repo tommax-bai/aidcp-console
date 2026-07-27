@@ -1446,6 +1446,52 @@ export interface FacebookJoinGroupAutomationView {
   updatedBy: string | null;
 }
 
+export type FacebookRuleActionState =
+  | 'pending'
+  | 'dispatched'
+  | 'confirmed'
+  | 'already_satisfied'
+  | 'risk_suppressed'
+  | 'structural_skip'
+  | 'not_started'
+  | 'rejected'
+  | 'failed'
+  | 'ambiguous'
+  | 'submitted_unknown';
+
+export interface FacebookRuleModeView {
+  config: {
+    accountId: string;
+    enabled: boolean;
+    definitionId: 'facebook_browse_10_like_1_join_contact_1';
+    definitionVersion: 1;
+    updatedAt: string | null;
+    updatedBy: string | null;
+  };
+  runtime: {
+    viewCount: number;
+    threshold: 10;
+    currentBatch: {
+      batchId: string;
+      sequence: number;
+      triggerContentKey: string;
+      likeState: FacebookRuleActionState;
+      joinState: FacebookRuleActionState;
+      commentState: FacebookRuleActionState;
+      terminal: boolean;
+      blocker: string | null;
+      createdAt: string;
+      updatedAt: string;
+    } | null;
+    updatedAt: string | null;
+  };
+}
+
+export interface FacebookRuleModeCatalogView extends FacebookRuleModeView {
+  effectiveMode: 'facebook_rule' | 'persona' | 'slow_start' | 'blocked' | 'unsupported';
+  blocker: string | null;
+}
+
 /** 每账号内容排期一行（GET /api/content-schedule），含两层独立的账号覆盖与生效来源。 */
 export interface ContentScheduleRow {
   accountId: string;
@@ -1462,6 +1508,8 @@ export interface ContentScheduleRow {
   availableActions: ContentScheduleAvailableAction[];
   /** 仅 Facebook 行返回；非 Facebook 不伪造该领域配置。 */
   joinGroupAutomation?: FacebookJoinGroupAutomationView;
+  /** 仅 Facebook 行返回；缺失表示权威配置或 target-scoped 运行投影不可用，不得伪造为关闭/0。 */
+  facebookRuleMode?: FacebookRuleModeCatalogView;
   /** 总开关：false=该账号完全不自动（零回归默认）。 */
   autoEnabled: boolean;
   /** 发帖开关。 */

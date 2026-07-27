@@ -65,6 +65,25 @@ const facebookJoinConfig = {
   updatedBy: null,
 };
 
+const facebookRuleMode = {
+  config: {
+    accountId: 'fb-1',
+    enabled: true,
+    definitionId: 'facebook_browse_10_like_1_join_contact_1' as const,
+    definitionVersion: 1 as const,
+    updatedAt: '2026-07-27T02:00:00.000Z',
+    updatedBy: 'panel:alice',
+  },
+  runtime: {
+    viewCount: 7,
+    threshold: 10 as const,
+    currentBatch: null,
+    updatedAt: '2026-07-27T02:00:00.000Z',
+  },
+  effectiveMode: 'facebook_rule' as const,
+  blocker: null,
+};
+
 vi.mock('../api/client', async () => ({
   // 保留真实 ApiError（errorText 的 `err instanceof ApiError` 依赖它——否则被 mock 成 undefined 会抛）。
   ...(await vi.importActual<typeof import('../api/client')>('../api/client')),
@@ -179,6 +198,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
           { action: 'join_group', allowedModes: [], maxDailyCap: 10 },
         ],
         joinGroupAutomation: facebookJoinConfig,
+        facebookRuleMode,
         postDailyCap: 1,
       }),
       makeRow({
@@ -223,6 +243,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.getByRole('columnheader', { name: '自动评论' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动加群' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '加群评论（联系）' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '10 条规则模式' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '自动联系评论' })).toBeNull();
     expect(modeControl('加群评论（联系） fb-1')).not.toBeNull();
     expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
@@ -237,6 +258,72 @@ describe('ContentSchedulePage 平台感知视图', () => {
         body: { postDailyCap: 2 },
       }),
     );
+  });
+
+  it('Facebook 规则模式展示权威模式与进度，开关等待服务端成功后才翻转', async () => {
+    let resolvePut: (() => void) | undefined;
+    state.putImpl = (path) => {
+      if (path !== '/api/accounts/fb-1/facebook-rule-mode') return Promise.resolve({});
+      return new Promise((resolve) => {
+        resolvePut = () => {
+          state.rows = state.rows.map((item) => {
+            const row = item as ContentScheduleRow;
+            return row.accountId === 'fb-1'
+              ? {
+                  ...row,
+                  facebookRuleMode: {
+                    ...facebookRuleMode,
+                    config: { ...facebookRuleMode.config, enabled: false },
+                  },
+                }
+              : row;
+          });
+          resolve({
+            ...facebookRuleMode,
+            config: { ...facebookRuleMode.config, enabled: false },
+          });
+        };
+      });
+    };
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    expect(screen.getByText('规则运行')).not.toBeNull();
+    expect(screen.getByText('进度 7 / 10')).not.toBeNull();
+    expect(screen.getByText(/固定规则：账号活跃周历内，确认浏览 10 条/)).not.toBeNull();
+    const ruleSwitch = screen.getByRole('switch', { name: '规则模式 fb-1' });
+    expect(ruleSwitch.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(ruleSwitch);
+    await waitFor(() =>
+      expect(state.putCalls).toContainEqual({
+        path: '/api/accounts/fb-1/facebook-rule-mode',
+        body: { enabled: false },
+      }),
+    );
+    expect(ruleSwitch.getAttribute('aria-checked')).toBe('true');
+    resolvePut?.();
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: '规则模式 fb-1' }).getAttribute('aria-checked')).toBe('false'),
+    );
+  });
+
+  it('规则投影缺失显示未知而非伪造关闭或 0，非 Facebook 不展示规则列', async () => {
+    state.rows = state.rows.map((item) => {
+      const row = item as ContentScheduleRow;
+      if (row.accountId !== 'fb-1') return row;
+      const { facebookRuleMode: _drop, ...withoutRule } = row;
+      return withoutRule;
+    });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+    expect(screen.getByText('状态未知')).not.toBeNull();
+    expect(screen.getByText('Cloud 未返回规则配置或运行进度')).not.toBeNull();
+    expect(screen.queryByText(/进度 0/)).toBeNull();
+
+    await selectPlatform('小红书');
+    expect(screen.queryByRole('columnheader', { name: '10 条规则模式' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /规则模式/ })).toBeNull();
   });
 
   it('Facebook 自动加群展示服务端有效值、范围就绪态和最近排期结果', async () => {

@@ -32,6 +32,8 @@ import type {
   ContentScheduleAvailableAction,
   FacebookJoinGroupAutomationPatch,
   FacebookJoinGroupAutomationWriteResult,
+  FacebookRuleActionState,
+  FacebookRuleModeView,
 } from '../types/api';
 import {
   WeekActiveGrid,
@@ -142,6 +144,35 @@ const PLATFORM_COLORS: Record<string, string> = {
 const KNOWN_PLATFORM_OPTIONS = ['xiaohongshu', 'facebook', 'wechat_channels'] as const;
 
 const platformLabel = (platform: string) => PLATFORM_LABELS[platform] ?? platform;
+
+const RULE_MODE_LABELS = {
+  facebook_rule: { label: '规则运行', color: 'blue' },
+  slow_start: { label: '冷启动优先', color: 'orange' },
+  persona: { label: '人设模式', color: 'default' },
+  blocked: { label: '规则阻断', color: 'red' },
+  unsupported: { label: '不支持', color: 'default' },
+} as const;
+
+const RULE_ACTION_LABELS: Record<FacebookRuleActionState, string> = {
+  pending: '待处理',
+  dispatched: '已下发',
+  confirmed: '已确认',
+  already_satisfied: '已满足',
+  risk_suppressed: '风控抑制',
+  structural_skip: '结构跳过',
+  not_started: '未启动',
+  rejected: '已拒绝',
+  failed: '失败',
+  ambiguous: '结果不明确',
+  submitted_unknown: '已提交待确认',
+};
+
+const ruleActionColor = (state: FacebookRuleActionState) => {
+  if (state === 'confirmed' || state === 'already_satisfied') return 'green';
+  if (state === 'pending' || state === 'dispatched' || state === 'submitted_unknown' || state === 'ambiguous') return 'orange';
+  if (state === 'risk_suppressed' || state === 'structural_skip' || state === 'not_started') return 'default';
+  return 'red';
+};
 
 const isActionModeOn = (mode: ContentScheduleActionMode) => mode !== 'off';
 
@@ -551,6 +582,24 @@ export function ContentSchedulePage() {
     },
   });
 
+  // 规则模式配置是独立 Cloud authority；不写 content schedule，也不做乐观翻转。
+  // 只有 PUT 成功且随后 catalog 权威回读完成，开关与进度才改变。
+  const patchFacebookRuleMode = useMutation({
+    mutationFn: ({ accountId, enabled }: { accountId: string; enabled: boolean }) =>
+      apiPut<FacebookRuleModeView>(
+        `/api/accounts/${encodeURIComponent(accountId)}/facebook-rule-mode`,
+        { enabled },
+      ),
+    onSuccess: () => {
+      message.success('Facebook 规则模式配置已保存');
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+    },
+    onError: (error) => {
+      message.error(`Facebook 规则模式保存失败：${errorText(error)}`);
+      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
+    },
+  });
+
   // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${action}`。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
@@ -900,7 +949,75 @@ export function ContentSchedulePage() {
         );
       },
     }));
-    return [...commonColumns, ...actionColumns, auditColumn];
+    const facebookRuleColumn: ColumnsType<ContentScheduleRow>[number] = {
+      title: '10 条规则模式',
+      key: 'facebook-rule-mode',
+      width: 310,
+      render: (_: unknown, row) => {
+        const rule = row.facebookRuleMode;
+        if (!rule) {
+          return (
+            <Space direction="vertical" size={2}>
+              <Tag color="red">状态未知</Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Cloud 未返回规则配置或运行进度
+              </Typography.Text>
+            </Space>
+          );
+        }
+        const mode = RULE_MODE_LABELS[rule.effectiveMode];
+        const currentBatch = rule.runtime.currentBatch;
+        const updatedAt = currentBatch?.updatedAt ?? rule.runtime.updatedAt ?? rule.config.updatedAt;
+        return (
+          <Space direction="vertical" size={6} style={{ maxWidth: 300 }}>
+            <Space size={8} wrap>
+              <Switch
+                aria-label={`规则模式 ${row.accountId}`}
+                checked={rule.config.enabled}
+                loading={
+                  patchFacebookRuleMode.isPending
+                  && patchFacebookRuleMode.variables?.accountId === row.accountId
+                }
+                onChange={(enabled) =>
+                  patchFacebookRuleMode.mutate({ accountId: row.accountId, enabled })
+                }
+              />
+              <Tag color={mode.color}>{mode.label}</Tag>
+              {rule.effectiveMode === 'facebook_rule' ? (
+                <Tag color="blue">进度 {rule.runtime.viewCount} / {rule.runtime.threshold}</Tag>
+              ) : null}
+            </Space>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              固定规则：账号活跃周历内，确认浏览 10 条 → 点赞 1 次 → 加群联系评论 1 次；冷启动优先
+            </Typography.Text>
+            {rule.blocker ? <Tag color="orange">阻断：{rule.blocker}</Tag> : null}
+            {currentBatch ? (
+              <Space size={[4, 4]} wrap>
+                <Tag color={ruleActionColor(currentBatch.likeState)}>
+                  点赞：{RULE_ACTION_LABELS[currentBatch.likeState]}
+                </Tag>
+                <Tag color={ruleActionColor(currentBatch.joinState)}>
+                  加群：{RULE_ACTION_LABELS[currentBatch.joinState]}
+                </Tag>
+                <Tag color={ruleActionColor(currentBatch.commentState)}>
+                  联系评论：{RULE_ACTION_LABELS[currentBatch.commentState]}
+                </Tag>
+                {currentBatch.blocker ? <Tag color="orange">{currentBatch.blocker}</Tag> : null}
+              </Space>
+            ) : null}
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {updatedAt ? `权威更新：${new Date(updatedAt).toLocaleString()}` : '尚无运行进度'}
+            </Typography.Text>
+          </Space>
+        );
+      },
+    };
+    return [
+      ...commonColumns,
+      ...(platformFilter === 'facebook' ? [facebookRuleColumn] : []),
+      ...actionColumns,
+      auditColumn,
+    ];
   })();
 
   // 读失败：不回落到编造的默认周历掩码（fail-open 全活跃会被当真实配置展示）——诚实报错 + 重试全部。
