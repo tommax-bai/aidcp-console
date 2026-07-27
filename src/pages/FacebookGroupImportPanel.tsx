@@ -8,7 +8,10 @@ import {
   LinkOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import type { FacebookGroupTargetFacets } from '../types/api';
+import type {
+  FacebookGroupAccountScopeMode,
+  FacebookGroupTargetFacets,
+} from '../types/api';
 import type { FacebookGroupImportItem } from './facebookGroupImportParser';
 import {
   FacebookGroupCsvError,
@@ -33,6 +36,7 @@ export interface FacebookGroupImportPanelProps {
     items: FacebookGroupImportItem[],
     mode: FacebookGroupImportMode,
     accountGroupLabels?: string[],
+    accountScopeMode?: FacebookGroupAccountScopeMode,
   ) => Promise<void>;
 }
 
@@ -56,6 +60,8 @@ export function FacebookGroupImportPanel({
   const [csvError, setCsvError] = useState<string>();
   const [readingCsv, setReadingCsv] = useState(false);
   const [replaceScopes, setReplaceScopes] = useState(false);
+  const [accountScopeMode, setAccountScopeMode] =
+    useState<FacebookGroupAccountScopeMode>('restricted');
   const [accountGroupLabels, setAccountGroupLabels] = useState<string[]>([]);
 
   const regionOptions = useMemo(
@@ -76,11 +82,17 @@ export function FacebookGroupImportPanel({
     importMode: FacebookGroupImportMode,
   ) =>
     replaceScopes
-      ? onImport(items, importMode, accountGroupLabels)
+      ? onImport(
+          items,
+          importMode,
+          accountScopeMode === 'global' ? [] : accountGroupLabels,
+          accountScopeMode,
+        )
       : onImport(items, importMode);
 
   const resetScopeDraft = () => {
     setReplaceScopes(false);
+    setAccountScopeMode('restricted');
     setAccountGroupLabels([]);
   };
   const parkOptions = useMemo(
@@ -170,6 +182,19 @@ export function FacebookGroupImportPanel({
           />
           <Typography.Text>本次设置适用账号分组</Typography.Text>
         </Space>
+        <Segmented<FacebookGroupAccountScopeMode>
+          aria-label="导入适用范围模式"
+          value={accountScopeMode}
+          options={[
+            { value: 'restricted', label: '指定账号分组' },
+            { value: 'global', label: '全局分组' },
+          ]}
+          disabled={!replaceScopes}
+          onChange={(value) => {
+            setAccountScopeMode(value);
+            if (value === 'global') setAccountGroupLabels([]);
+          }}
+        />
         <Select
           aria-label="导入适用账号分组"
           mode="multiple"
@@ -179,16 +204,18 @@ export function FacebookGroupImportPanel({
           value={accountGroupLabels}
           options={accountGroupOptions}
           placeholder="选择一个或多个账号分组"
-          disabled={!replaceScopes}
+          disabled={!replaceScopes || accountScopeMode === 'global'}
           loading={facetsLoading}
           onChange={setAccountGroupLabels}
           style={{ minWidth: 280 }}
         />
         <Typography.Text type="secondary">
           {replaceScopes
-            ? accountGroupLabels.length > 0
-              ? `将统一归属到 ${accountGroupLabels.length} 个账号分组`
-              : '将明确清空适用分组；未设置范围的群组不会被自动加入'
+            ? accountScopeMode === 'global'
+              ? '全局分组允许任意 Facebook 账号加入，不依赖账号当前分组'
+              : accountGroupLabels.length > 0
+                ? `将统一归属到 ${accountGroupLabels.length} 个账号分组`
+                : '将明确清空适用分组；未设置范围的群组不会被自动加入'
             : '保持已存在群组的适用分组不变；新群组将保持未设置范围'}
         </Typography.Text>
       </div>

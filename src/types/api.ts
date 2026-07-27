@@ -100,6 +100,8 @@ export type FacebookCommentMode = 'generated' | 'template';
  */
 export interface FacebookCommentConfig {
   accountId: string;
+  /** 是否由运营显式选择过评论方案；false 时有效方案默认 template。 */
+  commentModeConfigured: boolean;
   /** 搜索关键词列表（随机选一个）。 */
   keywords: string[];
   /** Legacy 允许容器列表；当前运行时从账号已加入群组账本选群。 */
@@ -1025,6 +1027,8 @@ export interface QuotaConfigCatalog {
 }
 
 export type FacebookGroupJoinGating = 'unknown' | 'instant' | 'gated';
+export type FacebookGroupAccountScopeMode = 'restricted' | 'global';
+export type FacebookGroupAccountScopeFilter = FacebookGroupAccountScopeMode | 'unscoped';
 export type FacebookGroupMembershipStatus =
   | 'assigned'
   | 'joining'
@@ -1038,7 +1042,9 @@ export type FacebookGroupMembershipStatus =
 
 export interface FacebookGroupTargetRow {
   groupUrl: string;
-  /** 适用 Facebook 账号分组的完整集合；空数组=不会进入自动/裸 --join 候选池。 */
+  /** global=任意 Facebook 账号；restricted=按下方真实账号分组精确匹配。 */
+  accountScopeMode: FacebookGroupAccountScopeMode;
+  /** restricted 模式的完整集合；restricted + 空数组不会进入自动/裸 --join 候选池。 */
   accountGroupLabels: string[];
   groupName: string | null;
   region: string | null;
@@ -1086,11 +1092,14 @@ export interface FacebookGroupTargetFacets {
   /** 当前至少由一个 Facebook 账号使用的可选分组。 */
   accountGroupLabels: string[];
   /** 没有任何账号分组范围的目标数。 */
+  globalTargetCount: number;
+  /** restricted 且没有任何账号分组范围的目标数。 */
   unscopedTargetCount: number;
 }
 
 export interface FacebookGroupTargetScopeReadback {
   groupUrl: string;
+  accountScopeMode: FacebookGroupAccountScopeMode;
   accountGroupLabels: string[];
   updatedAt: string;
   updatedBy: string;
@@ -1098,6 +1107,17 @@ export interface FacebookGroupTargetScopeReadback {
 
 export interface FacebookGroupTargetScopeReplaceResult {
   items: FacebookGroupTargetScopeReadback[];
+}
+
+export interface FacebookRegionCommentTemplateRow {
+  region: string;
+  commentTemplates: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface FacebookRegionCommentTemplateList {
+  items: FacebookRegionCommentTemplateRow[];
 }
 
 export interface FacebookGroupAccountProgress {

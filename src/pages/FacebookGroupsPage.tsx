@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Empty, Select, Space, Switch, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Empty, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { LinkOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,8 @@ import { useDashboardSummary } from '../api/queries';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type {
   FacebookGroupAccountProgress,
+  FacebookGroupAccountScopeFilter,
+  FacebookGroupAccountScopeMode,
   FacebookGroupImportResult,
   FacebookGroupMembershipRow,
   FacebookGroupMembershipStatus,
@@ -19,11 +21,13 @@ import type {
   FacebookGroupTargetScopeReplaceResult,
 } from '../types/api';
 import { FacebookGroupImportPanel, type FacebookGroupImportMode } from './FacebookGroupImportPanel';
+import { FacebookRegionCommentTemplates } from './FacebookRegionCommentTemplates';
 import type { FacebookGroupImportItem } from './facebookGroupImportParser';
 import { facebookGroupListPath, GROUP_PAGE_SIZE } from './facebookGroupsQuery';
 
 type StatusFilter = 'all' | 'unassigned' | FacebookGroupMembershipStatus;
 type EnabledFilter = 'all' | 'true' | 'false';
+type ScopeFilter = 'all' | FacebookGroupAccountScopeFilter;
 
 const STATUS_META: Record<StatusFilter, { text: string; color: string }> = {
   all: { text: '全部', color: 'default' },
@@ -87,16 +91,30 @@ export function FacebookGroupsPage() {
   const [region, setRegion] = useState<string | undefined>();
   const [park, setPark] = useState<string | undefined>();
   const [direction, setDirection] = useState<string | undefined>();
+  const [accountScopeFilter, setAccountScopeFilter] = useState<ScopeFilter>('all');
   const [accountGroupLabel, setAccountGroupLabel] = useState<string | undefined>();
   const [selectedGroupUrls, setSelectedGroupUrls] = useState<React.Key[]>([]);
   const [scopeDraft, setScopeDraft] = useState<string[]>([]);
+  const [scopeModeDraft, setScopeModeDraft] =
+    useState<FacebookGroupAccountScopeMode>('restricted');
   const [page, setPage] = useState(1);
 
   const groups = useQuery({
-    queryKey: ['facebook', 'groups', status, enabled, region, park, direction, accountGroupLabel, page],
+    queryKey: ['facebook', 'groups', status, enabled, region, park, direction, accountScopeFilter, accountGroupLabel, page],
     queryFn: () => {
       return apiGet<FacebookGroupTargetList>(
-        facebookGroupListPath({ status, enabled, region, park, direction, accountGroupLabel, page }),
+        facebookGroupListPath({
+          status,
+          enabled,
+          region,
+          park,
+          direction,
+          ...(accountScopeFilter !== 'all'
+            ? { accountScopeMode: accountScopeFilter }
+            : {}),
+          accountGroupLabel,
+          page,
+        }),
       );
     },
   });
@@ -125,11 +143,13 @@ export function FacebookGroupsPage() {
       items: FacebookGroupImportItem[];
       mode: FacebookGroupImportMode;
       accountGroupLabels?: string[];
+      accountScopeMode?: FacebookGroupAccountScopeMode;
     }) =>
       apiPost<FacebookGroupImportResult>('/api/facebook/groups/import', {
         items: input.items,
         importBatch: `console-${input.mode}-${dayjs().format('YYYYMMDD-HHmmss')}`,
         ...(input.accountGroupLabels !== undefined ? { accountGroupLabels: input.accountGroupLabels } : {}),
+        ...(input.accountScopeMode !== undefined ? { accountScopeMode: input.accountScopeMode } : {}),
       }),
     onSuccess: (res) => {
       message.success(`已导入 ${res.imported} 个，更新 ${res.updated ?? 0} 个，重复 ${res.duplicate} 个，无效 ${res.invalid} 个`);
@@ -147,12 +167,17 @@ export function FacebookGroupsPage() {
   });
 
   const replaceScopes = useMutation({
-    mutationFn: (input: { groupUrls: string[]; accountGroupLabels: string[] }) =>
+    mutationFn: (input: {
+      groupUrls: string[];
+      accountGroupLabels: string[];
+      accountScopeMode: FacebookGroupAccountScopeMode;
+    }) =>
       apiPut<FacebookGroupTargetScopeReplaceResult>('/api/facebook/groups/scopes', input),
     onSuccess: (res) => {
       message.success(`已更新 ${res.items.length} 个群组的适用账号分组`);
       setSelectedGroupUrls([]);
       setScopeDraft([]);
+      setScopeModeDraft('restricted');
       invalidateGroups();
     },
     onError: () => message.error('适用账号分组保存失败，未改变原配置'),
@@ -224,8 +249,10 @@ export function FacebookGroupsPage() {
       title: '适用账号分组',
       dataIndex: 'accountGroupLabels',
       minWidth: 190,
-      render: (labels: string[]) =>
-        labels.length > 0 ? (
+      render: (labels: string[], row) =>
+        row.accountScopeMode === 'global' ? (
+          <Tag color="green">全局分组</Tag>
+        ) : labels.length > 0 ? (
           <Space size={[0, 4]} wrap>
             {labels.map((label) => <Tag key={label} color="blue">{label}</Tag>)}
           </Space>
@@ -329,9 +356,16 @@ export function FacebookGroupsPage() {
             facets={facets.data}
             facetsLoading={facets.isLoading}
             importing={importGroups.isPending}
-            onImport={(items, mode, accountGroupLabels) =>
-              importGroups.mutateAsync({ items, mode, accountGroupLabels }).then(() => undefined)
+            onImport={(items, mode, accountGroupLabels, accountScopeMode) =>
+              importGroups
+                .mutateAsync({ items, mode, accountGroupLabels, accountScopeMode })
+                .then(() => undefined)
             }
+          />
+
+          <FacebookRegionCommentTemplates
+            regions={facets.data?.regions ?? []}
+            regionsLoading={facets.isLoading}
           />
 
           {(facets.data?.unscopedTargetCount ?? 0) > 0 ? (
@@ -340,6 +374,15 @@ export function FacebookGroupsPage() {
               showIcon
               message={`有 ${facets.data?.unscopedTargetCount ?? 0} 个群组未设置适用账号分组`}
               description="这些群组不会被账号自动加群选中。可在下方勾选群组后批量设置范围。"
+            />
+          ) : null}
+
+          {(facets.data?.globalTargetCount ?? 0) > 0 ? (
+            <Alert
+              type="info"
+              showIcon
+              message={`有 ${facets.data?.globalTargetCount ?? 0} 个全局群组`}
+              description="全局群组允许任意 Facebook 账号加入，不依赖账号当前分组。"
             />
           ) : null}
 
@@ -402,6 +445,23 @@ export function FacebookGroupsPage() {
               onChange={(v) => { setDirection(v); setPage(1); setSelectedGroupUrls([]); }}
             />
             <Select
+              aria-label="适用范围模式筛选"
+              value={accountScopeFilter}
+              options={[
+                { value: 'all', label: '全部适用范围' },
+                { value: 'global', label: '全局分组' },
+                { value: 'restricted', label: '指定账号分组' },
+                { value: 'unscoped', label: '未设置适用分组' },
+              ]}
+              style={{ width: 170 }}
+              onChange={(value) => {
+                setAccountScopeFilter(value);
+                if (value !== 'restricted') setAccountGroupLabel(undefined);
+                setPage(1);
+                setSelectedGroupUrls([]);
+              }}
+            />
+            <Select
               aria-label="适用账号分组筛选"
               allowClear
               showSearch
@@ -413,6 +473,7 @@ export function FacebookGroupsPage() {
               loading={facets.isLoading}
               onChange={(v) => {
                 setAccountGroupLabel(v);
+                if (v) setAccountScopeFilter('restricted');
                 setPage(1);
                 setSelectedGroupUrls([]);
               }}
@@ -421,6 +482,18 @@ export function FacebookGroupsPage() {
 
           <Space wrap>
             <Typography.Text>已选 {selectedGroupUrls.length} 个群组</Typography.Text>
+            <Segmented<FacebookGroupAccountScopeMode>
+              aria-label="批量适用范围模式"
+              value={scopeModeDraft}
+              options={[
+                { value: 'restricted', label: '指定账号分组' },
+                { value: 'global', label: '全局分组' },
+              ]}
+              onChange={(value) => {
+                setScopeModeDraft(value);
+                if (value === 'global') setScopeDraft([]);
+              }}
+            />
             <Select
               aria-label="批量适用账号分组"
               mode="multiple"
@@ -432,24 +505,32 @@ export function FacebookGroupsPage() {
               placeholder="选择一个或多个账号分组"
               style={{ minWidth: 280 }}
               loading={facets.isLoading}
+              disabled={scopeModeDraft === 'global'}
               onChange={setScopeDraft}
             />
             <Button
               type="primary"
-              danger={scopeDraft.length === 0}
+              danger={scopeModeDraft === 'restricted' && scopeDraft.length === 0}
               loading={replaceScopes.isPending}
               disabled={selectedGroupUrls.length === 0}
               onClick={() =>
                 replaceScopes.mutate({
                   groupUrls: selectedGroupUrls.map(String),
-                  accountGroupLabels: scopeDraft,
+                  accountGroupLabels: scopeModeDraft === 'global' ? [] : scopeDraft,
+                  accountScopeMode: scopeModeDraft,
                 })
               }
             >
-              {scopeDraft.length === 0 ? '清空所选群组范围' : '替换所选群组范围'}
+              {scopeModeDraft === 'global'
+                ? '设为全局分组'
+                : scopeDraft.length === 0
+                  ? '清空所选群组范围'
+                  : '替换所选群组范围'}
             </Button>
             <Typography.Text type="secondary">
-              留空并保存会清空范围，群组将不再参与自动加群。
+              {scopeModeDraft === 'global'
+                ? '全局分组面向任意 Facebook 账号。'
+                : '留空并保存会清空范围，群组将不再参与自动加群。'}
             </Typography.Text>
           </Space>
 

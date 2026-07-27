@@ -179,6 +179,7 @@ describe('FacebookSearchConfig', () => {
   beforeEach(() => {
     state.cfg = {
       accountId: 'fb-1',
+      commentModeConfigured: true,
       keywords: ['手冲咖啡'],
       // 已识别群名 + 一个待识别（只有 url）的容器。
       containers: [
@@ -282,6 +283,27 @@ describe('FacebookSearchConfig', () => {
     expect(state.putCalls[0].body).toEqual({
       keywords: [],
       commentMode: 'generated',
+      commentTemplates: [],
+    });
+  });
+
+  it('未显式设置评论方案时默认模板，账号模板为空仍可由区域通用模板补齐', async () => {
+    state.cfg = {
+      ...state.cfg,
+      commentModeConfigured: false,
+      commentMode: 'generated',
+      commentTemplates: [],
+    };
+    renderCmp();
+    fireEvent.click(screen.getByText('FB配置'));
+    await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
+    expect(screen.getByRole<HTMLInputElement>('radio', { name: '模板评论' }).checked).toBe(true);
+    expect(screen.queryByText('模板评论至少需要 1 条模板。')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(state.putCalls.length).toBe(1));
+    expect(state.putCalls[0].body).toEqual({
+      keywords: ['手冲咖啡'],
+      commentMode: 'template',
       commentTemplates: [],
     });
   });

@@ -5,6 +5,7 @@ export interface FacebookGroupListQuery {
   region?: string;
   park?: string;
   direction?: string;
+  accountScopeMode?: string;
   accountGroupLabel?: string;
 }
 
@@ -19,6 +20,7 @@ export function facebookGroupListPath(input: FacebookGroupListQuery): string {
   if (input.region) q.set('region', input.region);
   if (input.park) q.set('park', input.park);
   if (input.direction) q.set('direction', input.direction);
+  if (input.accountScopeMode) q.set('accountScopeMode', input.accountScopeMode);
   if (input.accountGroupLabel) q.set('accountGroupLabel', input.accountGroupLabel);
   return `/api/facebook/groups?${q.toString()}`;
 }

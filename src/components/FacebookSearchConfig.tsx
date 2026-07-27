@@ -121,7 +121,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [keywords, setKeywords] = useState<string[]>([]);
-  const [commentMode, setCommentMode] = useState<FacebookCommentMode>('generated');
+  const [commentMode, setCommentMode] = useState<FacebookCommentMode>('template');
   const [templateText, setTemplateText] = useState('');
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaView, setMediaView] = useState<FacebookPublishMediaList | null>(null);
@@ -156,12 +156,12 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
     try {
       const cfg = await apiGet<FacebookCommentConfig>(path);
       setKeywords(cfg.keywords ?? []);
-      setCommentMode(cfg.commentMode ?? 'generated');
+      setCommentMode(cfg.commentModeConfigured === false ? 'template' : (cfg.commentMode ?? 'template'));
       setTemplateText((cfg.commentTemplates ?? []).join('\n'));
     } catch {
       message.error('读取搜索词配置失败');
       setKeywords([]);
-      setCommentMode('generated');
+      setCommentMode('template');
       setTemplateText('');
     } finally {
       setLoading(false);
@@ -313,7 +313,6 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
     return out;
   };
 
-  const effectiveOff = commentMode === 'template' && commentTemplates().length === 0;
   const mediaRows = activeSets(mediaView);
 
   const moveSet = (index: number, delta: -1 | 1) => {
@@ -501,7 +500,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
                         placeholder="如：手冲 咖啡、烘焙"
                       />
                     </Form.Item>
-                    <Form.Item label="评论方式">
+                    <Form.Item label="评论方式" extra="未显式选择时默认模板评论；账号模板为空时按本次目标群区域使用通用模板。">
                       <Radio.Group
                         optionType="button"
                         buttonStyle="solid"
@@ -514,7 +513,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
                       />
                     </Form.Item>
                     {commentMode === 'template' ? (
-                      <Form.Item label="评论模板" extra="每行一个模板。模板正文不应包含联系方式；带联系方式评论会自动拼接账号联系方式。">
+                      <Form.Item label="评论模板" extra="每行一个模板。留空时按目标群区域使用通用模板；模板正文不应包含联系方式。">
                         <Input.TextArea
                           rows={5}
                           value={templateText}
@@ -522,11 +521,6 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
                           placeholder="这家手冲咖啡很不错"
                         />
                       </Form.Item>
-                    ) : null}
-                    {effectiveOff ? (
-                      <Typography.Text type="warning">
-                        模板评论至少需要 1 条模板。
-                      </Typography.Text>
                     ) : null}
                   </Form>
                 ),

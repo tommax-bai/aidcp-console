@@ -34,6 +34,7 @@ const facets: FacebookGroupTargetFacets = {
   ],
   directions: ['机械和电气'],
   accountGroupLabels: ['越南销售一组', '越南销售二组'],
+  globalTargetCount: 3,
   unscopedTargetCount: 2,
 };
 
@@ -149,6 +150,7 @@ describe('FacebookGroupImportPanel', () => {
         [{ url: 'https://www.facebook.com/groups/789' }],
         'single',
         ['越南销售一组'],
+        'restricted',
       ),
     );
 
@@ -162,6 +164,26 @@ describe('FacebookGroupImportPanel', () => {
         [{ url: 'https://www.facebook.com/groups/790' }],
         'single',
         [],
+        'restricted',
+      ),
+    );
+  });
+
+  it('can import targets as global without any account-group labels', async () => {
+    const onImport = renderPanel();
+    fireEvent.change(screen.getByRole('textbox', { name: '群组 URL' }), {
+      target: { value: 'https://www.facebook.com/groups/global-1' },
+    });
+    fireEvent.click(screen.getByRole('switch', { name: '本次设置适用账号分组' }));
+    fireEvent.click(screen.getByText('全局分组'));
+    fireEvent.click(screen.getByRole('button', { name: /添加$/ }));
+
+    await waitFor(() =>
+      expect(onImport).toHaveBeenCalledWith(
+        [{ url: 'https://www.facebook.com/groups/global-1' }],
+        'single',
+        [],
+        'global',
       ),
     );
   });
