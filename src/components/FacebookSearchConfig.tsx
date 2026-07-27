@@ -313,7 +313,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
     return out;
   };
 
-  const effectiveOff = keywords.length === 0 || (commentMode === 'template' && commentTemplates().length === 0);
+  const effectiveOff = commentMode === 'template' && commentTemplates().length === 0;
   const mediaRows = activeSets(mediaView);
 
   const moveSet = (index: number, delta: -1 | 1) => {
@@ -490,7 +490,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
                 label: '评论搜索',
                 children: (
                   <Form layout="vertical" requiredMark={false}>
-                    <Form.Item label="搜索关键词" extra="系统每次随机选一个关键词。输入后回车 / 逗号添加；关键词内可含空格（如「手冲 咖啡」为一个词，不会被拆开）。">
+                    <Form.Item label="搜索关键词" extra="可选。输入后回车 / 逗号添加；关键词内可含空格（如「手冲 咖啡」为一个词，不会被拆开）。">
                       <Select
                         mode="tags"
                         style={{ width: '100%' }}
@@ -525,7 +525,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
                     ) : null}
                     {effectiveOff ? (
                       <Typography.Text type="warning">
-                        {keywords.length === 0 ? '至少需要 1 个搜索关键词。' : '模板评论至少需要 1 条模板。'}
+                        模板评论至少需要 1 条模板。
                       </Typography.Text>
                     ) : null}
                   </Form>

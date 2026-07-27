@@ -175,6 +175,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
         availableActions: [
           { action: 'post', allowedModes: ['review'], maxDailyCap: 2 },
           { action: 'comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 4 },
+          { action: 'contact_comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 10 },
           { action: 'join_group', allowedModes: [], maxDailyCap: 10 },
         ],
         joinGroupAutomation: facebookJoinConfig,
@@ -221,7 +222,9 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.getByRole('columnheader', { name: '自动发帖' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动评论' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动加群' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '加群评论（联系）' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '自动联系评论' })).toBeNull();
+    expect(modeControl('加群评论（联系） fb-1')).not.toBeNull();
     expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
     expect(screen.getByText('/ 2')).not.toBeNull();
 

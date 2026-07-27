@@ -188,8 +188,12 @@ const actionUi: Record<ModeAutomationAction, ActionUiConfig> = {
 
 const modeActionIds = Object.keys(actionUi) as ModeAutomationAction[];
 const actionIds: ContentScheduleAutomationAction[] = [...modeActionIds, 'join_group'];
-const actionLabel = (action: ContentScheduleAutomationAction) =>
-  action === 'join_group' ? '自动加群' : actionUi[action].label;
+const actionLabel = (action: ContentScheduleAutomationAction, platform?: string) =>
+  action === 'join_group'
+    ? '自动加群'
+    : action === 'contact_comment' && platform === 'facebook'
+      ? '加群评论（联系）'
+      : actionUi[action].label;
 
 const actionMetadata = (row: ContentScheduleRow, action: ContentScheduleAutomationAction) =>
   row.availableActions.find((item) => item.action === action);
@@ -231,7 +235,7 @@ const enabledActionSummary = (row: ContentScheduleRow) => {
     if (!isActionModeOn(mode) || !metadata.allowedModes.includes(mode as Exclude<ContentScheduleActionMode, 'off'>)) {
       return [];
     }
-    return [`${config.label} · ${ACTION_MODE_LABELS[mode]} · ${config.dailyCap(row)}/日`];
+    return [`${actionLabel(metadata.action, row.platform)} · ${ACTION_MODE_LABELS[mode]} · ${config.dailyCap(row)}/日`];
   });
 };
 
@@ -505,9 +509,10 @@ export function ContentSchedulePage() {
     },
     // 一码一号放松（loosen-group-comment-shared-code）：共用联系方式开联系评论已放行，但云端回带 sharedContactInfoWarning——
     // 如实弹一条防关联封号风险提示（非错误、非阻断），绝不静默把关联风险咽下去。
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       if (data?.sharedContactInfoWarning) {
-        message.warning('已开启自动联系评论：该联系方式与其它账号共用，一码一号是防关联封号建议，建议尽快改用独立联系方式');
+        const platform = rows.find((row) => row.accountId === variables.accountId)?.platform;
+        message.warning(`已开启${actionLabel('contact_comment', platform)}：该联系方式与其它账号共用，一码一号是防关联封号建议，建议尽快改用独立联系方式`);
       }
     },
     // 成/败都回后台对一次账（exact:true 只重取本目录、不误伤前缀子键 …/'global'）。开关已乐观翻好，此 GET 不在关键路径、用户无感。
@@ -771,7 +776,7 @@ export function ContentSchedulePage() {
     }
 
     const actionColumns: ColumnsType<ContentScheduleRow> = visibleActionIds.map((action) => ({
-      title: actionLabel(action),
+      title: actionLabel(action, platformFilter),
       key: action,
       width: action === 'join_group' ? 300 : actionUi[action].requiresContact ? 230 : 190,
       render: (_: unknown, row) => {
@@ -850,6 +855,7 @@ export function ContentSchedulePage() {
           );
         }
         const config = actionUi[action];
+        const label = actionLabel(action, row.platform);
         const storedMode = config.mode(row);
         const modeSupported =
           storedMode === 'off' || metadata.allowedModes.includes(storedMode as Exclude<ContentScheduleActionMode, 'off'>);
@@ -860,7 +866,7 @@ export function ContentSchedulePage() {
           <Space direction="vertical" size={6}>
             <Space size={6}>
               <ActionModeControl
-                label={`${config.label} ${row.accountId}`}
+                label={`${label} ${row.accountId}`}
                 value={effectiveMode}
                 allowedModes={metadata.allowedModes}
                 disabled={!row.autoEnabled || !contactReady}
@@ -875,7 +881,7 @@ export function ContentSchedulePage() {
             <Space size={4}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>日上限</Typography.Text>
               <InputNumber
-                aria-label={`${config.label}日上限 ${row.accountId}`}
+                aria-label={`${label}日上限 ${row.accountId}`}
                 min={0}
                 max={metadata.maxDailyCap}
                 precision={0}

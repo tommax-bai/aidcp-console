@@ -265,6 +265,27 @@ describe('FacebookSearchConfig', () => {
     });
   });
 
+  it('清空关键词可保存首帖策略，界面不额外显示首帖状态文案', async () => {
+    renderCmp();
+    fireEvent.click(screen.getByText('FB配置'));
+    await waitFor(() => expect(screen.getByText('手冲咖啡')).toBeTruthy());
+    const remove = document.querySelector<HTMLElement>('.ant-select-selection-item-remove');
+    expect(remove).not.toBeNull();
+    fireEvent.mouseDown(remove!);
+    fireEvent.click(remove!);
+    await waitFor(() => expect(screen.queryByText('手冲咖啡')).toBeNull());
+    expect(screen.queryByText('当前使用群内首帖')).toBeNull();
+    expect(screen.queryByText(/至少需要 1 个搜索关键词/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(state.putCalls.length).toBe(1));
+    expect(state.putCalls[0].body).toEqual({
+      keywords: [],
+      commentMode: 'generated',
+      commentTemplates: [],
+    });
+  });
+
   it('模板评论：回填模板，保存时按行 sanitize/去重', async () => {
     state.cfg = {
       ...state.cfg,
