@@ -1457,23 +1457,37 @@ export type FacebookRuleActionState =
   | 'rejected'
   | 'failed'
   | 'ambiguous'
-  | 'submitted_unknown';
+  | 'submitted_unknown'
+  /** 本轮按两级节奏不执行该动作（只点赞的轮次的加群与评论两格）。不是失败，MUST NOT 按失败呈现。 */
+  | 'not_scheduled';
 
 export interface FacebookRuleModeView {
   config: {
     accountId: string;
     enabled: boolean;
-    definitionId: 'facebook_browse_10_like_1_join_contact_1';
-    definitionVersion: 1;
+    /** 服务端回读的库中定义号原值；节奏数字编码在其中，故不再钉成字面量类型。 */
+    definitionId: string;
+    definitionVersion: number;
+    /** 库中定义身份与云端当前定义不一致：该行的节奏不可按当前定义解读。 */
+    definitionMismatch: boolean;
     updatedAt: string | null;
     updatedBy: string | null;
   };
   runtime: {
     viewCount: number;
-    threshold: 10;
+    /** 一级节奏：多少条确认浏览开一个轮次。 */
+    threshold: number;
+    /** 二级节奏：多少个轮次做一次加群联系评论。 */
+    joinEveryNRounds: number;
+    /** 正在收集的那一轮将拿到的轮次序号。 */
+    collectingSequence: number;
+    /** 正在收集的那一轮是否会包含加群联系评论。 */
+    collectingRoundIncludesJoin: boolean;
     currentBatch: {
       batchId: string;
       sequence: number;
+      /** 本轮是否包含加群联系评论（服务端按轮次序号派生）。 */
+      includesJoin: boolean;
       triggerContentKey: string;
       likeState: FacebookRuleActionState;
       joinState: FacebookRuleActionState;

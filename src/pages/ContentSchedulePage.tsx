@@ -165,12 +165,20 @@ const RULE_ACTION_LABELS: Record<FacebookRuleActionState, string> = {
   failed: '失败',
   ambiguous: '结果不明确',
   submitted_unknown: '已提交待确认',
+  not_scheduled: '本轮不适用',
 };
 
 const ruleActionColor = (state: FacebookRuleActionState) => {
   if (state === 'confirmed' || state === 'already_satisfied') return 'green';
   if (state === 'pending' || state === 'dispatched' || state === 'submitted_unknown' || state === 'ambiguous') return 'orange';
-  if (state === 'risk_suppressed' || state === 'structural_skip' || state === 'not_started') return 'default';
+  // not_scheduled = 节奏规定本轮不做：既不是进行中也不是失败，用中性色。
+  // MUST NOT 落到橙（会读成还在跑）或红（会读成失败）——一半轮次都是这个态。
+  if (
+    state === 'risk_suppressed'
+    || state === 'structural_skip'
+    || state === 'not_started'
+    || state === 'not_scheduled'
+  ) return 'default';
   return 'red';
 };
 
@@ -950,9 +958,9 @@ export function ContentSchedulePage() {
       },
     }));
     const facebookRuleColumn: ColumnsType<ContentScheduleRow>[number] = {
-      title: '10 条规则模式',
+      title: '规则模式',
       key: 'facebook-rule-mode',
-      width: 310,
+      width: 330,
       render: (_: unknown, row) => {
         const rule = row.facebookRuleMode;
         if (!rule) {
@@ -984,15 +992,30 @@ export function ContentSchedulePage() {
               />
               <Tag color={mode.color}>{mode.label}</Tag>
               {rule.effectiveMode === 'facebook_rule' ? (
-                <Tag color="blue">进度 {rule.runtime.viewCount} / {rule.runtime.threshold}</Tag>
+                <>
+                  <Tag color="blue">浏览 {rule.runtime.viewCount} / {rule.runtime.threshold}</Tag>
+                  <Tag color={rule.runtime.collectingRoundIncludesJoin ? 'purple' : 'default'}>
+                    本轮{rule.runtime.collectingRoundIncludesJoin ? '含加群' : '只点赞'}
+                  </Tag>
+                </>
               ) : null}
             </Space>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              固定规则：账号活跃周历内，确认浏览 10 条 → 点赞 1 次 → 加群联系评论 1 次；冷启动优先
+              固定规则：账号活跃周历内，确认浏览 {rule.runtime.threshold} 条 → 点赞 1 次；
+              每 {rule.runtime.joinEveryNRounds} 轮 → 加群联系评论 1 次；冷启动优先
             </Typography.Text>
+            {/* 库中定义身份与云端当前定义不一致：该行的节奏不能按上面那句解读，必须响亮说出来。 */}
+            {rule.config.definitionMismatch ? (
+              <Tag color="red">
+                规则定义不一致：库中为 {rule.config.definitionId}@{rule.config.definitionVersion}
+              </Tag>
+            ) : null}
             {rule.blocker ? <Tag color="orange">阻断：{rule.blocker}</Tag> : null}
             {currentBatch ? (
               <Space size={[4, 4]} wrap>
+                <Tag>
+                  第 {currentBatch.sequence} 轮{currentBatch.includesJoin ? '（含加群）' : '（只点赞）'}
+                </Tag>
                 <Tag color={ruleActionColor(currentBatch.likeState)}>
                   点赞：{RULE_ACTION_LABELS[currentBatch.likeState]}
                 </Tag>

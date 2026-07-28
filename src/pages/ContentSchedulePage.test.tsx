@@ -69,14 +69,19 @@ const facebookRuleMode = {
   config: {
     accountId: 'fb-1',
     enabled: true,
-    definitionId: 'facebook_browse_10_like_1_join_contact_1' as const,
-    definitionVersion: 1 as const,
+    definitionId: 'facebook_browse_5_like_1_join_contact_every_2',
+    definitionVersion: 2,
+    definitionMismatch: false,
     updatedAt: '2026-07-27T02:00:00.000Z',
     updatedBy: 'panel:alice',
   },
   runtime: {
-    viewCount: 7,
-    threshold: 10 as const,
+    viewCount: 3,
+    threshold: 5,
+    joinEveryNRounds: 2,
+    // 正在收集第 2 轮 ⇒ 本轮含加群。
+    collectingSequence: 2,
+    collectingRoundIncludesJoin: true,
     currentBatch: null,
     updatedAt: '2026-07-27T02:00:00.000Z',
   },
@@ -243,7 +248,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.getByRole('columnheader', { name: '自动评论' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动加群' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '加群评论（联系）' })).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: '10 条规则模式' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '规则模式' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '自动联系评论' })).toBeNull();
     expect(modeControl('加群评论（联系） fb-1')).not.toBeNull();
     expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
@@ -289,8 +294,10 @@ describe('ContentSchedulePage 平台感知视图', () => {
     await selectPlatform('Facebook');
 
     expect(screen.getByText('规则运行')).not.toBeNull();
-    expect(screen.getByText('进度 7 / 10')).not.toBeNull();
-    expect(screen.getByText(/固定规则：账号活跃周历内，确认浏览 10 条/)).not.toBeNull();
+    expect(screen.getByText('浏览 3 / 5')).not.toBeNull();
+    expect(screen.getByText('本轮含加群')).not.toBeNull();
+    expect(screen.getByText(/确认浏览 5 条 → 点赞 1 次/)).not.toBeNull();
+    expect(screen.getByText(/每 2 轮 → 加群联系评论 1 次/)).not.toBeNull();
     const ruleSwitch = screen.getByRole('switch', { name: '规则模式 fb-1' });
     expect(ruleSwitch.getAttribute('aria-checked')).toBe('true');
 
@@ -308,6 +315,74 @@ describe('ContentSchedulePage 平台感知视图', () => {
     );
   });
 
+  it('只点赞的轮次显示为「本轮不适用」，不得读成失败或进行中', async () => {
+    state.rows = state.rows.map((item) => {
+      const row = item as ContentScheduleRow;
+      if (row.accountId !== 'fb-1') return row;
+      return {
+        ...row,
+        facebookRuleMode: {
+          ...facebookRuleMode,
+          runtime: {
+            ...facebookRuleMode.runtime,
+            viewCount: 0,
+            collectingSequence: 2,
+            collectingRoundIncludesJoin: true,
+            currentBatch: {
+              batchId: 'b-1',
+              sequence: 1,
+              includesJoin: false,
+              triggerContentKey: 'post-5',
+              likeState: 'confirmed' as const,
+              joinState: 'not_scheduled' as const,
+              commentState: 'not_scheduled' as const,
+              terminal: true,
+              blocker: null,
+              createdAt: '2026-07-27T02:00:00.000Z',
+              updatedAt: '2026-07-27T02:00:00.000Z',
+            },
+          },
+        },
+      };
+    });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+
+    expect(screen.getByText('第 1 轮（只点赞）')).not.toBeNull();
+    expect(screen.getByText('点赞：已确认')).not.toBeNull();
+    expect(screen.getByText('加群：本轮不适用')).not.toBeNull();
+    expect(screen.getByText('联系评论：本轮不适用')).not.toBeNull();
+    // 下面这些才是「本该做却没做成 / 还在跑」的说法，只点赞的轮次 MUST NOT 命中。
+    expect(screen.queryByText('加群：未启动')).toBeNull();
+    expect(screen.queryByText('加群：待处理')).toBeNull();
+    expect(screen.queryByText('联系评论：未启动')).toBeNull();
+    expect(screen.queryByText('联系评论：待处理')).toBeNull();
+  });
+
+  it('库中规则定义与云端不一致时响亮报出，不按当前节奏解读', async () => {
+    state.rows = state.rows.map((item) => {
+      const row = item as ContentScheduleRow;
+      if (row.accountId !== 'fb-1') return row;
+      return {
+        ...row,
+        facebookRuleMode: {
+          ...facebookRuleMode,
+          config: {
+            ...facebookRuleMode.config,
+            definitionId: 'facebook_browse_10_like_1_join_contact_1',
+            definitionVersion: 1,
+            definitionMismatch: true,
+          },
+        },
+      };
+    });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+    expect(
+      screen.getByText(/规则定义不一致：库中为 facebook_browse_10_like_1_join_contact_1@1/),
+    ).not.toBeNull();
+  });
+
   it('规则投影缺失显示未知而非伪造关闭或 0，非 Facebook 不展示规则列', async () => {
     state.rows = state.rows.map((item) => {
       const row = item as ContentScheduleRow;
@@ -322,7 +397,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.queryByText(/进度 0/)).toBeNull();
 
     await selectPlatform('小红书');
-    expect(screen.queryByRole('columnheader', { name: '10 条规则模式' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '规则模式' })).toBeNull();
     expect(screen.queryByRole('switch', { name: /规则模式/ })).toBeNull();
   });
 
