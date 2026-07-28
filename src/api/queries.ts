@@ -38,6 +38,7 @@ import type {
   ClientEnvScopeInput,
   ClientEnvironmentView,
   EnvironmentAssetView,
+  EnvironmentSlowStartMutationResponse,
   ClientUserMutationResponse,
   ClientScopeMutationResponse,
   DownloadsManifest,
@@ -417,6 +418,35 @@ export function useEnvironments() {
     queryFn: () => apiGet<{ environments: EnvironmentAssetView[]; asOf: number }>('/api/environments'),
     refetchInterval: 10_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useSetEnvironmentSlowStart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ envKey, enabled }: { envKey: string; enabled: boolean }) =>
+      apiPut<EnvironmentSlowStartMutationResponse>(
+        `/api/environments/${encodeURIComponent(envKey)}/slow-start`,
+        { enabled },
+      ),
+    onSuccess: (result) => {
+      qc.setQueryData<{ environments: EnvironmentAssetView[]; asOf: number }>(
+        ['environments'],
+        (current) => current
+          ? {
+              ...current,
+              environments: current.environments.map((environment) =>
+                environment.envKey === result.envKey
+                  ? { ...environment, slowStart: result.slowStart }
+                  : environment),
+            }
+          : current,
+      );
+      void qc.invalidateQueries({ queryKey: ['environments'], exact: true });
+    },
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: ['environments'], exact: true });
+    },
   });
 }
 

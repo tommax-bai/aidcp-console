@@ -1671,9 +1671,22 @@ export interface ClientEnvironmentView {
   envKey: string;
   label: string | null;
   platform: string | null;
+  /** Additive during Cloud-first rolling deployment; absent means unknown, never "off". */
+  slowStart?: EnvironmentSlowStartView;
   assignees: ClientEnvAssignee[];
   assigneeCount: number;
   cleanup: ClientCleanupReceipt | null;
+}
+
+export interface EnvironmentSlowStartView {
+  enabled: boolean;
+  since: number | null;
+  globallyDisabled: boolean;
+}
+
+export interface EnvironmentSlowStartMutationResponse {
+  envKey: string;
+  slowStart: EnvironmentSlowStartView;
 }
 
 export type EnvironmentLifecycleState = 'active' | 'waiting_edge' | 'deleting' | 'delete_failed' | 'deleted';

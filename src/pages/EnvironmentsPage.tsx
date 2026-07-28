@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Card, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { App, Card, Empty, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useSearchParams } from 'react-router-dom';
-import { useEnvironments } from '../api/queries';
+import { useEnvironments, useSetEnvironmentSlowStart } from '../api/queries';
+import { errorText } from '../api/errorText';
 import { QueryError } from '../components/QueryGate';
 import { QuotaTierBadge } from '../components/QuotaTierBadge';
 import { RiskStatusBadge } from '../components/RiskStatusBadge';
@@ -97,8 +98,10 @@ function fmtTime(value: number | null) {
 }
 
 export function EnvironmentsPage() {
+  const { message } = App.useApp();
   const [params] = useSearchParams();
   const query = useEnvironments();
+  const setSlowStart = useSetEnvironmentSlowStart();
   const linkedAccount = params.get('account')?.trim() ?? '';
   const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>('current');
   const [platformFilter, setPlatformFilter] = useState('all');
@@ -191,6 +194,59 @@ export function EnvironmentsPage() {
         </Tooltip>
       ) : <Tag>未观测</Tag>,
     },
+    {
+      title: '慢启动', key: 'slowStart', width: 210,
+      render: (_, environment) => {
+        if (environment.platform !== 'facebook') {
+          return <Typography.Text type="secondary">不适用</Typography.Text>;
+        }
+        if (environment.lifecycle.state !== 'active') {
+          return <Typography.Text type="secondary">当前状态不可操作</Typography.Text>;
+        }
+        if (!environment.slowStart) {
+          return <Tag color="gold">状态未知</Tag>;
+        }
+        const pending = setSlowStart.isPending && setSlowStart.variables?.envKey === environment.envKey;
+        const pendingEnabled = setSlowStart.variables?.enabled ?? false;
+        const statusText = pending
+          ? `正在${pendingEnabled ? '开启' : '关闭'}`
+          : environment.slowStart.enabled
+            ? environment.slowStart.globallyDisabled
+              ? '已配置 · Cloud 全局停用'
+              : `已开启${environment.slowStart.since ? ` · ${fmtTime(environment.slowStart.since)}起` : ''}`
+            : '未开启';
+        return (
+          <Space direction="vertical" size={0}>
+            <Switch
+              aria-label={`慢启动 ${environment.envKey}`}
+              checked={environment.slowStart.enabled}
+              disabled={setSlowStart.isPending}
+              loading={pending}
+              onChange={(enabled) => {
+                setSlowStart.mutate(
+                  { envKey: environment.envKey, enabled },
+                  {
+                    onSuccess: () => message.success(`环境慢启动已${enabled ? '开启' : '关闭'}`),
+                    onError: (error) => message.error(errorText(error, '环境慢启动保存失败，原配置未改变')),
+                  },
+                );
+              }}
+            />
+            <Typography.Text
+              type={environment.slowStart.globallyDisabled && environment.slowStart.enabled ? 'warning' : 'secondary'}
+              style={{ fontSize: 12 }}
+            >
+              {statusText}
+            </Typography.Text>
+            {!environment.account && environment.slowStart.enabled && !pending ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                已保存，挂载账号后按曲线生效
+              </Typography.Text>
+            ) : null}
+          </Space>
+        );
+      },
+    },
     { title: '状态', key: 'lifecycle', width: 150, render: (_, environment) => lifecycleTag(environment) },
   ];
 
@@ -200,7 +256,7 @@ export function EnvironmentsPage() {
       <Card
         size="small"
         title={linkedAccount ? '环境（来自账号页）' : '环境'}
-        extra={<Typography.Text type="secondary">只读展示环境资产及历史状态</Typography.Text>}
+        extra={<Typography.Text type="secondary">环境资产与环境级慢启动配置</Typography.Text>}
       >
         <Space wrap style={{ marginBottom: 12 }}>
           <Select
@@ -277,7 +333,7 @@ export function EnvironmentsPage() {
           columns={columns}
           dataSource={rows}
           loading={query.isLoading}
-          scroll={{ x: 1240 }}
+          scroll={{ x: 1450 }}
           locale={{ emptyText: <Empty description="当前筛选下没有环境" /> }}
           pagination={{ pageSize: 20, showSizeChanger: true }}
         />
