@@ -239,8 +239,9 @@ describe('FacebookGroupsPage 账号分组范围', () => {
     await waitFor(() =>
       expect((textarea as HTMLTextAreaElement).value).toBe('区域咖啡欢迎语'),
     );
+    // change facebook-comment-template-blocks：块之间用单独一行 ------ 分隔，块内换行属于该模板正文。
     fireEvent.change(textarea, {
-      target: { value: ' 区域咖啡欢迎语 \n区域咖啡备用语\n区域咖啡欢迎语' },
+      target: { value: '区域咖啡欢迎语\n第二行\n------\n区域咖啡备用语\n------\n区域咖啡欢迎语\n第二行' },
     });
     fireEvent.click(screen.getByRole('button', { name: '保存区域模板' }));
 
@@ -249,7 +250,7 @@ describe('FacebookGroupsPage 账号分组范围', () => {
         '/api/facebook/groups/comment-templates',
         {
           region: '北宁区域',
-          commentTemplates: ['区域咖啡欢迎语', '区域咖啡备用语'],
+          commentTemplates: ['区域咖啡欢迎语\n第二行', '区域咖啡备用语'],
         },
       ),
     );

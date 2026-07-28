@@ -308,7 +308,8 @@ describe('FacebookSearchConfig', () => {
     });
   });
 
-  it('模板评论：回填模板，保存时按行 sanitize/去重', async () => {
+  it('模板评论：回填用 ------ 分隔，保存时按块 sanitize/去重、块内换行保留', async () => {
+    // change facebook-comment-template-blocks：一条模板是一个**块**不是一行——运营投放素材天然多行。
     state.cfg = {
       ...state.cfg,
       commentMode: 'template',
@@ -318,9 +319,10 @@ describe('FacebookSearchConfig', () => {
     fireEvent.click(screen.getByText('FB配置'));
     await waitFor(() => expect(screen.getByDisplayValue(/这家手冲咖啡很不错/)).toBeTruthy());
     const textarea = screen.getByDisplayValue(/这家手冲咖啡很不错/) as HTMLTextAreaElement;
+    expect(textarea.value).toBe('这家手冲咖啡很不错\n------\n这家烘焙咖啡很不错');
     fireEvent.change(textarea, {
       target: {
-        value: ' 这家手冲咖啡很不错 \n\n这家手冲咖啡很不错\n这家拉花咖啡很不错 ',
+        value: '招聘启事\n联系电话 0335 610 868\n------\n这家手冲咖啡很不错\n------\n招聘启事\n联系电话 0335 610 868',
       },
     });
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
@@ -328,7 +330,7 @@ describe('FacebookSearchConfig', () => {
     expect(state.putCalls[0].body).toEqual({
       keywords: ['手冲咖啡'],
       commentMode: 'template',
-      commentTemplates: ['这家手冲咖啡很不错', '这家拉花咖啡很不错'],
+      commentTemplates: ['招聘启事\n联系电话 0335 610 868', '这家手冲咖啡很不错'],
     });
   });
 

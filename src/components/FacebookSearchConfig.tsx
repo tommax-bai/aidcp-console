@@ -44,6 +44,7 @@ import type {
   PanelAccount,
 } from '../types/api';
 import { accountName } from '../types/accountDisplay';
+import { formatCommentTemplates, parseCommentTemplates } from '../utils/commentTemplates';
 
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ['image/*'];
@@ -157,7 +158,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
       const cfg = await apiGet<FacebookCommentConfig>(path);
       setKeywords(cfg.keywords ?? []);
       setCommentMode(cfg.commentModeConfigured === false ? 'template' : (cfg.commentMode ?? 'template'));
-      setTemplateText((cfg.commentTemplates ?? []).join('\n'));
+      setTemplateText(formatCommentTemplates(cfg.commentTemplates ?? []));
     } catch {
       message.error('读取搜索词配置失败');
       setKeywords([]);
@@ -301,17 +302,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
     return Upload.LIST_IGNORE;
   };
 
-  const commentTemplates = (): string[] => {
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const raw of templateText.split(/\r?\n/)) {
-      const v = raw.trim();
-      if (!v || seen.has(v)) continue;
-      seen.add(v);
-      out.push(v);
-    }
-    return out;
-  };
+  const commentTemplates = (): string[] => parseCommentTemplates(templateText);
 
   const mediaRows = activeSets(mediaView);
 
@@ -513,7 +504,7 @@ export function FacebookSearchConfig({ account, compactTrigger = false }: { acco
                       />
                     </Form.Item>
                     {commentMode === 'template' ? (
-                      <Form.Item label="评论模板" extra="每行一个模板。留空时按目标群区域使用通用模板；模板正文不应包含联系方式。">
+                      <Form.Item label="评论模板" extra="模板之间用单独一行 ------ 分隔；一条模板可以多行，块内换行会原样发出。留空时按目标群区域使用通用模板。">
                         <Input.TextArea
                           rows={5}
                           value={templateText}

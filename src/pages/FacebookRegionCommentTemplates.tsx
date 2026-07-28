@@ -10,6 +10,7 @@ import type {
   FacebookRegionCommentTemplateList,
   FacebookRegionCommentTemplateRow,
 } from '../types/api';
+import { formatCommentTemplates, parseCommentTemplates } from '../utils/commentTemplates';
 
 export function FacebookRegionCommentTemplates({
   regions,
@@ -46,7 +47,7 @@ export function FacebookRegionCommentTemplates({
       setTemplateText('');
       return;
     }
-    setTemplateText((byRegion.get(region)?.commentTemplates ?? []).join('\n'));
+    setTemplateText(formatCommentTemplates(byRegion.get(region)?.commentTemplates ?? []));
   }, [byRegion, region]);
 
   const save = useMutation({
@@ -57,7 +58,7 @@ export function FacebookRegionCommentTemplates({
       ),
     onSuccess: (row) => {
       message.success(`已保存「${row.region}」通用评论模板`);
-      setTemplateText(row.commentTemplates.join('\n'));
+      setTemplateText(formatCommentTemplates(row.commentTemplates));
       void qc.invalidateQueries({
         queryKey: ['facebook', 'groups', 'comment-templates'],
       });
@@ -67,8 +68,7 @@ export function FacebookRegionCommentTemplates({
   });
 
   const current = region ? byRegion.get(region) : undefined;
-  const commentTemplates = () =>
-    [...new Set(templateText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))];
+  const commentTemplates = () => parseCommentTemplates(templateText);
 
   return (
     <Card size="small" type="inner" title="区域通用评论模板">
@@ -104,7 +104,7 @@ export function FacebookRegionCommentTemplates({
             aria-label="区域通用评论模板"
             rows={5}
             value={templateText}
-            placeholder="每行一条评论模板"
+            placeholder={'一条模板可以多行；两条模板之间用单独一行 ------ 分隔'}
             onChange={(event) => setTemplateText(event.target.value)}
           />
           <Space wrap>
@@ -120,7 +120,7 @@ export function FacebookRegionCommentTemplates({
               保存区域模板
             </Button>
             <Typography.Text type="secondary">
-              每行一条；账号模板为空时，系统按本次目标群的区域使用这里的模板。
+              模板之间用单独一行 ------ 分隔，块内换行会原样发出；账号模板为空时，系统按本次目标群的区域使用这里的模板。
             </Typography.Text>
           </Space>
         </Space>
