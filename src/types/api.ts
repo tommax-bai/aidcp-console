@@ -1459,7 +1459,9 @@ export type FacebookRuleActionState =
   | 'ambiguous'
   | 'submitted_unknown'
   /** 本轮按两级节奏不执行该动作（只点赞的轮次的加群与评论两格）。不是失败，MUST NOT 按失败呈现。 */
-  | 'not_scheduled';
+  | 'not_scheduled'
+  /** 评论已上墙但**不带联系方式**（账号未配联系方式、按设置降级为普通评论）。MUST NOT 显示成联系评论已完成。 */
+  | 'confirmed_without_contact';
 
 export interface FacebookRuleModeView {
   config: {
@@ -1499,6 +1501,11 @@ export interface FacebookRuleModeView {
     } | null;
     updatedAt: string | null;
   };
+  /**
+   * 该账号的加群联系评论会不会降级为不带联系方式的普通评论。服务端读时派生，
+   * `unknown` 是诚实第三态（读不到联系方式），MUST NOT 当成「不会降级」。
+   */
+  contactFallback: 'not_pending' | 'pending' | 'unknown';
 }
 
 export interface FacebookRuleModeCatalogView extends FacebookRuleModeView {

@@ -87,6 +87,7 @@ const facebookRuleMode = {
   },
   effectiveMode: 'facebook_rule' as const,
   blocker: null,
+  contactFallback: 'not_pending' as const,
 };
 
 vi.mock('../api/client', async () => ({
@@ -357,6 +358,52 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.queryByText('加群：待处理')).toBeNull();
     expect(screen.queryByText('联系评论：未启动')).toBeNull();
     expect(screen.queryByText('联系评论：待处理')).toBeNull();
+  });
+
+  it('账号未配联系方式时提示加群评论会降级；读不到联系方式则说未知，不猜成不会降级', async () => {
+    state.rows = state.rows.map((item) => {
+      const row = item as ContentScheduleRow;
+      if (row.accountId !== 'fb-1') return row;
+      return { ...row, facebookRuleMode: { ...facebookRuleMode, contactFallback: 'pending' as const } };
+    });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+    expect(screen.getByText(/未配联系方式：加群评论将降级为普通评论/)).not.toBeNull();
+    expect(screen.queryByText(/联系方式状态未知/)).toBeNull();
+  });
+
+  it('降级发出的评论显示为「已发出（未带联系方式）」，不冒充联系评论已完成', async () => {
+    state.rows = state.rows.map((item) => {
+      const row = item as ContentScheduleRow;
+      if (row.accountId !== 'fb-1') return row;
+      return {
+        ...row,
+        facebookRuleMode: {
+          ...facebookRuleMode,
+          contactFallback: 'pending' as const,
+          runtime: {
+            ...facebookRuleMode.runtime,
+            currentBatch: {
+              batchId: 'b-2',
+              sequence: 2,
+              includesJoin: true,
+              triggerContentKey: 'post-10',
+              likeState: 'confirmed' as const,
+              joinState: 'confirmed' as const,
+              commentState: 'confirmed_without_contact' as const,
+              terminal: true,
+              blocker: null,
+              createdAt: '2026-07-27T02:00:00.000Z',
+              updatedAt: '2026-07-27T02:00:00.000Z',
+            },
+          },
+        },
+      };
+    });
+    await renderSchedule();
+    await selectPlatform('Facebook');
+    expect(screen.getByText('联系评论：已发出（未带联系方式）')).not.toBeNull();
+    expect(screen.queryByText('联系评论：已确认')).toBeNull();
   });
 
   it('库中规则定义与云端不一致时响亮报出，不按当前节奏解读', async () => {

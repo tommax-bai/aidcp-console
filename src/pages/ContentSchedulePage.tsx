@@ -166,10 +166,14 @@ const RULE_ACTION_LABELS: Record<FacebookRuleActionState, string> = {
   ambiguous: '结果不明确',
   submitted_unknown: '已提交待确认',
   not_scheduled: '本轮不适用',
+  confirmed_without_contact: '已发出（未带联系方式）',
 };
 
 const ruleActionColor = (state: FacebookRuleActionState) => {
   if (state === 'confirmed' || state === 'already_satisfied') return 'green';
+  // 降级发出的普通评论：确实发出去了，但**没带联系方式**——用青色与真·联系评论区分开，
+  // MUST NOT 染成绿色（会被读成「联系方式已经发出去了」）。
+  if (state === 'confirmed_without_contact') return 'cyan';
   if (state === 'pending' || state === 'dispatched' || state === 'submitted_unknown' || state === 'ambiguous') return 'orange';
   // not_scheduled = 节奏规定本轮不做：既不是进行中也不是失败，用中性色。
   // MUST NOT 落到橙（会读成还在跑）或红（会读成失败）——一半轮次都是这个态。
@@ -1004,6 +1008,12 @@ export function ContentSchedulePage() {
               固定规则：账号活跃周历内，确认浏览 {rule.runtime.threshold} 条 → 点赞 1 次；
               每 {rule.runtime.joinEveryNRounds} 轮 → 加群联系评论 1 次；冷启动优先
             </Typography.Text>
+            {/* 账号没配联系方式 ⇒ 加群那一轮会降级发普通评论。读时派生，读不到就说读不到。 */}
+            {rule.contactFallback === 'pending' ? (
+              <Tag color="gold">未配联系方式：加群评论将降级为普通评论</Tag>
+            ) : rule.contactFallback === 'unknown' ? (
+              <Tag color="orange">联系方式状态未知（无法判断是否会降级）</Tag>
+            ) : null}
             {/* 库中定义身份与云端当前定义不一致：该行的节奏不能按上面那句解读，必须响亮说出来。 */}
             {rule.config.definitionMismatch ? (
               <Tag color="red">
