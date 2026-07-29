@@ -201,7 +201,9 @@ describe('ContentSchedulePage 平台感知视图', () => {
           { action: 'post', allowedModes: ['review'], maxDailyCap: 2 },
           { action: 'comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 4 },
           { action: 'contact_comment', allowedModes: ['review', 'auto_approve'], maxDailyCap: 10 },
-          { action: 'join_group', allowedModes: [], maxDailyCap: 10 },
+          // change raise-facebook-group-join-cap-ceiling：加群上限 10 → 50，联系评论仍是 10。
+          // 上限由服务端下发的平台动作声明决定，前端只跟随，不写死。
+          { action: 'join_group', allowedModes: [], maxDailyCap: 50 },
         ],
         joinGroupAutomation: facebookJoinConfig,
         facebookRuleMode,
@@ -454,7 +456,9 @@ describe('ContentSchedulePage 平台感知视图', () => {
 
     expect(screen.getByText('范围未就绪')).not.toBeNull();
     expect(screen.getByText('账号未归属分组')).not.toBeNull();
-    expect(screen.getByText('/ 10，有效 1')).not.toBeNull();
+    // 分母是服务端下发的加群上限（change raise-facebook-group-join-cap-ceiling：10 → 50）；
+    // 「有效 1」是服务端派生的生效值，不随上限变——上限只是天花板，生效值另有风控取小。
+    expect(screen.getByText('/ 50，有效 1')).not.toBeNull();
     expect(screen.getByText(/最近执行：no_targets · scope_not_ready/)).not.toBeNull();
     expect(screen.getByText('跟随内容时段')).not.toBeNull();
   });
