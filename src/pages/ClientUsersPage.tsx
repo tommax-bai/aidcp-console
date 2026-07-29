@@ -548,6 +548,22 @@ export function assigneeCell(env: ClientEnvironmentView | undefined) {
   return <Typography.Text type="secondary">{env.assignees[0]?.name ?? '—'}</Typography.Text>;
 }
 
+/**
+ * 环境归属只消费 Cloud 已解析的账号 displayName；scope 行本身没有账号投影，按稳定 envKey
+ * join 全局注册表。无绑定账号或滚动发布缺字段时才回落环境自身名称，不在 Console 重建账号优先级。
+ */
+export function environmentOwnershipDisplayName(
+  row: Pick<ClientEnvScopeRow, 'envKey' | 'label'>,
+  environments: ReadonlyMap<string, ClientEnvironmentView>,
+): string {
+  const environment = environments.get(row.envKey);
+  return environment?.account?.displayName?.trim()
+    || environment?.environmentName?.trim()
+    || row.label?.trim()
+    || environment?.label?.trim()
+    || row.envKey;
+}
+
 function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) {
   const { message } = App.useApp();
   const scope = useClientUserScope(open ? (user?.userId ?? null) : null);
@@ -655,12 +671,6 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
       </Typography.Text>
     ),
   };
-  const labelCol = {
-    title: '备注名',
-    dataIndex: 'label' as const,
-    width: 120,
-    render: (l: string | null) => (l ? l : <Typography.Text type="secondary">—</Typography.Text>),
-  };
   const platformCol = {
     title: '平台',
     dataIndex: 'platform' as const,
@@ -670,14 +680,24 @@ function ScopeDrawer({ user, open, onClose, onSave, saving }: ScopeDrawerProps) 
 
   const unassignedColumns: ColumnsType<ClientEnvironmentView> = [
     envKeyCol,
-    labelCol,
+    {
+      title: '显示昵称',
+      key: 'displayName',
+      width: 140,
+      render: (_: unknown, row) => environmentOwnershipDisplayName(row, envMeta),
+    },
     platformCol,
     { title: '当前归属', key: 'assignees', width: 130, render: (_: unknown, e) => assigneeCell(envMeta.get(e.envKey)) },
     { title: '撤权清理', key: 'cleanup', width: 150, render: (_: unknown, e) => cleanupTag(e.cleanup) },
   ];
   const assignedColumns: ColumnsType<DraftRow> = [
     envKeyCol,
-    labelCol,
+    {
+      title: '显示昵称',
+      key: 'displayName',
+      width: 140,
+      render: (_: unknown, row) => environmentOwnershipDisplayName(row, envMeta),
+    },
     platformCol,
     { title: '来源', dataIndex: 'source', width: 100, render: (s: string) => sourceTag(s) },
     { title: '当前归属', key: 'assignees', width: 120, render: (_: unknown, r) => assigneeCell(envMeta.get(r.envKey)) },

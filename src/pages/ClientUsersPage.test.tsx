@@ -7,6 +7,7 @@ import {
   cleanupTag,
   closeSavedScope,
   copyToClipboard,
+  environmentOwnershipDisplayName,
   platformTag,
   sourceTag,
   statusTag,
@@ -121,6 +122,69 @@ describe('assigneeCell — 多人 / 单客户 / 空 标识', () => {
   it('undefined or zero assignees renders an em dash', () => {
     expect(render(assigneeCell(undefined)).container.textContent).toContain('—');
     expect(render(assigneeCell(mk(0))).container.textContent).toContain('—');
+  });
+});
+
+describe('environmentOwnershipDisplayName — environment registry account projection', () => {
+  const environment = (
+    overrides: Partial<ClientEnvironmentView> = {},
+  ): ClientEnvironmentView => ({
+    envKey: 'env-1',
+    environmentName: 'AdsPower 系统环境名',
+    account: { displayName: '客户端修改后昵称' },
+    label: '注册表旧备注',
+    platform: 'xiaohongshu',
+    assignees: [],
+    assigneeCount: 0,
+    cleanup: null,
+    ...overrides,
+  });
+
+  it('uses the Cloud-resolved account displayName instead of stale scope or registry labels', () => {
+    const environments = new Map([['env-1', environment()]]);
+
+    expect(environmentOwnershipDisplayName(
+      { envKey: 'env-1', label: '归属旧备注' },
+      environments,
+    )).toBe('客户端修改后昵称');
+  });
+
+  it('joins an assigned scope row to the matching registry account by stable envKey', () => {
+    const environments = new Map([
+      ['env-1', environment({ account: { displayName: 'env-1 修改后昵称' } })],
+      ['env-2', environment({ envKey: 'env-2', account: { displayName: '另一环境昵称' } })],
+    ]);
+
+    expect(environmentOwnershipDisplayName(
+      { envKey: 'env-1', label: '旧备注' },
+      environments,
+    )).toBe('env-1 修改后昵称');
+  });
+
+  it('falls back through environment name, scope label, registry label and envKey without rebuilding account priority', () => {
+    expect(environmentOwnershipDisplayName(
+      { envKey: 'env-1', label: '归属备注' },
+      new Map([['env-1', environment({ account: null })]]),
+    )).toBe('AdsPower 系统环境名');
+
+    expect(environmentOwnershipDisplayName(
+      { envKey: 'env-1', label: '归属备注' },
+      new Map([['env-1', environment({ account: undefined, environmentName: undefined })]]),
+    )).toBe('归属备注');
+
+    expect(environmentOwnershipDisplayName(
+      { envKey: 'env-1', label: null },
+      new Map([['env-1', environment({
+        account: undefined,
+        environmentName: undefined,
+        label: '注册表备注',
+      })]]),
+    )).toBe('注册表备注');
+
+    expect(environmentOwnershipDisplayName(
+      { envKey: 'legacy-env', label: null },
+      new Map(),
+    )).toBe('legacy-env');
   });
 });
 

@@ -1690,6 +1690,9 @@ export interface ClientScopeMutationResponse {
  */
 export interface ClientEnvironmentView {
   envKey: string;
+  /** Additive account projection from the shared environment registry; optional only during a rolling deploy. */
+  environmentName?: string;
+  account?: { displayName?: string | null } | null;
   label: string | null;
   platform: string | null;
   /** Additive during Cloud-first rolling deployment; absent means unknown, never "off". */
