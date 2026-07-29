@@ -231,12 +231,15 @@ const actionUi: Record<ModeAutomationAction, ActionUiConfig> = {
 
 const modeActionIds = Object.keys(actionUi) as ModeAutomationAction[];
 const actionIds: ContentScheduleAutomationAction[] = [...modeActionIds, 'join_group'];
-const actionLabel = (action: ContentScheduleAutomationAction, platform?: string) =>
-  action === 'join_group'
-    ? '自动加群'
-    : action === 'contact_comment' && platform === 'facebook'
-      ? '加群评论（联系）'
-      : actionUi[action].label;
+/**
+ * change decouple-scheduled-contact-comment-from-group-join：Facebook 下的联系评论**不再先加群**，
+ * 故去掉原来的「加群评论（联系）」特例名。留着旧名会让运营以为开了它就会加群，
+ * 进而在自动加群开关关着时把「不加群」误判成系统故障。
+ *
+ * 规则模式面板里那句「加群评论将降级为普通评论」**保持不变**——规则模式仍然先加群，措辞依然准确。
+ */
+const actionLabel = (action: ContentScheduleAutomationAction, _platform?: string) =>
+  action === 'join_group' ? '自动加群' : actionUi[action].label;
 
 const actionMetadata = (row: ContentScheduleRow, action: ContentScheduleAutomationAction) =>
   row.availableActions.find((item) => item.action === action);

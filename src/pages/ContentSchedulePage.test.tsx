@@ -250,10 +250,12 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.getByRole('columnheader', { name: '自动发帖' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动评论' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '自动加群' })).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: '加群评论（联系）' })).not.toBeNull();
+    // change decouple-scheduled-contact-comment-from-group-join：拆分后该动作不再加群，
+    // Facebook 的特例名「加群评论（联系）」已废，改用与其它平台一致的通用名。
+    expect(screen.getByRole('columnheader', { name: '自动联系评论' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '规则模式' })).not.toBeNull();
-    expect(screen.queryByRole('columnheader', { name: '自动联系评论' })).toBeNull();
-    expect(modeControl('加群评论（联系） fb-1')).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '加群评论（联系）' })).toBeNull();
+    expect(modeControl('自动联系评论 fb-1')).not.toBeNull();
     expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
     expect(screen.getByText('/ 2')).not.toBeNull();
 
