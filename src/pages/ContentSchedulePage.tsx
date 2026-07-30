@@ -39,6 +39,7 @@ import type {
   FacebookOperationBaseMode,
   FacebookOperationEffectiveMode,
 } from '../types/api';
+import { tagOf } from '../types/aidcp-enums';
 import {
   WeekActiveGrid,
   EMPTY_MASK,
@@ -151,13 +152,13 @@ const platformLabel = (platform: string) => PLATFORM_LABELS[platform] ?? platfor
 
 const OPERATION_MODE_LABELS: Record<
   FacebookOperationBaseMode | FacebookOperationEffectiveMode,
-  { label: string; color?: string }
+  { text: string; color: string }
 > = {
-  rule: { label: '规则模式', color: 'blue' },
-  consumption: { label: '消费模式', color: 'purple' },
-  slow_start: { label: '慢启动', color: 'orange' },
-  persona: { label: '人设模式', color: 'default' },
-  blocked: { label: '已阻断', color: 'red' },
+  rule: { text: '规则模式', color: 'blue' },
+  consumption: { text: '消费模式', color: 'purple' },
+  slow_start: { text: '慢启动', color: 'orange' },
+  persona: { text: '人设模式', color: 'default' },
+  blocked: { text: '已阻断', color: 'red' },
 };
 
 const OPERATION_ACTION_LABELS: Record<FacebookOperationActionState, string> = {
@@ -925,7 +926,7 @@ export function ContentSchedulePage() {
           const effectiveOperationMode = row.facebookOperation?.effectiveMode ?? null;
           const scheduledJoinSuppressed = effectiveOperationMode !== 'persona';
           const effectiveOperationLabel = effectiveOperationMode
-            ? OPERATION_MODE_LABELS[effectiveOperationMode].label
+            ? tagOf(OPERATION_MODE_LABELS, effectiveOperationMode).text
             : '模式未知';
           return (
             <Space direction="vertical" size={6} style={{ maxWidth: 290 }}>
@@ -1066,9 +1067,9 @@ export function ContentSchedulePage() {
           );
         }
 
-        const baseMode = OPERATION_MODE_LABELS[operation.baseMode];
+        const baseMode = tagOf(OPERATION_MODE_LABELS, operation.baseMode);
         const effectiveMode = operation.effectiveMode
-          ? OPERATION_MODE_LABELS[operation.effectiveMode]
+          ? tagOf(OPERATION_MODE_LABELS, operation.effectiveMode)
           : null;
         const rule = operation.rule;
         const consumption = operation.consumption;
@@ -1085,9 +1086,9 @@ export function ContentSchedulePage() {
         return (
           <Space direction="vertical" size={6} style={{ maxWidth: 360 }}>
             <Space size={[4, 4]} wrap>
-              <Tag color={baseMode.color}>配置：{baseMode.label}</Tag>
+              <Tag color={baseMode.color}>配置：{baseMode.text}</Tag>
               {effectiveMode ? (
-                <Tag color={effectiveMode.color}>生效：{effectiveMode.label}</Tag>
+                <Tag color={effectiveMode.color}>生效：{effectiveMode.text}</Tag>
               ) : (
                 <Tag color="red">生效模式未知</Tag>
               )}

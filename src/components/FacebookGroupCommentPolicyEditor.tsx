@@ -17,6 +17,7 @@ import type {
   FacebookGroupCommentPolicyView,
   FacebookGroupCommentPolicyWrite,
 } from '../types/api';
+import { labelOf } from '../types/aidcp-enums';
 
 const SOURCE_LABEL: Record<FacebookGroupCommentPolicyView['source'], string> = {
   db: '数据库策略',
@@ -96,7 +97,7 @@ export function FacebookGroupCommentPolicyEditor() {
       title="群组评论时序"
       extra={
         <Space size={[4, 4]} wrap>
-          <Tag>{SOURCE_LABEL[view.source]}</Tag>
+          <Tag>{labelOf(SOURCE_LABEL, view.source)}</Tag>
           <Tag>{view.revision === null ? '无持久化 revision' : `revision ${view.revision}`}</Tag>
         </Space>
       }
