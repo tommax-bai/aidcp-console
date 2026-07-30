@@ -77,17 +77,12 @@ describe('approval policy controls', () => {
     };
   });
 
-  it('account control presents global exemption directly and writes server policy', async () => {
+  it('account page no longer exposes an account-targeted comment approval write', async () => {
     renderPage(<AccountsPage />);
     await screen.findByText('小猫');
-    expect(screen.queryByText('账号全局免审会覆盖所有评论来源')).toBeNull();
-    expect(screen.queryByText(/飞书手工 \/comment/)).toBeNull();
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '账号 acc-1 评论审批' }));
-    fireEvent.click(await screen.findByText('全局免审', { selector: '.ant-select-item-option-content' }));
-    await waitFor(() => expect(state.putCalls).toContainEqual({
-      path: '/api/approval-policies/account-comment',
-      body: { accountId: 'acc-1', mode: 'auto_approve_all' },
-    }));
+    expect(screen.queryByRole('columnheader', { name: '评论审批' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: '账号 acc-1 评论审批' })).toBeNull();
+    expect(state.putCalls.some(({ path }) => path === '/api/approval-policies/account-comment')).toBe(false);
   });
 
   it('group client-only control shows incomplete coverage fallback and corrected routing semantics', async () => {

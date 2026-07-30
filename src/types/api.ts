@@ -1463,18 +1463,21 @@ export type FacebookRuleActionState =
   /** 评论已上墙但**不带联系方式**（账号未配联系方式、按设置降级为普通评论）。MUST NOT 显示成联系评论已完成。 */
   | 'confirmed_without_contact';
 
+export interface FacebookRuleModeConfigView {
+  /** 配置权威主键是环境；账号级运行投影反查失败时为 null。 */
+  envKey: string | null;
+  enabled: boolean;
+  /** 服务端回读的库中定义号原值；节奏数字编码在其中，故不再钉成字面量类型。 */
+  definitionId: string;
+  definitionVersion: number;
+  /** 库中定义身份与云端当前定义不一致：该行的节奏不可按当前定义解读。 */
+  definitionMismatch: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 export interface FacebookRuleModeView {
-  config: {
-    accountId: string;
-    enabled: boolean;
-    /** 服务端回读的库中定义号原值；节奏数字编码在其中，故不再钉成字面量类型。 */
-    definitionId: string;
-    definitionVersion: number;
-    /** 库中定义身份与云端当前定义不一致：该行的节奏不可按当前定义解读。 */
-    definitionMismatch: boolean;
-    updatedAt: string | null;
-    updatedBy: string | null;
-  };
+  config: FacebookRuleModeConfigView;
   runtime: {
     viewCount: number;
     /** 一级节奏：多少条确认浏览开一个轮次。 */
@@ -1713,11 +1716,43 @@ export interface EnvironmentSlowStartMutationResponse {
   slowStart: EnvironmentSlowStartView;
 }
 
+export interface EnvironmentCommentApprovalView {
+  envKey: string;
+  mode: AccountCommentApprovalMode;
+  configured: boolean;
+  updatedBy: string | null;
+  updatedAt: number | null;
+  /** 当前唯一有效执行账号；无绑定、绑定冲突或跨客户争用均为 null。 */
+  boundAccountId: string | null;
+}
+
+export interface EnvironmentFacebookRuleModeMutationResponse {
+  envKey: string;
+  facebookRuleMode: FacebookRuleModeConfigView;
+}
+
+export interface EnvironmentCommentApprovalMutationResponse {
+  envKey: string;
+  commentApproval: EnvironmentCommentApprovalView;
+}
+
 export type EnvironmentLifecycleState = 'active' | 'waiting_edge' | 'deleting' | 'delete_failed' | 'deleted';
+
+export type EnvironmentExecutionBindingView =
+  | { state: 'bound'; accountId: string }
+  | {
+      state: 'unbound' | 'binding_conflict' | 'binding_unavailable';
+      accountId: null;
+    };
 
 /** 独立环境资产页 DTO（GET /api/environments）。环境名与挂载账号展示名严格分列。 */
 export interface EnvironmentAssetView extends ClientEnvironmentView {
   environmentName: string;
+  /** Cloud-first rolling deploy may omit these fields; absence means unknown, never disabled/default. */
+  facebookRuleMode?: FacebookRuleModeConfigView | null;
+  commentApproval?: EnvironmentCommentApprovalView | null;
+  /** 与规则运行期同口径的唯一执行绑定；旧 Cloud 缺字段时必须按未知呈现。 */
+  executionBinding?: EnvironmentExecutionBindingView;
   account: {
     accountId: string;
     label: string | null;

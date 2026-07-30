@@ -91,8 +91,8 @@ describe('EnvironmentsPage', () => {
     expect(screen.getByText('小红书真名')).toBeTruthy();
     expect(screen.getByText('华东组')).toBeTruthy();
     expect(screen.getByText('受限')).toBeTruthy();
-    expect(screen.getByText('环境资产与环境级慢启动配置')).toBeTruthy();
-    expect(screen.getByText('不适用')).toBeTruthy();
+    expect(screen.getByText('环境资产与环境级运行配置')).toBeTruthy();
+    expect(screen.getAllByText('不适用').length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole('switch', { name: /慢启动/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /删除|重试删除|确认删除环境/ })).toBeNull();
     expect(screen.queryByLabelText('确认环境 ID')).toBeNull();
@@ -176,6 +176,250 @@ describe('EnvironmentsPage', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 
+  it('writes rule mode and comment approval by environment without optimistic state', async () => {
+    let ruleEnabled = false;
+    let commentMode: 'source_rules' | 'auto_approve_all' = 'source_rules';
+    let commentConfigured = false;
+    let releaseRuleWrite: (() => void) | undefined;
+    let releaseCommentWrite: (() => void) | undefined;
+    const facebook = {
+      ...environment,
+      envKey: 'facebook-policy',
+      environmentName: 'Facebook 策略环境',
+      platform: 'facebook',
+      account: null,
+      executionBinding: { state: 'unbound' as const, accountId: null },
+      slowStart: { enabled: false, since: null, globallyDisabled: false },
+    };
+    const row = () => ({
+      ...facebook,
+      facebookRuleMode: {
+        envKey: facebook.envKey,
+        enabled: ruleEnabled,
+        definitionId: 'facebook_browse_5_like_1_join_contact_every_2',
+        definitionVersion: 2,
+        definitionMismatch: false,
+        updatedAt: ruleEnabled ? '2026-07-30T06:00:00.000Z' : null,
+        updatedBy: ruleEnabled ? 'panel:alice' : null,
+      },
+      commentApproval: {
+        envKey: facebook.envKey,
+        mode: commentMode,
+        configured: commentConfigured,
+        updatedBy: commentConfigured ? 'panel:alice' : null,
+        updatedAt: commentConfigured ? 1_775_000_000_000 : null,
+        boundAccountId: null,
+      },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (init?.method === 'PUT' && path.includes('/facebook-rule-mode')) {
+        return new Promise<Response>((resolve) => {
+          releaseRuleWrite = () => {
+            ruleEnabled = true;
+            resolve(new Response(JSON.stringify({
+              envKey: facebook.envKey,
+              facebookRuleMode: row().facebookRuleMode,
+            }), { status: 200, headers: { 'content-type': 'application/json' } }));
+          };
+        });
+      }
+      if (init?.method === 'PUT' && path.includes('/comment-approval')) {
+        return new Promise<Response>((resolve) => {
+          releaseCommentWrite = () => {
+            commentMode = 'auto_approve_all';
+            commentConfigured = true;
+            resolve(new Response(JSON.stringify({
+              envKey: facebook.envKey,
+              commentApproval: row().commentApproval,
+            }), { status: 200, headers: { 'content-type': 'application/json' } }));
+          };
+        });
+      }
+      return new Response(JSON.stringify({ environments: [row()], asOf: Date.now() }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    const ruleSwitch = await screen.findByRole('switch', { name: '规则模式 facebook-policy' });
+    expect(ruleSwitch.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(ruleSwitch);
+    expect(await screen.findByText('正在开启')).toBeTruthy();
+    expect(ruleSwitch.getAttribute('aria-checked')).toBe('false');
+    releaseRuleWrite?.();
+    await waitFor(() => expect(ruleSwitch.getAttribute('aria-checked')).toBe('true'));
+
+    const approvalSelect = screen.getByRole('combobox', { name: '评论审批 facebook-policy' });
+    const selectedApprovalText = () =>
+      approvalSelect.closest('.ant-select')?.querySelector('.ant-select-selection-item')?.textContent;
+    expect(selectedApprovalText()).toBe('按来源规则');
+    fireEvent.mouseDown(approvalSelect);
+    fireEvent.click(await screen.findByText('全局免审', { selector: '.ant-select-item-option-content' }));
+    await waitFor(() => expect(releaseCommentWrite).toBeTypeOf('function'));
+    expect(selectedApprovalText()).toBe('按来源规则');
+    releaseCommentWrite?.();
+    await waitFor(() => expect(selectedApprovalText()).toBe('全局免审'));
+    expect(screen.getAllByText('已保存，当前没有执行对象').length).toBeGreaterThanOrEqual(1);
+
+    const writes = fetchMock.mock.calls
+      .filter(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')
+      .map(([input, init]) => ({
+        path: String(input),
+        body: JSON.parse(String((init as RequestInit).body)),
+      }));
+    expect(writes.some(({ path, body }) =>
+      path.includes('/api/environments/facebook-policy/facebook-rule-mode')
+      && body.enabled === true
+      && Object.keys(body).length === 1)).toBe(true);
+    expect(writes.some(({ path, body }) =>
+      path.includes('/api/environments/facebook-policy/comment-approval')
+      && body.mode === 'auto_approve_all'
+      && Object.keys(body).length === 1)).toBe(true);
+    expect(writes.every(({ body }) => !Object.prototype.hasOwnProperty.call(body, 'accountId'))).toBe(true);
+  });
+
+  it('keeps environment policy truth on failure and does not expose a non-Facebook rule switch', async () => {
+    const rows: EnvironmentAssetView[] = [
+      {
+        ...environment,
+        envKey: 'facebook-rule-failure',
+        platform: 'facebook',
+        executionBinding: { state: 'unbound', accountId: null },
+        slowStart: { enabled: false, since: null, globallyDisabled: false },
+        facebookRuleMode: {
+          envKey: 'facebook-rule-failure',
+          enabled: false,
+          definitionId: 'facebook_browse_5_like_1_join_contact_every_2',
+          definitionVersion: 2,
+          definitionMismatch: false,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        commentApproval: {
+          envKey: 'facebook-rule-failure',
+          mode: 'source_rules',
+          configured: false,
+          updatedBy: null,
+          updatedAt: null,
+          boundAccountId: null,
+        },
+      },
+      {
+        ...environment,
+        envKey: 'wechat-rule-none',
+        platform: 'wechat_channels',
+      },
+    ];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return new Response(JSON.stringify({ error: 'unsupported_platform' }), {
+          status: 409, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ environments: rows, asOf: Date.now() }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    const toggle = await screen.findByRole('switch', { name: '规则模式 facebook-rule-failure' });
+    fireEvent.click(toggle);
+    expect(await screen.findByText('环境规则模式保存失败，原配置未改变')).toBeTruthy();
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByRole('switch', { name: '规则模式 wechat-rule-none' })).toBeNull();
+
+    const approvalSelect = screen.getByRole('combobox', { name: '评论审批 facebook-rule-failure' });
+    const selectedApprovalText = () =>
+      approvalSelect.closest('.ant-select')?.querySelector('.ant-select-selection-item')?.textContent;
+    fireEvent.mouseDown(approvalSelect);
+    fireEvent.click(await screen.findByText('全局免审', { selector: '.ant-select-item-option-content' }));
+    expect(await screen.findByText('环境评论审批保存失败，原配置未改变')).toBeTruthy();
+    expect(selectedApprovalText()).toBe('按来源规则');
+  });
+
+  it('uses the current environment binding and exposes a stored rule definition mismatch', async () => {
+    const facebook: EnvironmentAssetView = {
+      ...environment,
+      envKey: 'facebook-rebound',
+      platform: 'facebook',
+      account: {
+        ...environment.account!,
+        accountId: 'account-new',
+        displayName: '当前新账号',
+        platform: 'facebook',
+      },
+      executionBinding: { state: 'bound', accountId: 'account-new' },
+      slowStart: { enabled: false, since: null, globallyDisabled: false },
+      facebookRuleMode: {
+        envKey: 'facebook-rebound',
+        enabled: true,
+        definitionId: 'facebook_browse_10_like_1_join_contact_1',
+        definitionVersion: 1,
+        definitionMismatch: true,
+        updatedAt: '2026-07-30T06:00:00.000Z',
+        updatedBy: 'panel:old-operator',
+      },
+      commentApproval: {
+        envKey: 'facebook-rebound',
+        mode: 'auto_approve_all',
+        configured: true,
+        updatedBy: 'panel:old-operator',
+        updatedAt: 1_775_000_000_000,
+        boundAccountId: 'account-new',
+      },
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      environments: [facebook], asOf: Date.now(),
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    renderPage(fetchMock);
+
+    expect((await screen.findAllByText(/由当前挂载账号 当前新账号 执行/)).length).toBe(2);
+    expect(screen.queryByText(/旧账号.*执行/)).toBeNull();
+    expect(screen.getByText(/库存定义：facebook_browse_10_like_1_join_contact_1@1，.*仅允许关闭以修复定义/)).toBeTruthy();
+    expect(screen.getByRole('switch', { name: '规则模式 facebook-rebound' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it('does not claim a rule executor when the binding is conflicted', async () => {
+    const facebook: EnvironmentAssetView = {
+      ...environment,
+      envKey: 'facebook-conflict',
+      platform: 'facebook',
+      account: {
+        ...environment.account!,
+        accountId: 'account-contended',
+        displayName: '争用账号',
+        platform: 'facebook',
+      },
+      executionBinding: { state: 'binding_conflict', accountId: null },
+      slowStart: { enabled: false, since: null, globallyDisabled: false },
+      facebookRuleMode: {
+        envKey: 'facebook-conflict',
+        enabled: true,
+        definitionId: 'facebook_browse_5_like_1_join_contact_every_2',
+        definitionVersion: 2,
+        definitionMismatch: false,
+        updatedAt: '2026-07-30T06:00:00.000Z',
+        updatedBy: 'panel:alice',
+      },
+      commentApproval: {
+        envKey: 'facebook-conflict',
+        mode: 'source_rules',
+        configured: false,
+        updatedBy: null,
+        updatedAt: null,
+        boundAccountId: null,
+      },
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      environments: [facebook], asOf: Date.now(),
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    renderPage(fetchMock);
+
+    expect(await screen.findByText('绑定冲突，规则模式当前不执行')).toBeTruthy();
+    expect(screen.queryByText(/由当前挂载账号 争用账号 执行/)).toBeNull();
+  });
+
   it('shows saved-but-globally-disabled truth and withholds switches from unsupported rows', async () => {
     const rows: EnvironmentAssetView[] = [
       {
@@ -200,7 +444,7 @@ describe('EnvironmentsPage', () => {
     expect(await screen.findByText('已配置 · Cloud 全局停用')).toBeTruthy();
     expect(screen.getByRole('switch', { name: '慢启动 facebook-disabled' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.queryByRole('switch', { name: '慢启动 wechat-001' })).toBeNull();
-    expect(screen.getByText('不适用')).toBeTruthy();
+    expect(screen.getAllByText('不适用').length).toBeGreaterThanOrEqual(2);
   });
 
 });

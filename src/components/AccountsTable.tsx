@@ -153,7 +153,6 @@ export function AccountsTable({
   riskStatusControl,
   quotaTierControl,
   configurationControl,
-  commentApprovalControl,
   onEditGroup,
   onEditContact,
 }: {
@@ -166,8 +165,6 @@ export function AccountsTable({
   quotaTierControl?: (account: PanelAccount) => ReactNode;
   /** 账号页按平台注入账号级配置入口；不传则只读视图不增加配置列。 */
   configurationControl?: (account: PanelAccount) => ReactNode;
-  /** 账号级评论审批策略（仅账号配置页注入；其它表格保持零回归）。 */
-  commentApprovalControl?: (account: PanelAccount) => ReactNode;
   /**
    * 可选：分组标签就地编辑保存回调（change editable-account-group-label）。
    * 传入 →「分组」列点击即变输入框、回车/失焦保存（trim 后空 = 清空，回 null）；
@@ -329,12 +326,8 @@ export function AccountsTable({
         render: (_, account) => configurationControl(account) ?? dash,
       }
     : null;
-  const commentApprovalColumn: ColumnsType<PanelAccount>[number] | null = commentApprovalControl
-    ? { title: '评论审批', key: 'commentApproval', width: 150, render: (_, account) => commentApprovalControl(account) }
-    : null;
   const cols: ColumnsType<PanelAccount> = [
     ...withContactColumn,
-    ...(commentApprovalColumn ? [commentApprovalColumn] : []),
     ...(configurationColumn ? [configurationColumn] : []),
     viewsColumn,
   ];

@@ -67,7 +67,7 @@ const facebookJoinConfig = {
 
 const facebookRuleMode = {
   config: {
-    accountId: 'fb-1',
+    envKey: 'facebook-env-1',
     enabled: true,
     definitionId: 'facebook_browse_5_like_1_join_contact_every_2',
     definitionVersion: 2,
@@ -270,54 +270,19 @@ describe('ContentSchedulePage 平台感知视图', () => {
     );
   });
 
-  it('Facebook 规则模式展示权威模式与进度，开关等待服务端成功后才翻转', async () => {
-    let resolvePut: (() => void) | undefined;
-    state.putImpl = (path) => {
-      if (path !== '/api/accounts/fb-1/facebook-rule-mode') return Promise.resolve({});
-      return new Promise((resolve) => {
-        resolvePut = () => {
-          state.rows = state.rows.map((item) => {
-            const row = item as ContentScheduleRow;
-            return row.accountId === 'fb-1'
-              ? {
-                  ...row,
-                  facebookRuleMode: {
-                    ...facebookRuleMode,
-                    config: { ...facebookRuleMode.config, enabled: false },
-                  },
-                }
-              : row;
-          });
-          resolve({
-            ...facebookRuleMode,
-            config: { ...facebookRuleMode.config, enabled: false },
-          });
-        };
-      });
-    };
+  it('Facebook 规则模式只读展示环境配置与账号进度，不再提供账号级写入口', async () => {
     await renderSchedule();
     await selectPlatform('Facebook');
 
     expect(screen.getByText('规则运行')).not.toBeNull();
+    expect(screen.getByText('环境配置已开启')).not.toBeNull();
     expect(screen.getByText('浏览 3 / 5')).not.toBeNull();
     expect(screen.getByText('本轮含加群')).not.toBeNull();
+    expect(screen.getByText(/规则开关作用于环境，请在环境页调整/)).not.toBeNull();
     expect(screen.getByText(/确认浏览 5 条 → 点赞 1 次/)).not.toBeNull();
     expect(screen.getByText(/每 2 轮 → 加群联系评论 1 次/)).not.toBeNull();
-    const ruleSwitch = screen.getByRole('switch', { name: '规则模式 fb-1' });
-    expect(ruleSwitch.getAttribute('aria-checked')).toBe('true');
-
-    fireEvent.click(ruleSwitch);
-    await waitFor(() =>
-      expect(state.putCalls).toContainEqual({
-        path: '/api/accounts/fb-1/facebook-rule-mode',
-        body: { enabled: false },
-      }),
-    );
-    expect(ruleSwitch.getAttribute('aria-checked')).toBe('true');
-    resolvePut?.();
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: '规则模式 fb-1' }).getAttribute('aria-checked')).toBe('false'),
-    );
+    expect(screen.queryByRole('switch', { name: '规则模式 fb-1' })).toBeNull();
+    expect(state.putCalls.some(({ path }) => path.includes('/facebook-rule-mode'))).toBe(false);
   });
 
   it('只点赞的轮次显示为「本轮不适用」，不得读成失败或进行中', async () => {

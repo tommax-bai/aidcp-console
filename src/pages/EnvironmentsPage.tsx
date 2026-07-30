@@ -2,12 +2,18 @@ import { useMemo, useState } from 'react';
 import { App, Card, Empty, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useSearchParams } from 'react-router-dom';
-import { useEnvironments, useSetEnvironmentSlowStart } from '../api/queries';
+import {
+  useEnvironments,
+  useSetEnvironmentCommentApproval,
+  useSetEnvironmentFacebookRuleMode,
+  useSetEnvironmentSlowStart,
+} from '../api/queries';
 import { errorText } from '../api/errorText';
 import { QueryError } from '../components/QueryGate';
 import { QuotaTierBadge } from '../components/QuotaTierBadge';
 import { RiskStatusBadge } from '../components/RiskStatusBadge';
 import type {
+  AccountCommentApprovalMode,
   EnvironmentAssetView,
   EnvironmentLifecycleState,
 } from '../types/api';
@@ -102,6 +108,8 @@ export function EnvironmentsPage() {
   const [params] = useSearchParams();
   const query = useEnvironments();
   const setSlowStart = useSetEnvironmentSlowStart();
+  const setRuleMode = useSetEnvironmentFacebookRuleMode();
+  const setCommentApproval = useSetEnvironmentCommentApproval();
   const linkedAccount = params.get('account')?.trim() ?? '';
   const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>('current');
   const [platformFilter, setPlatformFilter] = useState('all');
@@ -247,6 +255,114 @@ export function EnvironmentsPage() {
         );
       },
     },
+    {
+      title: '规则模式', key: 'facebookRuleMode', width: 230,
+      render: (_, environment) => {
+        if (environment.platform !== 'facebook') {
+          return <Typography.Text type="secondary">不适用</Typography.Text>;
+        }
+        if (environment.lifecycle.state !== 'active') {
+          return <Typography.Text type="secondary">当前状态不可操作</Typography.Text>;
+        }
+        const config = environment.facebookRuleMode;
+        if (!config || config.envKey !== environment.envKey) {
+          return <Tag color="gold">状态未知</Tag>;
+        }
+        const pending = setRuleMode.isPending && setRuleMode.variables?.envKey === environment.envKey;
+        return (
+          <Space direction="vertical" size={0}>
+            <Space size={8}>
+              <Switch
+                aria-label={`规则模式 ${environment.envKey}`}
+                checked={config.enabled}
+                disabled={setRuleMode.isPending || (config.definitionMismatch && !config.enabled)}
+                loading={pending}
+                onChange={(enabled) => {
+                  setRuleMode.mutate(
+                    { envKey: environment.envKey, enabled },
+                    {
+                      onSuccess: () => message.success(`环境规则模式已${enabled ? '开启' : '关闭'}`),
+                      onError: (error) => message.error(errorText(error, '环境规则模式保存失败，原配置未改变')),
+                    },
+                  );
+                }}
+              />
+              {config.definitionMismatch ? <Tag color="red">规则定义不一致</Tag> : null}
+            </Space>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {pending
+                ? `正在${setRuleMode.variables?.enabled ? '开启' : '关闭'}`
+                : config.enabled ? '已开启' : '未开启'}
+            </Typography.Text>
+            {config.definitionMismatch ? (
+              <Typography.Text type="danger" style={{ fontSize: 12 }}>
+                库存定义：{config.definitionId}@{config.definitionVersion}，
+                {config.enabled ? '仅允许关闭以修复定义' : '需先升级定义后才能开启'}
+              </Typography.Text>
+            ) : null}
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {environment.executionBinding?.state === 'bound'
+                && environment.executionBinding.accountId === environment.account?.accountId
+                ? `作用于环境，由当前挂载账号 ${environment.account.displayName} 执行`
+                : environment.executionBinding?.state === 'binding_conflict'
+                  ? '绑定冲突，规则模式当前不执行'
+                  : environment.executionBinding?.state === 'binding_unavailable'
+                    || !environment.executionBinding
+                    ? '绑定状态未知，暂不宣称执行'
+                    : `${config.updatedAt ? '已保存，' : ''}当前没有执行对象`}
+            </Typography.Text>
+          </Space>
+        );
+      },
+    },
+    {
+      title: '评论审批', key: 'commentApproval', width: 230,
+      render: (_, environment) => {
+        if (environment.lifecycle.state !== 'active') {
+          return <Typography.Text type="secondary">当前状态不可操作</Typography.Text>;
+        }
+        const policy = environment.commentApproval;
+        if (!policy || policy.envKey !== environment.envKey) {
+          return <Tag color="gold">状态未知</Tag>;
+        }
+        const pending = setCommentApproval.isPending
+          && setCommentApproval.variables?.envKey === environment.envKey;
+        const hasCurrentExecutor = policy.boundAccountId != null
+          && policy.boundAccountId === environment.account?.accountId;
+        return (
+          <Space direction="vertical" size={0}>
+            <Select<AccountCommentApprovalMode>
+              aria-label={`评论审批 ${environment.envKey}`}
+              size="small"
+              style={{ width: 142 }}
+              value={policy.mode}
+              loading={pending}
+              disabled={setCommentApproval.isPending}
+              options={[
+                { value: 'source_rules', label: '按来源规则' },
+                { value: 'auto_approve_all', label: '全局免审' },
+              ]}
+              onChange={(mode) => {
+                setCommentApproval.mutate(
+                  { envKey: environment.envKey, mode },
+                  {
+                    onSuccess: () => message.success(
+                      mode === 'auto_approve_all' ? '环境全局免审已开启' : '环境已恢复按来源规则审批',
+                    ),
+                    onError: (error) => message.error(errorText(error, '环境评论审批保存失败，原配置未改变')),
+                  },
+                );
+              }}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {hasCurrentExecutor
+                ? `作用于环境，由当前挂载账号 ${environment.account!.displayName} 执行`
+                : `${policy.configured ? '已保存，' : ''}当前没有执行对象`}
+            </Typography.Text>
+          </Space>
+        );
+      },
+    },
     { title: '状态', key: 'lifecycle', width: 150, render: (_, environment) => lifecycleTag(environment) },
   ];
 
@@ -256,7 +372,7 @@ export function EnvironmentsPage() {
       <Card
         size="small"
         title={linkedAccount ? '环境（来自账号页）' : '环境'}
-        extra={<Typography.Text type="secondary">环境资产与环境级慢启动配置</Typography.Text>}
+        extra={<Typography.Text type="secondary">环境资产与环境级运行配置</Typography.Text>}
       >
         <Space wrap style={{ marginBottom: 12 }}>
           <Select
@@ -333,7 +449,7 @@ export function EnvironmentsPage() {
           columns={columns}
           dataSource={rows}
           loading={query.isLoading}
-          scroll={{ x: 1450 }}
+          scroll={{ x: 1900 }}
           locale={{ emptyText: <Empty description="当前筛选下没有环境" /> }}
           pagination={{ pageSize: 20, showSizeChanger: true }}
         />

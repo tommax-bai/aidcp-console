@@ -33,7 +33,6 @@ import type {
   FacebookJoinGroupAutomationPatch,
   FacebookJoinGroupAutomationWriteResult,
   FacebookRuleActionState,
-  FacebookRuleModeView,
 } from '../types/api';
 import {
   WeekActiveGrid,
@@ -597,24 +596,6 @@ export function ContentSchedulePage() {
     },
   });
 
-  // 规则模式配置是独立 Cloud authority；不写 content schedule，也不做乐观翻转。
-  // 只有 PUT 成功且随后 catalog 权威回读完成，开关与进度才改变。
-  const patchFacebookRuleMode = useMutation({
-    mutationFn: ({ accountId, enabled }: { accountId: string; enabled: boolean }) =>
-      apiPut<FacebookRuleModeView>(
-        `/api/accounts/${encodeURIComponent(accountId)}/facebook-rule-mode`,
-        { enabled },
-      ),
-    onSuccess: () => {
-      message.success('Facebook 规则模式配置已保存');
-      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
-    },
-    onError: (error) => {
-      message.error(`Facebook 规则模式保存失败：${errorText(error)}`);
-      void qc.invalidateQueries({ queryKey: ['config', 'content-schedule'], exact: true });
-    },
-  });
-
   // 日上限本地草稿（编辑中未提交值）；onBlur 提交。key = `${accountId}:${action}`。
   const [capDraft, setCapDraft] = useState<Record<string, number | null>>({});
 
@@ -986,17 +967,9 @@ export function ContentSchedulePage() {
         return (
           <Space direction="vertical" size={6} style={{ maxWidth: 300 }}>
             <Space size={8} wrap>
-              <Switch
-                aria-label={`规则模式 ${row.accountId}`}
-                checked={rule.config.enabled}
-                loading={
-                  patchFacebookRuleMode.isPending
-                  && patchFacebookRuleMode.variables?.accountId === row.accountId
-                }
-                onChange={(enabled) =>
-                  patchFacebookRuleMode.mutate({ accountId: row.accountId, enabled })
-                }
-              />
+              <Tag color={rule.config.enabled ? 'blue' : undefined}>
+                环境配置{rule.config.enabled ? '已开启' : '未开启'}
+              </Tag>
               <Tag color={mode.color}>{mode.label}</Tag>
               {rule.effectiveMode === 'facebook_rule' ? (
                 <>
@@ -1007,6 +980,9 @@ export function ContentSchedulePage() {
                 </>
               ) : null}
             </Space>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              规则开关作用于环境，请在环境页调整；此处仅展示当前账号的运行进度
+            </Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               固定规则：账号活跃周历内，确认浏览 {rule.runtime.threshold} 条 → 点赞 1 次；
               每 {rule.runtime.joinEveryNRounds} 轮 → 加群联系评论 1 次；冷启动优先

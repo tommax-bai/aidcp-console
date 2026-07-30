@@ -38,11 +38,14 @@ import type {
   ClientEnvScopeInput,
   ClientEnvironmentView,
   EnvironmentAssetView,
+  EnvironmentCommentApprovalMutationResponse,
+  EnvironmentFacebookRuleModeMutationResponse,
   EnvironmentSlowStartMutationResponse,
   ClientUserMutationResponse,
   ClientScopeMutationResponse,
   DownloadsManifest,
   ApprovalPolicyCatalog,
+  AccountCommentApprovalMode,
 } from '../types/api';
 
 export function useVersion() {
@@ -438,6 +441,64 @@ export function useSetEnvironmentSlowStart() {
               environments: current.environments.map((environment) =>
                 environment.envKey === result.envKey
                   ? { ...environment, slowStart: result.slowStart }
+                  : environment),
+            }
+          : current,
+      );
+      void qc.invalidateQueries({ queryKey: ['environments'], exact: true });
+    },
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: ['environments'], exact: true });
+    },
+  });
+}
+
+export function useSetEnvironmentFacebookRuleMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ envKey, enabled }: { envKey: string; enabled: boolean }) =>
+      apiPut<EnvironmentFacebookRuleModeMutationResponse>(
+        `/api/environments/${encodeURIComponent(envKey)}/facebook-rule-mode`,
+        { enabled },
+      ),
+    onSuccess: (result) => {
+      qc.setQueryData<{ environments: EnvironmentAssetView[]; asOf: number }>(
+        ['environments'],
+        (current) => current
+          ? {
+              ...current,
+              environments: current.environments.map((environment) =>
+                environment.envKey === result.envKey
+                  ? { ...environment, facebookRuleMode: result.facebookRuleMode }
+                  : environment),
+            }
+          : current,
+      );
+      void qc.invalidateQueries({ queryKey: ['environments'], exact: true });
+    },
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: ['environments'], exact: true });
+    },
+  });
+}
+
+export function useSetEnvironmentCommentApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ envKey, mode }: { envKey: string; mode: AccountCommentApprovalMode }) =>
+      apiPut<EnvironmentCommentApprovalMutationResponse>(
+        `/api/environments/${encodeURIComponent(envKey)}/comment-approval`,
+        { mode },
+      ),
+    onSuccess: (result) => {
+      qc.setQueryData<{ environments: EnvironmentAssetView[]; asOf: number }>(
+        ['environments'],
+        (current) => current
+          ? {
+              ...current,
+              environments: current.environments.map((environment) =>
+                environment.envKey === result.envKey
+                  ? { ...environment, commentApproval: result.commentApproval }
                   : environment),
             }
           : current,

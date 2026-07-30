@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { App, Button, Card, Popconfirm, Select, Tag } from 'antd';
+import { App, Button, Card, Popconfirm, Tag } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
-import { useAccounts, useApprovalPolicies } from '../api/queries';
+import { useAccounts } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import {
   AccountsTable,
@@ -13,12 +13,11 @@ import {
 } from '../components';
 import { accountName } from '../types/accountDisplay';
 import { OPERATOR_STATUS_LABEL, labelOf } from '../types/aidcp-enums';
-import type { AccountCommentApprovalMode, AccountCommentApprovalPolicy, PanelAccount } from '../types/api';
+import type { PanelAccount } from '../types/api';
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
 export function AccountsPage() {
   const { data, isLoading, isError, refetch } = useAccounts();
-  const approvalPolicies = useApprovalPolicies();
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [runtimeAccount, setRuntimeAccount] = useState<PanelAccount | null>(null);
@@ -63,20 +62,6 @@ export function AccountsPage() {
     onError: () => message.error('联系方式保存失败'),
   });
 
-  const commentPolicyCmd = useMutation({
-    mutationFn: (v: { accountId: string; mode: AccountCommentApprovalMode }) =>
-      apiPut<{ policy: AccountCommentApprovalPolicy }>('/api/approval-policies/account-comment', v),
-    onSuccess: (res) => {
-      message.success(res.policy.mode === 'auto_approve_all' ? '已开启账号全局评论免审' : '已恢复按来源规则审批');
-      void qc.invalidateQueries({ queryKey: ['approval-policies'] });
-    },
-    onError: () => message.error('评论审批策略保存失败，当前真态未改变'),
-  });
-
-  const policyByAccount = new Map(
-    (approvalPolicies.data?.accounts ?? []).map((policy) => [policy.accountId, policy]),
-  );
-
   const operatorStatusControl = (account: PanelAccount) => {
     const paused = account.operatorStatus === 'paused';
     return (
@@ -117,25 +102,6 @@ export function AccountsPage() {
               return <FacebookSearchConfig account={account} compactTrigger />;
             }
             return null;
-          }}
-          commentApprovalControl={(account) => {
-            if (approvalPolicies.isError) return <Tag color="error">策略不可用</Tag>;
-            const policy = policyByAccount.get(account.accountId);
-            return (
-              <Select<AccountCommentApprovalMode>
-                aria-label={`账号 ${account.accountId} 评论审批`}
-                size="small"
-                style={{ width: 142 }}
-                loading={approvalPolicies.isLoading}
-                disabled={approvalPolicies.isLoading || commentPolicyCmd.isPending}
-                value={policy?.mode ?? 'source_rules'}
-                options={[
-                  { value: 'source_rules', label: '按来源规则' },
-                  { value: 'auto_approve_all', label: '全局免审' },
-                ]}
-                onChange={(mode) => commentPolicyCmd.mutate({ accountId: account.accountId, mode })}
-              />
-            );
           }}
           onEditGroup={(accountId, groupLabel) => groupCmd.mutate({ accountId, groupLabel })}
           onEditContact={(accountId, contactInfo) => contactCmd.mutate({ accountId, contactInfo })}
