@@ -68,6 +68,19 @@ const target = {
   commentsTotal: 0,
 };
 
+let groupCommentPolicy = {
+  joinToFirstCommentHours: 24,
+  revision: null as number | null,
+  source: 'default' as 'db' | 'legacy_env' | 'default',
+  bounds: {
+    joinToFirstCommentHours: { min: 1, max: 168, default: 24 },
+  },
+  sameGroupRecommentCooldownHours: 72,
+  sameGroupRecommentCooldownSource: 'default' as const,
+  updatedAt: null as string | null,
+  updatedBy: null as string | null,
+};
+
 async function chooseOption(controlName: string, optionLabel: string) {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: controlName }));
   fireEvent.click(await screen.findByText(optionLabel, { selector: '.ant-select-item-option-content' }));
@@ -93,8 +106,21 @@ describe('FacebookGroupsPage 账号分组范围', () => {
     mocks.post.mockReset();
     mocks.patch.mockReset();
     target.accountScopeMode = 'restricted';
+    groupCommentPolicy = {
+      joinToFirstCommentHours: 24,
+      revision: null,
+      source: 'default',
+      bounds: {
+        joinToFirstCommentHours: { min: 1, max: 168, default: 24 },
+      },
+      sameGroupRecommentCooldownHours: 72,
+      sameGroupRecommentCooldownSource: 'default',
+      updatedAt: null,
+      updatedBy: null,
+    };
     mocks.get.mockImplementation((path: string) => {
       if (path.startsWith('/api/facebook/groups?')) return Promise.resolve({ items: [target], total: 1 });
+      if (path === '/api/facebook/groups/comment-policy') return Promise.resolve(groupCommentPolicy);
       if (path === '/api/facebook/groups/facets') {
         return Promise.resolve({
           regions: [{ region: '北宁区域', parks: [] }],
@@ -119,6 +145,17 @@ describe('FacebookGroupsPage 账号分组范围', () => {
       return Promise.reject(new Error(`unexpected apiGet ${path}`));
     });
     mocks.put.mockImplementation((path: string, body: Record<string, unknown>) => {
+      if (path === '/api/facebook/groups/comment-policy') {
+        groupCommentPolicy = {
+          ...groupCommentPolicy,
+          joinToFirstCommentHours: body.joinToFirstCommentHours as number,
+          revision: (groupCommentPolicy.revision ?? 0) + 1,
+          source: 'db',
+          updatedAt: '2026-07-30T02:00:00.000Z',
+          updatedBy: 'panel:alice',
+        };
+        return Promise.resolve(groupCommentPolicy);
+      }
       if (path === '/api/facebook/groups/comment-templates') {
         return Promise.resolve({
           ...body,
@@ -139,6 +176,90 @@ describe('FacebookGroupsPage 账号分组范围', () => {
       });
     });
     mocks.post.mockResolvedValue({ imported: 1, updated: 0, duplicate: 0, invalid: 0, rows: [target] });
+  });
+
+  it('separates join-to-first-comment waiting from the read-only re-comment cooldown', async () => {
+    renderPage();
+
+    expect(await screen.findByLabelText('入群后首次评论等待（小时）')).not.toBeNull();
+    expect(screen.getByText('群组评论时序')).not.toBeNull();
+    expect(screen.getByText('入群后首次评论等待（小时）')).not.toBeNull();
+    expect(screen.getByText('同群再次评论冷却（独立，只读）')).not.toBeNull();
+    expect(screen.getByText('服务器默认值（未持久化）')).not.toBeNull();
+    expect(screen.getByText('无持久化 revision')).not.toBeNull();
+    expect(screen.getByText('72 小时')).not.toBeNull();
+    expect((screen.getByLabelText('入群后首次评论等待（小时）') as HTMLInputElement).value).toBe('24');
+  });
+
+  it('persists fallback truth with expectedRevision 0 and then refetches revisioned DB truth', async () => {
+    renderPage();
+    const input = await screen.findByLabelText('入群后首次评论等待（小时）');
+    fireEvent.change(input, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存首次评论等待' }));
+
+    await waitFor(() =>
+      expect(mocks.put).toHaveBeenCalledWith('/api/facebook/groups/comment-policy', {
+        expectedRevision: 0,
+        joinToFirstCommentHours: 12,
+      }),
+    );
+    expect(await screen.findByText('revision 1')).not.toBeNull();
+    expect((screen.getByLabelText('入群后首次评论等待（小时）') as HTMLInputElement).value).toBe('12');
+    expect(mocks.get.mock.calls.filter(([path]) => path === '/api/facebook/groups/comment-policy').length)
+      .toBeGreaterThanOrEqual(2);
+  });
+
+  it('retains the timing draft on a stale revision conflict', async () => {
+    groupCommentPolicy = {
+      ...groupCommentPolicy,
+      source: 'db',
+      revision: 4,
+    };
+    mocks.put.mockImplementation((path: string) => {
+      if (path === '/api/facebook/groups/comment-policy') {
+        return Promise.reject(Object.assign(new Error('revision_conflict'), { status: 409 }));
+      }
+      return Promise.resolve({ items: [] });
+    });
+    renderPage();
+    const input = await screen.findByLabelText('入群后首次评论等待（小时）');
+    fireEvent.change(input, { target: { value: '36' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存首次评论等待' }));
+
+    expect(await screen.findByText(/策略 revision 已变化/)).not.toBeNull();
+    expect((screen.getByLabelText('入群后首次评论等待（小时）') as HTMLInputElement).value).toBe('36');
+    expect(mocks.put).toHaveBeenCalledWith('/api/facebook/groups/comment-policy', {
+      expectedRevision: 4,
+      joinToFirstCommentHours: 36,
+    });
+  });
+
+  it('rejects an out-of-range draft locally', async () => {
+    renderPage();
+    const input = await screen.findByLabelText('入群后首次评论等待（小时）');
+    fireEvent.change(input, { target: { value: '169' } });
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect(screen.getByText('请输入 1–168 之间的整数小时。')).not.toBeNull(),
+    );
+    expect((screen.getByRole('button', { name: '保存首次评论等待' }) as HTMLButtonElement).disabled)
+      .toBe(true);
+    expect(mocks.put).not.toHaveBeenCalled();
+  });
+
+  it('renders an unavailable timing read as unknown instead of a 24-hour default', async () => {
+    const currentGet = mocks.get.getMockImplementation();
+    mocks.get.mockImplementation((path: string) => {
+      if (path === '/api/facebook/groups/comment-policy') {
+        return Promise.reject(new Error('storage_unavailable'));
+      }
+      return currentGet?.(path);
+    });
+    renderPage();
+
+    expect(await screen.findByText('群组评论时序状态未知')).not.toBeNull();
+    expect(screen.getByText(/未使用默认值冒充服务器真态/)).not.toBeNull();
+    expect(screen.queryByLabelText('入群后首次评论等待（小时）')).toBeNull();
   });
 
   it('展示未设置范围告警，并用 exact accountGroupLabel 查询', async () => {

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { apiGet, apiPatch, apiPost, apiPut } from '../api/client';
 import { useDashboardSummary } from '../api/queries';
+import { FacebookGroupCommentPolicyEditor } from '../components/FacebookGroupCommentPolicyEditor';
 import { makeAccountNamer } from '../types/accountDisplay';
 import type {
   FacebookGroupAccountProgress,
@@ -352,6 +353,8 @@ export function FacebookGroupsPage() {
         }
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <FacebookGroupCommentPolicyEditor />
+
           <FacebookGroupImportPanel
             facets={facets.data}
             facetsLoading={facets.isLoading}

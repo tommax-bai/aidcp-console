@@ -32,7 +32,12 @@ import type {
   ContentScheduleAvailableAction,
   FacebookJoinGroupAutomationPatch,
   FacebookJoinGroupAutomationWriteResult,
-  FacebookRuleActionState,
+  FacebookConsumptionActionState,
+  FacebookConsumptionDispatchPhase,
+  FacebookConsumptionOutcome,
+  FacebookOperationActionState,
+  FacebookOperationBaseMode,
+  FacebookOperationEffectiveMode,
 } from '../types/api';
 import {
   WeekActiveGrid,
@@ -144,36 +149,52 @@ const KNOWN_PLATFORM_OPTIONS = ['xiaohongshu', 'facebook', 'wechat_channels'] as
 
 const platformLabel = (platform: string) => PLATFORM_LABELS[platform] ?? platform;
 
-const RULE_MODE_LABELS = {
-  facebook_rule: { label: '规则运行', color: 'blue' },
-  slow_start: { label: '冷启动优先', color: 'orange' },
+const OPERATION_MODE_LABELS: Record<
+  FacebookOperationBaseMode | FacebookOperationEffectiveMode,
+  { label: string; color?: string }
+> = {
+  rule: { label: '规则模式', color: 'blue' },
+  consumption: { label: '消费模式', color: 'purple' },
+  slow_start: { label: '慢启动', color: 'orange' },
   persona: { label: '人设模式', color: 'default' },
-  blocked: { label: '规则阻断', color: 'red' },
-  unsupported: { label: '不支持', color: 'default' },
-} as const;
+  blocked: { label: '已阻断', color: 'red' },
+};
 
-const RULE_ACTION_LABELS: Record<FacebookRuleActionState, string> = {
+const OPERATION_ACTION_LABELS: Record<FacebookOperationActionState, string> = {
   pending: '待处理',
+  waiting_target: '等待目标',
+  waiting_approval: '等待审批',
   dispatched: '已下发',
   confirmed: '已确认',
+  already_liked: '此前已点赞（不计新点赞）',
+  already_member: '此前已入群（不计新入群）',
   already_satisfied: '已满足',
   risk_suppressed: '风控抑制',
   structural_skip: '结构跳过',
   not_started: '未启动',
+  no_target: '没有目标',
   rejected: '已拒绝',
   failed: '失败',
   ambiguous: '结果不明确',
   submitted_unknown: '已提交待确认',
+  policy_superseded: '策略已更新',
   not_scheduled: '本轮不适用',
   confirmed_without_contact: '已发出（未带联系方式）',
 };
 
-const ruleActionColor = (state: FacebookRuleActionState) => {
-  if (state === 'confirmed' || state === 'already_satisfied') return 'green';
+const operationActionColor = (state: FacebookOperationActionState) => {
+  if (state === 'confirmed') return 'green';
   // 降级发出的普通评论：确实发出去了，但**没带联系方式**——用青色与真·联系评论区分开，
   // MUST NOT 染成绿色（会被读成「联系方式已经发出去了」）。
   if (state === 'confirmed_without_contact') return 'cyan';
-  if (state === 'pending' || state === 'dispatched' || state === 'submitted_unknown' || state === 'ambiguous') return 'orange';
+  if (
+    state === 'pending'
+    || state === 'waiting_target'
+    || state === 'waiting_approval'
+    || state === 'dispatched'
+    || state === 'submitted_unknown'
+    || state === 'ambiguous'
+  ) return 'orange';
   // not_scheduled = 节奏规定本轮不做：既不是进行中也不是失败，用中性色。
   // MUST NOT 落到橙（会读成还在跑）或红（会读成失败）——一半轮次都是这个态。
   if (
@@ -181,7 +202,69 @@ const ruleActionColor = (state: FacebookRuleActionState) => {
     || state === 'structural_skip'
     || state === 'not_started'
     || state === 'not_scheduled'
+    || state === 'policy_superseded'
+    || state === 'already_liked'
+    || state === 'already_member'
+    || state === 'already_satisfied'
   ) return 'default';
+  return 'red';
+};
+
+const CONSUMPTION_ACTION_STATE_LABELS: Record<FacebookConsumptionActionState, string> = {
+  waiting_target: '等待目标',
+  waiting_gate: '等待执行闸门',
+  ready: '可下发',
+  dispatched: '已下发待结算',
+  terminal: '已终结',
+};
+
+const CONSUMPTION_DISPATCH_PHASE_LABELS: Record<FacebookConsumptionDispatchPhase, string> = {
+  not_started: '未下发',
+  dispatched: '已下发',
+  settled: '已结算',
+};
+
+const CONSUMPTION_OUTCOME_LABELS: Record<FacebookConsumptionOutcome, string> = {
+  confirmed_new_like: '平台确认新点赞',
+  confirmed_new_join: '平台确认新入群',
+  confirmed_comment: '平台确认评论',
+  already_liked: '此前已点赞（不计新点赞）',
+  already_reacted: '此前已有反应（不计新点赞）',
+  already_member: '此前已入群（不计新入群）',
+  pending: '平台结果待定',
+  ambiguous: '平台结果不明确',
+  submitted_unknown: '已提交但结果未知',
+  gated: '被执行闸门拦截',
+  not_started: '未启动',
+  structural: '目标结构不满足',
+  rejected: '已拒绝',
+  failed: '失败',
+  no_target: '没有目标',
+  policy_superseded: '策略已更新',
+};
+
+const consumptionOutcomeColor = (outcome: FacebookConsumptionOutcome | null) => {
+  if (
+    outcome === 'confirmed_new_like'
+    || outcome === 'confirmed_new_join'
+    || outcome === 'confirmed_comment'
+  ) return 'green';
+  if (
+    outcome === null
+    || outcome === 'already_liked'
+    || outcome === 'already_reacted'
+    || outcome === 'already_member'
+    || outcome === 'not_started'
+    || outcome === 'structural'
+    || outcome === 'no_target'
+    || outcome === 'policy_superseded'
+  ) return 'default';
+  if (
+    outcome === 'pending'
+    || outcome === 'ambiguous'
+    || outcome === 'submitted_unknown'
+    || outcome === 'gated'
+  ) return 'orange';
   return 'red';
 };
 
@@ -273,6 +356,13 @@ const enabledActionSummary = (row: ContentScheduleRow) => {
     if (metadata.action === 'join_group') {
       const config = row.joinGroupAutomation;
       if (!config?.enabled || config.dailyCap <= 0) return [];
+      if (row.facebookOperation?.effectiveMode !== 'persona') {
+        return [
+          `自动加群 · 已配置 · 当前已抑制（仅人设模式生效）${
+            config.scopeReady ? '' : ' · 范围未就绪'
+          }`,
+        ];
+      }
       return [`自动加群 · 开 · ${config.dailyCap}/日${config.scopeReady ? '' : ' · 范围未就绪'}`];
     }
     const config = actionUi[metadata.action];
@@ -832,6 +922,11 @@ export function ContentSchedulePage() {
           if (!config) return <Tag color="red">Cloud 未返回自动加群配置</Tag>;
           const capKey = `${row.accountId}:join_group`;
           const recent = config.recentResult;
+          const effectiveOperationMode = row.facebookOperation?.effectiveMode ?? null;
+          const scheduledJoinSuppressed = effectiveOperationMode !== 'persona';
+          const effectiveOperationLabel = effectiveOperationMode
+            ? OPERATION_MODE_LABELS[effectiveOperationMode].label
+            : '模式未知';
           return (
             <Space direction="vertical" size={6} style={{ maxWidth: 290 }}>
               <Space size={8} wrap>
@@ -843,10 +938,19 @@ export function ContentSchedulePage() {
                   onChange={(enabled) => patchJoinGroup.mutate({ accountId: row.accountId, patch: { enabled } })}
                 />
                 {!row.autoEnabled ? <Tag>总开关关闭</Tag> : null}
+                {scheduledJoinSuppressed ? <Tag color="orange">当前已抑制</Tag> : null}
                 <Tag color={config.scopeReady ? 'green' : 'warning'}>
                   {config.scopeReady ? `范围就绪 ${config.scopedTargetCount}` : '范围未就绪'}
                 </Tag>
               </Space>
+              <Typography.Text
+                type={scheduledJoinSuppressed ? 'warning' : 'secondary'}
+                style={{ fontSize: 12 }}
+              >
+                {scheduledJoinSuppressed
+                  ? `独立排期自动加群仅在人设模式生效；当前为${effectiveOperationLabel}，此处修改只保存预配置。`
+                  : '独立排期自动加群仅在人设模式生效。'}
+              </Typography.Text>
               {!config.scopeReady ? (
                 <Typography.Text type="warning" style={{ fontSize: 12 }}>
                   {config.accountGroupLabel ? '当前账号分组没有可用群组' : '账号未归属分组'}
@@ -945,80 +1049,167 @@ export function ContentSchedulePage() {
         );
       },
     }));
-    const facebookRuleColumn: ColumnsType<ContentScheduleRow>[number] = {
-      title: '规则模式',
-      key: 'facebook-rule-mode',
-      width: 330,
+    const facebookOperationColumn: ColumnsType<ContentScheduleRow>[number] = {
+      title: '运行模式（只读）',
+      key: 'facebook-operation',
+      width: 390,
       render: (_: unknown, row) => {
-        const rule = row.facebookRuleMode;
-        if (!rule) {
+        const operation = row.facebookOperation;
+        if (!operation) {
           return (
             <Space direction="vertical" size={2}>
-              <Tag color="red">状态未知</Tag>
+              <Tag color="red">模式与进度未知</Tag>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Cloud 未返回规则配置或运行进度
+                Cloud 未返回 operation-policy 或运行投影；未猜测人设模式或零进度
               </Typography.Text>
             </Space>
           );
         }
-        const mode = RULE_MODE_LABELS[rule.effectiveMode];
-        const currentBatch = rule.runtime.currentBatch;
-        const updatedAt = currentBatch?.updatedAt ?? rule.runtime.updatedAt ?? rule.config.updatedAt;
+
+        const baseMode = OPERATION_MODE_LABELS[operation.baseMode];
+        const effectiveMode = operation.effectiveMode
+          ? OPERATION_MODE_LABELS[operation.effectiveMode]
+          : null;
+        const rule = operation.rule;
+        const consumption = operation.consumption;
+        const currentBatch = rule?.currentBatch ?? null;
+        const activeAction = consumption?.activeAction ?? null;
+        const ruleContactFallback = rule?.contactFallback ?? 'unknown';
+        const ruleCyclePosition = rule
+          ? ((rule.collectingSequence - 1) % rule.joinEveryNRounds) + 1
+          : null;
+        const actionTypeLabel = activeAction
+          ? { like: '点赞', join: '加群', comment: '历史群评论' }[activeAction.actionType]
+          : null;
+
         return (
-          <Space direction="vertical" size={6} style={{ maxWidth: 300 }}>
-            <Space size={8} wrap>
-              <Tag color={rule.config.enabled ? 'blue' : undefined}>
-                环境配置{rule.config.enabled ? '已开启' : '未开启'}
-              </Tag>
-              <Tag color={mode.color}>{mode.label}</Tag>
-              {rule.effectiveMode === 'facebook_rule' ? (
-                <>
-                  <Tag color="blue">浏览 {rule.runtime.viewCount} / {rule.runtime.threshold}</Tag>
-                  <Tag color={rule.runtime.collectingRoundIncludesJoin ? 'purple' : 'default'}>
-                    本轮{rule.runtime.collectingRoundIncludesJoin ? '含加群' : '只点赞'}
-                  </Tag>
-                </>
-              ) : null}
+          <Space direction="vertical" size={6} style={{ maxWidth: 360 }}>
+            <Space size={[4, 4]} wrap>
+              <Tag color={baseMode.color}>配置：{baseMode.label}</Tag>
+              {effectiveMode ? (
+                <Tag color={effectiveMode.color}>生效：{effectiveMode.label}</Tag>
+              ) : (
+                <Tag color="red">生效模式未知</Tag>
+              )}
+              <Tag>revision {operation.policyRevision}</Tag>
             </Space>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              规则开关作用于环境，请在环境页调整；此处仅展示当前账号的运行进度
-            </Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              固定规则：账号活跃周历内，确认浏览 {rule.runtime.threshold} 条 → 点赞 1 次；
-              每 {rule.runtime.joinEveryNRounds} 轮 → 加群联系评论 1 次；冷启动优先
-            </Typography.Text>
-            {/* 账号没配联系方式 ⇒ 加群那一轮会降级发普通评论。读时派生，读不到就说读不到。 */}
-            {rule.contactFallback === 'pending' ? (
-              <Tag color="gold">未配联系方式：加群评论将降级为普通评论</Tag>
-            ) : rule.contactFallback === 'unknown' ? (
-              <Tag color="orange">联系方式状态未知（无法判断是否会降级）</Tag>
+
+            {operation.baseMode === 'rule' && rule ? (
+              <>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  规则节奏：每 {rule.viewsPerLike} 个确认浏览点赞 1 次；
+                  每 {rule.joinEveryNRounds} 轮加群联系评论 1 次
+                </Typography.Text>
+                <Space size={[4, 4]} wrap>
+                  <Tag color="blue">浏览 {rule.viewCount} / {rule.viewsPerLike}</Tag>
+                  <Tag>轮次位置 {ruleCyclePosition} / {rule.joinEveryNRounds}</Tag>
+                  <Tag color={rule.collectingRoundIncludesJoin ? 'purple' : 'default'}>
+                    下一轮{rule.collectingRoundIncludesJoin ? '含加群联系评论' : '只点赞'}
+                  </Tag>
+                </Space>
+                {ruleContactFallback === 'pending' ? (
+                  <Tag color="gold">未配联系方式：加群评论将降级为普通评论</Tag>
+                ) : ruleContactFallback === 'unknown' ? (
+                  <Tag color="orange">联系方式状态未知（无法判断是否会降级）</Tag>
+                ) : null}
+              </>
             ) : null}
-            {/* 库中定义身份与云端当前定义不一致：该行的节奏不能按上面那句解读，必须响亮说出来。 */}
-            {rule.config.definitionMismatch ? (
-              <Tag color="red">
-                规则定义不一致：库中为 {rule.config.definitionId}@{rule.config.definitionVersion}
-              </Tag>
+            {operation.baseMode === 'rule' && !rule ? (
+              <Tag color="red">规则模式运行进度未知</Tag>
             ) : null}
-            {rule.blocker ? <Tag color="orange">阻断：{rule.blocker}</Tag> : null}
+
+            {operation.baseMode === 'consumption' && consumption ? (
+              <>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  消费节奏：浏览 {consumption.viewsPerLike} → 点赞；
+                  确认新点赞 {consumption.confirmedLikesPerJoin} → 加群；
+                  确认新加群 {consumption.confirmedJoinsPerComment} → 历史群评论
+                </Typography.Text>
+                <Space size={[4, 4]} wrap>
+                  <Tag color="blue">
+                    浏览 {consumption.viewsSinceLike} / {consumption.viewsPerLike}
+                  </Tag>
+                  <Tag color="cyan">
+                    确认新点赞 {consumption.confirmedNewLikesSinceJoin} / {consumption.confirmedLikesPerJoin}
+                  </Tag>
+                  <Tag color="purple">
+                    确认新加群 {consumption.confirmedNewJoinsSinceComment} / {consumption.confirmedJoinsPerComment}
+                  </Tag>
+                </Space>
+              </>
+            ) : null}
+            {operation.baseMode === 'consumption' && !consumption ? (
+              <Tag color="red">消费模式运行进度未知</Tag>
+            ) : null}
+
+            {operation.effectiveMode === 'slow_start' ? (
+              <Tag color="orange">慢启动当前生效；基础模式进度不会被伪造成正在运行</Tag>
+            ) : null}
+            {operation.blocker ? <Tag color="orange">阻断：{operation.blocker}</Tag> : null}
+
             {currentBatch ? (
               <Space size={[4, 4]} wrap>
                 <Tag>
                   第 {currentBatch.sequence} 轮{currentBatch.includesJoin ? '（含加群）' : '（只点赞）'}
                 </Tag>
-                <Tag color={ruleActionColor(currentBatch.likeState)}>
-                  点赞：{RULE_ACTION_LABELS[currentBatch.likeState]}
+                <Tag color={operationActionColor(currentBatch.likeState)}>
+                  点赞：{OPERATION_ACTION_LABELS[currentBatch.likeState]}
                 </Tag>
-                <Tag color={ruleActionColor(currentBatch.joinState)}>
-                  加群：{RULE_ACTION_LABELS[currentBatch.joinState]}
+                <Tag color={operationActionColor(currentBatch.joinState)}>
+                  加群：{OPERATION_ACTION_LABELS[currentBatch.joinState]}
                 </Tag>
-                <Tag color={ruleActionColor(currentBatch.commentState)}>
-                  联系评论：{RULE_ACTION_LABELS[currentBatch.commentState]}
+                <Tag color={operationActionColor(currentBatch.commentState)}>
+                  联系评论：{OPERATION_ACTION_LABELS[currentBatch.commentState]}
                 </Tag>
                 {currentBatch.blocker ? <Tag color="orange">{currentBatch.blocker}</Tag> : null}
               </Space>
             ) : null}
+
+            {activeAction && actionTypeLabel ? (
+              <>
+                <Space size={[4, 4]} wrap>
+                  <Tag color={activeAction.state === 'terminal' ? 'default' : 'orange'}>
+                    当前动作：{actionTypeLabel} · {CONSUMPTION_ACTION_STATE_LABELS[activeAction.state]}
+                  </Tag>
+                  <Tag>
+                    下发阶段：{CONSUMPTION_DISPATCH_PHASE_LABELS[activeAction.dispatchPhase]}
+                  </Tag>
+                  <Tag color={consumptionOutcomeColor(activeAction.outcome)}>
+                    平台结果：{activeAction.outcome
+                      ? CONSUMPTION_OUTCOME_LABELS[activeAction.outcome]
+                      : '尚无结果'}
+                  </Tag>
+                  {activeAction.blocker ? <Tag color="orange">{activeAction.blocker}</Tag> : null}
+                </Space>
+                {activeAction.target.groupUrl || activeAction.target.contentKey ? (
+                  <Space size={[6, 4]} wrap>
+                    {activeAction.target.groupUrl ? (
+                      <a href={activeAction.target.groupUrl} target="_blank" rel="noreferrer">
+                        查看已绑定群组
+                      </a>
+                    ) : null}
+                    {activeAction.target.contentKey ? (
+                      <Typography.Text
+                        type="secondary"
+                        copyable={{ text: activeAction.target.contentKey }}
+                        ellipsis={{ tooltip: activeAction.target.contentKey }}
+                        style={{ maxWidth: 230, fontSize: 12 }}
+                      >
+                        内容：{activeAction.target.contentKey}
+                      </Typography.Text>
+                    ) : null}
+                  </Space>
+                ) : null}
+              </>
+            ) : null}
+
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {updatedAt ? `权威更新：${new Date(updatedAt).toLocaleString()}` : '尚无运行进度'}
+              {operation.updatedAt
+                ? `权威更新：${new Date(operation.updatedAt).toLocaleString()}`
+                : '尚无运行进度'}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              模式与节奏请到“环境”页配置，本页不提供写入口
             </Typography.Text>
           </Space>
         );
@@ -1026,7 +1217,7 @@ export function ContentSchedulePage() {
     };
     return [
       ...commonColumns,
-      ...(platformFilter === 'facebook' ? [facebookRuleColumn] : []),
+      ...(platformFilter === 'facebook' ? [facebookOperationColumn] : []),
       ...actionColumns,
       auditColumn,
     ];

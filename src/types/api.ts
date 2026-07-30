@@ -1446,18 +1446,102 @@ export interface FacebookJoinGroupAutomationView {
   updatedBy: string | null;
 }
 
-export type FacebookRuleActionState =
+export type FacebookOperationBaseMode = 'persona' | 'rule' | 'consumption';
+export type FacebookOperationMode = FacebookOperationBaseMode | 'slow_start';
+export type FacebookOperationEffectiveMode = FacebookOperationMode | 'blocked';
+
+export interface IntegerFieldBounds {
+  min: number;
+  max: number;
+  default: number;
+}
+
+export interface FacebookRuleCadence {
+  viewsPerLike: number;
+  joinEveryNRounds: number;
+}
+
+export interface FacebookConsumptionCadence {
+  viewsPerLike: number;
+  confirmedLikesPerJoin: number;
+  confirmedJoinsPerComment: number;
+}
+
+export interface FacebookOperationPolicyBounds {
+  rule: {
+    viewsPerLike: IntegerFieldBounds;
+    joinEveryNRounds: IntegerFieldBounds;
+  };
+  consumption: {
+    viewsPerLike: IntegerFieldBounds;
+    confirmedLikesPerJoin: IntegerFieldBounds;
+    confirmedJoinsPerComment: IntegerFieldBounds;
+  };
+}
+
+/** GET/PUT /api/environments/:envKey/facebook-operation-policy 的写后读真态。 */
+export interface FacebookOperationPolicyView {
+  envKey: string;
+  baseMode: FacebookOperationBaseMode;
+  /** 未挂载账号时没有执行对象，null 不得被解释成人设模式。 */
+  effectiveMode: FacebookOperationEffectiveMode | null;
+  policyRevision: number;
+  schemaVersion: string;
+  rule: FacebookRuleCadence;
+  consumption: FacebookConsumptionCadence;
+  bounds: FacebookOperationPolicyBounds;
+  slowStart: {
+    state: 'active' | 'off' | 'graduated' | 'unknown';
+    since: number | null;
+    globallyDisabled: boolean;
+  };
+  binding: {
+    state: 'bound' | 'unbound' | 'conflict' | 'unknown';
+    accountId: string | null;
+    accountDisplayName: string | null;
+  };
+  blocker: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export type FacebookOperationPolicyWrite =
+  | {
+      expectedRevision: number;
+      mode: 'persona' | 'slow_start';
+      reason?: string;
+    }
+  | {
+      expectedRevision: number;
+      mode: 'rule';
+      rule: FacebookRuleCadence;
+      reason?: string;
+    }
+  | {
+      expectedRevision: number;
+      mode: 'consumption';
+      consumption: FacebookConsumptionCadence;
+      reason?: string;
+    };
+
+export type FacebookOperationActionState =
   | 'pending'
+  | 'waiting_target'
+  | 'waiting_approval'
   | 'dispatched'
   | 'confirmed'
+  | 'already_liked'
+  | 'already_member'
   | 'already_satisfied'
   | 'risk_suppressed'
   | 'structural_skip'
   | 'not_started'
+  | 'no_target'
   | 'rejected'
   | 'failed'
   | 'ambiguous'
   | 'submitted_unknown'
+  | 'policy_superseded'
   /** 本轮按两级节奏不执行该动作（只点赞的轮次的加群与评论两格）。不是失败，MUST NOT 按失败呈现。 */
   | 'not_scheduled'
   /** 评论已上墙但**不带联系方式**（账号未配联系方式、按设置降级为普通评论）。MUST NOT 显示成联系评论已完成。 */
@@ -1494,9 +1578,9 @@ export interface FacebookRuleModeView {
       /** 本轮是否包含加群联系评论（服务端按轮次序号派生）。 */
       includesJoin: boolean;
       triggerContentKey: string;
-      likeState: FacebookRuleActionState;
-      joinState: FacebookRuleActionState;
-      commentState: FacebookRuleActionState;
+      likeState: FacebookOperationActionState;
+      joinState: FacebookOperationActionState;
+      commentState: FacebookOperationActionState;
       terminal: boolean;
       blocker: string | null;
       createdAt: string;
@@ -1507,13 +1591,107 @@ export interface FacebookRuleModeView {
   /**
    * 该账号的加群联系评论会不会降级为不带联系方式的普通评论。服务端读时派生，
    * `unknown` 是诚实第三态（读不到联系方式），MUST NOT 当成「不会降级」。
-   */
+  */
   contactFallback: 'not_pending' | 'pending' | 'unknown';
 }
 
-export interface FacebookRuleModeCatalogView extends FacebookRuleModeView {
-  effectiveMode: 'facebook_rule' | 'persona' | 'slow_start' | 'blocked' | 'unsupported';
+export type FacebookConsumptionActionState =
+  | 'waiting_target'
+  | 'waiting_gate'
+  | 'ready'
+  | 'dispatched'
+  | 'terminal';
+
+export type FacebookConsumptionDispatchPhase = 'not_started' | 'dispatched' | 'settled';
+
+export type FacebookConsumptionOutcome =
+  | 'confirmed_new_like'
+  | 'confirmed_new_join'
+  | 'confirmed_comment'
+  | 'already_liked'
+  | 'already_reacted'
+  | 'already_member'
+  | 'pending'
+  | 'ambiguous'
+  | 'submitted_unknown'
+  | 'gated'
+  | 'not_started'
+  | 'structural'
+  | 'rejected'
+  | 'failed'
+  | 'no_target'
+  | 'policy_superseded';
+
+export interface FacebookConsumptionActionCatalogView {
+  actionType: 'like' | 'join' | 'comment';
+  state: FacebookConsumptionActionState;
+  dispatchPhase: FacebookConsumptionDispatchPhase;
+  outcome: FacebookConsumptionOutcome | null;
   blocker: string | null;
+  target: {
+    groupUrl: string | null;
+    contentKey: string | null;
+  };
+  updatedAt: string | null;
+}
+
+/** GET /api/content-schedule 中 Facebook 行的只读运行投影；不接受任何模式写入。 */
+export interface FacebookOperationCatalogView {
+  baseMode: FacebookOperationBaseMode;
+  effectiveMode: FacebookOperationEffectiveMode | null;
+  policyRevision: number;
+  blocker: string | null;
+  rule: {
+    viewsPerLike: number;
+    joinEveryNRounds: number;
+    viewCount: number;
+    collectingSequence: number;
+    collectingRoundIncludesJoin: boolean;
+    /** Cloud-first rolling deploy may omit this; absence is unknown, never "not pending". */
+    contactFallback?: 'not_pending' | 'pending' | 'unknown';
+    currentBatch: {
+      sequence: number;
+      includesJoin: boolean;
+      likeState: FacebookOperationActionState;
+      joinState: FacebookOperationActionState;
+      commentState: FacebookOperationActionState;
+      terminal: boolean;
+      blocker: string | null;
+      updatedAt: string;
+    } | null;
+  } | null;
+  consumption: {
+    viewsPerLike: number;
+    confirmedLikesPerJoin: number;
+    confirmedJoinsPerComment: number;
+    viewsSinceLike: number;
+    confirmedNewLikesSinceJoin: number;
+    confirmedNewJoinsSinceComment: number;
+    activeAction: FacebookConsumptionActionCatalogView | null;
+  } | null;
+  updatedAt: string | null;
+}
+
+/** GET/PUT /api/facebook/groups/comment-policy 的 target-scoped 写后读真态。 */
+export interface FacebookGroupCommentPolicyView {
+  joinToFirstCommentHours: number;
+  /** legacy/default 回退没有持久化 revision，必须返回 null 而不是伪造数据库版本。 */
+  revision: number | null;
+  source: 'db' | 'legacy_env' | 'default';
+  bounds: {
+    joinToFirstCommentHours: IntegerFieldBounds;
+  };
+  /** 独立只读事实；本编辑器不能修改同群复评冷却。 */
+  sameGroupRecommentCooldownHours: number | null;
+  sameGroupRecommentCooldownSource?: 'legacy_env' | 'default' | 'unavailable';
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface FacebookGroupCommentPolicyWrite {
+  expectedRevision: number;
+  joinToFirstCommentHours: number;
+  reason?: string;
 }
 
 /** 每账号内容排期一行（GET /api/content-schedule），含两层独立的账号覆盖与生效来源。 */
@@ -1532,8 +1710,8 @@ export interface ContentScheduleRow {
   availableActions: ContentScheduleAvailableAction[];
   /** 仅 Facebook 行返回；非 Facebook 不伪造该领域配置。 */
   joinGroupAutomation?: FacebookJoinGroupAutomationView;
-  /** 仅 Facebook 行返回；缺失表示权威配置或 target-scoped 运行投影不可用，不得伪造为关闭/0。 */
-  facebookRuleMode?: FacebookRuleModeCatalogView;
+  /** 仅 Facebook 行返回；缺失表示权威模式或运行投影不可用，不得伪造为 persona/0。 */
+  facebookOperation?: FacebookOperationCatalogView;
   /** 总开关：false=该账号完全不自动（零回归默认）。 */
   autoEnabled: boolean;
   /** 发帖开关。 */

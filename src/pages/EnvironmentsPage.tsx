@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react';
-import { App, Card, Empty, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd';
+import { App, Card, Empty, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useSearchParams } from 'react-router-dom';
 import {
   useEnvironments,
   useSetEnvironmentCommentApproval,
-  useSetEnvironmentFacebookRuleMode,
-  useSetEnvironmentSlowStart,
 } from '../api/queries';
 import { errorText } from '../api/errorText';
+import { FacebookOperationPolicyEditor } from '../components/FacebookOperationPolicyEditor';
 import { QueryError } from '../components/QueryGate';
 import { QuotaTierBadge } from '../components/QuotaTierBadge';
 import { RiskStatusBadge } from '../components/RiskStatusBadge';
@@ -107,8 +106,6 @@ export function EnvironmentsPage() {
   const { message } = App.useApp();
   const [params] = useSearchParams();
   const query = useEnvironments();
-  const setSlowStart = useSetEnvironmentSlowStart();
-  const setRuleMode = useSetEnvironmentFacebookRuleMode();
   const setCommentApproval = useSetEnvironmentCommentApproval();
   const linkedAccount = params.get('account')?.trim() ?? '';
   const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>('current');
@@ -203,7 +200,7 @@ export function EnvironmentsPage() {
       ) : <Tag>未观测</Tag>,
     },
     {
-      title: '慢启动', key: 'slowStart', width: 210,
+      title: 'Facebook 运行策略', key: 'facebookOperationPolicy', width: 350,
       render: (_, environment) => {
         if (environment.platform !== 'facebook') {
           return <Typography.Text type="secondary">不适用</Typography.Text>;
@@ -211,108 +208,7 @@ export function EnvironmentsPage() {
         if (environment.lifecycle.state !== 'active') {
           return <Typography.Text type="secondary">当前状态不可操作</Typography.Text>;
         }
-        if (!environment.slowStart) {
-          return <Tag color="gold">状态未知</Tag>;
-        }
-        const pending = setSlowStart.isPending && setSlowStart.variables?.envKey === environment.envKey;
-        const pendingEnabled = setSlowStart.variables?.enabled ?? false;
-        const statusText = pending
-          ? `正在${pendingEnabled ? '开启' : '关闭'}`
-          : environment.slowStart.enabled
-            ? environment.slowStart.globallyDisabled
-              ? '已配置 · Cloud 全局停用'
-              : `已开启${environment.slowStart.since ? ` · ${fmtTime(environment.slowStart.since)}起` : ''}`
-            : '未开启';
-        return (
-          <Space direction="vertical" size={0}>
-            <Switch
-              aria-label={`慢启动 ${environment.envKey}`}
-              checked={environment.slowStart.enabled}
-              disabled={setSlowStart.isPending}
-              loading={pending}
-              onChange={(enabled) => {
-                setSlowStart.mutate(
-                  { envKey: environment.envKey, enabled },
-                  {
-                    onSuccess: () => message.success(`环境慢启动已${enabled ? '开启' : '关闭'}`),
-                    onError: (error) => message.error(errorText(error, '环境慢启动保存失败，原配置未改变')),
-                  },
-                );
-              }}
-            />
-            <Typography.Text
-              type={environment.slowStart.globallyDisabled && environment.slowStart.enabled ? 'warning' : 'secondary'}
-              style={{ fontSize: 12 }}
-            >
-              {statusText}
-            </Typography.Text>
-            {!environment.account && environment.slowStart.enabled && !pending ? (
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                已保存，挂载账号后按曲线生效
-              </Typography.Text>
-            ) : null}
-          </Space>
-        );
-      },
-    },
-    {
-      title: '规则模式', key: 'facebookRuleMode', width: 230,
-      render: (_, environment) => {
-        if (environment.platform !== 'facebook') {
-          return <Typography.Text type="secondary">不适用</Typography.Text>;
-        }
-        if (environment.lifecycle.state !== 'active') {
-          return <Typography.Text type="secondary">当前状态不可操作</Typography.Text>;
-        }
-        const config = environment.facebookRuleMode;
-        if (!config || config.envKey !== environment.envKey) {
-          return <Tag color="gold">状态未知</Tag>;
-        }
-        const pending = setRuleMode.isPending && setRuleMode.variables?.envKey === environment.envKey;
-        return (
-          <Space direction="vertical" size={0}>
-            <Space size={8}>
-              <Switch
-                aria-label={`规则模式 ${environment.envKey}`}
-                checked={config.enabled}
-                disabled={setRuleMode.isPending || (config.definitionMismatch && !config.enabled)}
-                loading={pending}
-                onChange={(enabled) => {
-                  setRuleMode.mutate(
-                    { envKey: environment.envKey, enabled },
-                    {
-                      onSuccess: () => message.success(`环境规则模式已${enabled ? '开启' : '关闭'}`),
-                      onError: (error) => message.error(errorText(error, '环境规则模式保存失败，原配置未改变')),
-                    },
-                  );
-                }}
-              />
-              {config.definitionMismatch ? <Tag color="red">规则定义不一致</Tag> : null}
-            </Space>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {pending
-                ? `正在${setRuleMode.variables?.enabled ? '开启' : '关闭'}`
-                : config.enabled ? '已开启' : '未开启'}
-            </Typography.Text>
-            {config.definitionMismatch ? (
-              <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                库存定义：{config.definitionId}@{config.definitionVersion}，
-                {config.enabled ? '仅允许关闭以修复定义' : '需先升级定义后才能开启'}
-              </Typography.Text>
-            ) : null}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {environment.executionBinding?.state === 'bound'
-                && environment.executionBinding.accountId === environment.account?.accountId
-                ? `作用于环境，由当前挂载账号 ${environment.account.displayName} 执行`
-                : environment.executionBinding?.state === 'binding_conflict'
-                  ? '绑定冲突，规则模式当前不执行'
-                  : environment.executionBinding?.state === 'binding_unavailable'
-                    || !environment.executionBinding
-                    ? '绑定状态未知，暂不宣称执行'
-                    : `${config.updatedAt ? '已保存，' : ''}当前没有执行对象`}
-            </Typography.Text>
-          </Space>
-        );
+        return <FacebookOperationPolicyEditor envKey={environment.envKey} />;
       },
     },
     {
@@ -372,7 +268,7 @@ export function EnvironmentsPage() {
       <Card
         size="small"
         title={linkedAccount ? '环境（来自账号页）' : '环境'}
-        extra={<Typography.Text type="secondary">环境资产与环境级运行配置</Typography.Text>}
+        extra={<Typography.Text type="secondary">环境资产、Facebook 运行策略与评论审批</Typography.Text>}
       >
         <Space wrap style={{ marginBottom: 12 }}>
           <Select

@@ -65,29 +65,23 @@ const facebookJoinConfig = {
   updatedBy: null,
 };
 
-const facebookRuleMode = {
-  config: {
-    envKey: 'facebook-env-1',
-    enabled: true,
-    definitionId: 'facebook_browse_5_like_1_join_contact_every_2',
-    definitionVersion: 2,
-    definitionMismatch: false,
-    updatedAt: '2026-07-27T02:00:00.000Z',
-    updatedBy: 'panel:alice',
-  },
-  runtime: {
-    viewCount: 3,
-    threshold: 5,
+const facebookOperation = {
+  baseMode: 'rule' as const,
+  effectiveMode: 'rule' as const,
+  policyRevision: 7,
+  blocker: null,
+  rule: {
+    viewsPerLike: 5,
     joinEveryNRounds: 2,
+    viewCount: 3,
     // 正在收集第 2 轮 ⇒ 本轮含加群。
     collectingSequence: 2,
     collectingRoundIncludesJoin: true,
+    contactFallback: 'pending' as const,
     currentBatch: null,
-    updatedAt: '2026-07-27T02:00:00.000Z',
   },
-  effectiveMode: 'facebook_rule' as const,
-  blocker: null,
-  contactFallback: 'not_pending' as const,
+  consumption: null,
+  updatedAt: '2026-07-27T02:00:00.000Z',
 };
 
 vi.mock('../api/client', async () => ({
@@ -206,7 +200,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
           { action: 'join_group', allowedModes: [], maxDailyCap: 50 },
         ],
         joinGroupAutomation: facebookJoinConfig,
-        facebookRuleMode,
+        facebookOperation,
         postDailyCap: 1,
       }),
       makeRow({
@@ -253,7 +247,7 @@ describe('ContentSchedulePage 平台感知视图', () => {
     // change decouple-scheduled-contact-comment-from-group-join：拆分后该动作不再加群，
     // Facebook 的特例名「加群评论（联系）」已废，改用与其它平台一致的通用名。
     expect(screen.getByRole('columnheader', { name: '自动联系评论' })).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: '规则模式' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '运行模式（只读）' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '加群评论（联系）' })).toBeNull();
     expect(modeControl('自动联系评论 fb-1')).not.toBeNull();
     expect(within(modeControl('自动发帖 fb-1')).queryByText('免审')).toBeNull();
@@ -270,19 +264,22 @@ describe('ContentSchedulePage 平台感知视图', () => {
     );
   });
 
-  it('Facebook 规则模式只读展示环境配置与账号进度，不再提供账号级写入口', async () => {
+  it('Facebook 运行模式展示权威 revision 与规则进度，并且没有模式写入口', async () => {
     await renderSchedule();
     await selectPlatform('Facebook');
 
-    expect(screen.getByText('规则运行')).not.toBeNull();
-    expect(screen.getByText('环境配置已开启')).not.toBeNull();
+    expect(screen.getByText('配置：规则模式')).not.toBeNull();
+    expect(screen.getByText('生效：规则模式')).not.toBeNull();
+    expect(screen.getByText('revision 7')).not.toBeNull();
     expect(screen.getByText('浏览 3 / 5')).not.toBeNull();
-    expect(screen.getByText('本轮含加群')).not.toBeNull();
-    expect(screen.getByText(/规则开关作用于环境，请在环境页调整/)).not.toBeNull();
-    expect(screen.getByText(/确认浏览 5 条 → 点赞 1 次/)).not.toBeNull();
-    expect(screen.getByText(/每 2 轮 → 加群联系评论 1 次/)).not.toBeNull();
-    expect(screen.queryByRole('switch', { name: '规则模式 fb-1' })).toBeNull();
-    expect(state.putCalls.some(({ path }) => path.includes('/facebook-rule-mode'))).toBe(false);
+    expect(screen.getByText('轮次位置 2 / 2')).not.toBeNull();
+    expect(screen.getByText('下一轮含加群联系评论')).not.toBeNull();
+    expect(screen.getByText(/规则节奏：每 5 个确认浏览点赞 1 次/)).not.toBeNull();
+    expect(screen.getByText(/每 2 轮加群联系评论 1 次/)).not.toBeNull();
+    expect(screen.getByText('未配联系方式：加群评论将降级为普通评论')).not.toBeNull();
+    expect(screen.getByText(/模式与节奏请到“环境”页配置/)).not.toBeNull();
+    expect(screen.queryByRole('switch', { name: /规则模式 fb-1/ })).toBeNull();
+    expect(state.putCalls.some((call) => call.path.includes('facebook-rule-mode'))).toBe(false);
   });
 
   it('只点赞的轮次显示为「本轮不适用」，不得读成失败或进行中', async () => {
@@ -291,24 +288,19 @@ describe('ContentSchedulePage 平台感知视图', () => {
       if (row.accountId !== 'fb-1') return row;
       return {
         ...row,
-        facebookRuleMode: {
-          ...facebookRuleMode,
-          runtime: {
-            ...facebookRuleMode.runtime,
+        facebookOperation: {
+          ...facebookOperation,
+          rule: {
+            ...facebookOperation.rule,
             viewCount: 0,
-            collectingSequence: 2,
-            collectingRoundIncludesJoin: true,
             currentBatch: {
-              batchId: 'b-1',
               sequence: 1,
               includesJoin: false,
-              triggerContentKey: 'post-5',
               likeState: 'confirmed' as const,
               joinState: 'not_scheduled' as const,
               commentState: 'not_scheduled' as const,
               terminal: true,
               blocker: null,
-              createdAt: '2026-07-27T02:00:00.000Z',
               updatedAt: '2026-07-27T02:00:00.000Z',
             },
           },
@@ -329,91 +321,106 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.queryByText('联系评论：待处理')).toBeNull();
   });
 
-  it('账号未配联系方式时提示加群评论会降级；读不到联系方式则说未知，不猜成不会降级', async () => {
-    state.rows = state.rows.map((item) => {
-      const row = item as ContentScheduleRow;
-      if (row.accountId !== 'fb-1') return row;
-      return { ...row, facebookRuleMode: { ...facebookRuleMode, contactFallback: 'pending' as const } };
-    });
-    await renderSchedule();
-    await selectPlatform('Facebook');
-    expect(screen.getByText(/未配联系方式：加群评论将降级为普通评论/)).not.toBeNull();
-    expect(screen.queryByText(/联系方式状态未知/)).toBeNull();
-  });
-
-  it('降级发出的评论显示为「已发出（未带联系方式）」，不冒充联系评论已完成', async () => {
+  it('消费模式分别展示三段确认进度、当前动作和已绑定目标，不把等待审批算成成功', async () => {
     state.rows = state.rows.map((item) => {
       const row = item as ContentScheduleRow;
       if (row.accountId !== 'fb-1') return row;
       return {
         ...row,
-        facebookRuleMode: {
-          ...facebookRuleMode,
-          contactFallback: 'pending' as const,
-          runtime: {
-            ...facebookRuleMode.runtime,
-            currentBatch: {
-              batchId: 'b-2',
-              sequence: 2,
-              includesJoin: true,
-              triggerContentKey: 'post-10',
-              likeState: 'confirmed' as const,
-              joinState: 'confirmed' as const,
-              commentState: 'confirmed_without_contact' as const,
-              terminal: true,
-              blocker: null,
-              createdAt: '2026-07-27T02:00:00.000Z',
+        facebookOperation: {
+          baseMode: 'consumption' as const,
+          effectiveMode: 'consumption' as const,
+          policyRevision: 9,
+          blocker: 'approval_required',
+          rule: null,
+          consumption: {
+            viewsPerLike: 5,
+            confirmedLikesPerJoin: 2,
+            confirmedJoinsPerComment: 2,
+            viewsSinceLike: 3,
+            confirmedNewLikesSinceJoin: 1,
+            confirmedNewJoinsSinceComment: 1,
+            activeAction: {
+              actionType: 'comment' as const,
+              state: 'waiting_gate' as const,
+              dispatchPhase: 'not_started' as const,
+              outcome: null,
+              blocker: 'approval_required',
+              target: {
+                groupUrl: 'https://www.facebook.com/groups/123',
+                contentKey: 'post-123',
+              },
               updatedAt: '2026-07-27T02:00:00.000Z',
             },
           },
+          updatedAt: '2026-07-27T02:00:00.000Z',
         },
       };
     });
     await renderSchedule();
     await selectPlatform('Facebook');
-    expect(screen.getByText('联系评论：已发出（未带联系方式）')).not.toBeNull();
-    expect(screen.queryByText('联系评论：已确认')).toBeNull();
+
+    expect(screen.getByText('配置：消费模式')).not.toBeNull();
+    expect(screen.getByText('浏览 3 / 5')).not.toBeNull();
+    expect(screen.getByText('确认新点赞 1 / 2')).not.toBeNull();
+    expect(screen.getByText('确认新加群 1 / 2')).not.toBeNull();
+    expect(screen.getByText('当前动作：历史群评论 · 等待执行闸门')).not.toBeNull();
+    expect(screen.getByText('下发阶段：未下发')).not.toBeNull();
+    expect(screen.getByText('平台结果：尚无结果')).not.toBeNull();
+    expect(screen.getAllByText('approval_required').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: '查看已绑定群组' }).getAttribute('href'))
+      .toBe('https://www.facebook.com/groups/123');
+    expect(screen.getByText('内容：post-123')).not.toBeNull();
+    expect(screen.queryByText(/历史群评论 · 已确认/)).toBeNull();
   });
 
-  it('库中规则定义与云端不一致时响亮报出，不按当前节奏解读', async () => {
+  it('配置消费但慢启动生效时同时展示两层真态，不伪造消费进度正在运行', async () => {
     state.rows = state.rows.map((item) => {
       const row = item as ContentScheduleRow;
       if (row.accountId !== 'fb-1') return row;
       return {
         ...row,
-        facebookRuleMode: {
-          ...facebookRuleMode,
-          config: {
-            ...facebookRuleMode.config,
-            definitionId: 'facebook_browse_10_like_1_join_contact_1',
-            definitionVersion: 1,
-            definitionMismatch: true,
+        facebookOperation: {
+          ...facebookOperation,
+          baseMode: 'consumption' as const,
+          effectiveMode: 'slow_start' as const,
+          blocker: 'slow_start_active',
+          rule: null,
+          consumption: {
+            viewsPerLike: 5,
+            confirmedLikesPerJoin: 2,
+            confirmedJoinsPerComment: 2,
+            viewsSinceLike: 0,
+            confirmedNewLikesSinceJoin: 0,
+            confirmedNewJoinsSinceComment: 0,
+            activeAction: null,
           },
         },
       };
     });
     await renderSchedule();
     await selectPlatform('Facebook');
-    expect(
-      screen.getByText(/规则定义不一致：库中为 facebook_browse_10_like_1_join_contact_1@1/),
-    ).not.toBeNull();
+    expect(screen.getByText('配置：消费模式')).not.toBeNull();
+    expect(screen.getByText('生效：慢启动')).not.toBeNull();
+    expect(screen.getByText(/慢启动当前生效/)).not.toBeNull();
+    expect(screen.getByText('阻断：slow_start_active')).not.toBeNull();
   });
 
-  it('规则投影缺失显示未知而非伪造关闭或 0，非 Facebook 不展示规则列', async () => {
+  it('运行投影缺失显示未知而非伪造 persona 或 0，非 Facebook 不展示模式列', async () => {
     state.rows = state.rows.map((item) => {
       const row = item as ContentScheduleRow;
       if (row.accountId !== 'fb-1') return row;
-      const { facebookRuleMode: _drop, ...withoutRule } = row;
-      return withoutRule;
+      const { facebookOperation: _drop, ...withoutOperation } = row;
+      return withoutOperation;
     });
     await renderSchedule();
     await selectPlatform('Facebook');
-    expect(screen.getByText('状态未知')).not.toBeNull();
-    expect(screen.getByText('Cloud 未返回规则配置或运行进度')).not.toBeNull();
+    expect(screen.getByText('模式与进度未知')).not.toBeNull();
+    expect(screen.getByText(/未猜测人设模式或零进度/)).not.toBeNull();
     expect(screen.queryByText(/进度 0/)).toBeNull();
 
     await selectPlatform('小红书');
-    expect(screen.queryByRole('columnheader', { name: '规则模式' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '运行模式（只读）' })).toBeNull();
     expect(screen.queryByRole('switch', { name: /规则模式/ })).toBeNull();
   });
 
@@ -428,7 +435,46 @@ describe('ContentSchedulePage 平台感知视图', () => {
     expect(screen.getByText('/ 50，有效 1')).not.toBeNull();
     expect(screen.getByText(/最近执行：no_targets · scope_not_ready/)).not.toBeNull();
     expect(screen.getByText('跟随内容时段')).not.toBeNull();
+    expect(screen.getByText('当前已抑制')).not.toBeNull();
+    expect(
+      screen.getByText(
+        '独立排期自动加群仅在人设模式生效；当前为规则模式，此处修改只保存预配置。',
+      ),
+    ).not.toBeNull();
   });
+
+  it.each([
+    ['slow_start', '慢启动'],
+    ['rule', '规则模式'],
+    ['consumption', '消费模式'],
+    ['blocked', '已阻断'],
+  ] as const)(
+    'effective mode=%s 时明确抑制 persona scheduled 自动加群，但保留预配置入口',
+    async (effectiveMode, label) => {
+      state.rows = state.rows.map((item) => {
+        const row = item as ContentScheduleRow;
+        if (row.accountId !== 'fb-1' || !row.facebookOperation) return row;
+        return {
+          ...row,
+          facebookOperation: {
+            ...row.facebookOperation,
+            effectiveMode,
+          },
+        };
+      });
+      await renderSchedule();
+      await selectPlatform('Facebook');
+
+      expect(screen.getByText('当前已抑制')).not.toBeNull();
+      expect(
+        screen.getByText(
+          `独立排期自动加群仅在人设模式生效；当前为${label}，此处修改只保存预配置。`,
+        ),
+      ).not.toBeNull();
+      expect((screen.getByRole('switch', { name: '自动加群 fb-1' }) as HTMLButtonElement).disabled)
+        .toBe(false);
+    },
+  );
 
   it('Facebook 自动加群通过独立端点保存开关与日上限', async () => {
     state.putImpl = (_path, body) =>
