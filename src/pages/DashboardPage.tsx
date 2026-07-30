@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Statistic, Tag, Typography } from 'antd';
-import { useConfigMirrorHealth, useDashboardSummary, useInteractions, useResolveAlert } from '../api/queries';
+import {
+  useConfigMirrorHealth,
+  useDashboardSummary,
+  useEnvironments,
+  useInteractions,
+  useResolveAlert,
+} from '../api/queries';
 import {
   AccountsTable,
   AccountTotalsTable,
@@ -11,6 +17,7 @@ import {
   ProfileLink,
 } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
+import { deriveFacebookRuleModePersonaStates } from '../types/personaPresentation';
 import type {
   ConfigMirrorHealthResponse,
   ConfigMirrorServiceHealth,
@@ -88,6 +95,7 @@ function evidenceTime(value: number | null | undefined): string {
  */
 export function DashboardPage() {
   const { data, isLoading, isError, refetch } = useDashboardSummary();
+  const environments = useEnvironments();
   const mirrorHealth = useConfigMirrorHealth();
   const interactions = useInteractions();
   const resolveAlert = useResolveAlert();
@@ -97,6 +105,13 @@ export function DashboardPage() {
   const nameOf = makeAccountNamer(data?.accounts ?? []);
   const presence = data ? edgePresenceView(data) : null;
   const mirrorServices = normalizeMirrorServices(mirrorHealth.data);
+  const facebookRuleModePersonaStates = useMemo(
+    () => deriveFacebookRuleModePersonaStates(
+      data?.accounts ?? [],
+      environments.isError ? undefined : environments.data?.environments,
+    ),
+    [data?.accounts, environments.data?.environments, environments.isError],
+  );
 
   return (
     <div className="page-stack">
@@ -222,7 +237,12 @@ export function DashboardPage() {
 
       <Card size="small" title="各账号状态（按级别排序）">
         {data && data.accounts.length > 0 ? (
-          <AccountsTable accounts={data.accounts} loading={isLoading} severitySorted />
+          <AccountsTable
+            accounts={data.accounts}
+            loading={isLoading}
+            severitySorted
+            facebookRuleModePersonaStates={facebookRuleModePersonaStates}
+          />
         ) : (
           <Empty description={isLoading ? '加载中…' : '暂无账号'} />
         )}

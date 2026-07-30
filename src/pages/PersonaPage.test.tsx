@@ -31,6 +31,7 @@ const state = vi.hoisted(() => ({
   personaCatalog: { accounts: [] } as PersonaConfigCatalog,
   personaDetail: null as PersonaDetailView | null,
   accounts: [] as PanelAccount[],
+  environments: [] as unknown[],
 }));
 
 vi.mock('../api/client', async () => ({
@@ -39,18 +40,36 @@ vi.mock('../api/client', async () => ({
     state.getCalls.push(path);
     if (path === '/api/persona') return Promise.resolve(state.personaCatalog);
     if (path === '/api/accounts') return Promise.resolve({ accounts: state.accounts });
+    if (path === '/api/environments') {
+      return Promise.resolve({ environments: state.environments, asOf: 1 });
+    }
     if (path.startsWith('/api/persona/')) return Promise.resolve(state.personaDetail);
     return Promise.reject(new Error(`unexpected apiGet ${path}`));
   }),
   apiPut: vi.fn((path: string, body: unknown) => {
     state.putCalls.push({ path, body });
+    const accountId = decodeURIComponent(path.slice('/api/persona/'.length));
+    const persona = (body as { persona?: unknown }).persona;
+    const personaBound = typeof persona === 'string' && persona.trim().length > 0;
     state.personaCatalog = {
       accounts: state.personaCatalog.accounts.map((a) =>
-        a.accountId === 'acc-1'
-          ? { ...a, source: 'none', identityName: '', identityRole: '', updatedAt: null, updatedBy: null }
+        a.accountId === accountId
+          ? {
+              ...a,
+              source: personaBound ? 'override' : 'none',
+              identityName: personaBound ? a.identityName : '',
+              identityRole: personaBound ? a.identityRole : '',
+              updatedAt: personaBound ? a.updatedAt : null,
+              updatedBy: personaBound ? a.updatedBy : null,
+            }
           : a,
       ),
     };
+    state.accounts = state.accounts.map((account) =>
+      account.accountId === accountId
+        ? { ...account, personaBound, needsPersonaSetup: !personaBound }
+        : account,
+    );
     return Promise.resolve(state.personaCatalog);
   }),
 }));
@@ -72,6 +91,7 @@ describe('PersonaPage', () => {
   beforeEach(() => {
     state.getCalls = [];
     state.putCalls = [];
+    state.environments = [];
     state.personaCatalog = {
       accounts: [
         {
@@ -133,5 +153,92 @@ describe('PersonaPage', () => {
         body: { persona: '' },
       }),
     );
+  });
+
+  it('shows the rule-mode/no-persona combination without opening or guiding into the persona editor', async () => {
+    state.personaCatalog = {
+      accounts: [{
+        accountId: 'fb-1',
+        label: 'Facebook 账号',
+        source: 'none',
+        identityName: '',
+        identityRole: '',
+        updatedAt: null,
+        updatedBy: null,
+      }],
+    };
+    state.accounts = [{
+      ...state.accounts[0]!,
+      accountId: 'fb-1',
+      label: 'Facebook 账号',
+      nickname: 'Facebook 账号',
+      displayName: 'Facebook 账号',
+      platform: 'facebook',
+      personaBound: false,
+      needsPersonaSetup: true,
+    }];
+    state.environments = [{
+      envKey: 'facebook-env-1',
+      platform: 'facebook',
+      lifecycle: { state: 'active' },
+      account: { accountId: 'fb-1', platform: 'facebook' },
+      executionBinding: { state: 'bound', accountId: 'fb-1' },
+      facebookRuleMode: { envKey: 'facebook-env-1', enabled: true },
+    }];
+
+    renderPage();
+
+    expect(await screen.findByText('按规则运行、未绑人设')).toBeTruthy();
+    expect(screen.queryByText(/^未绑定$/)).toBeNull();
+    expect(screen.getByText(/规则批次的浏览、点赞、加群和模板评论不读取人设/)).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('refreshes account binding facts after unbinding and converges to the rule-mode/no-persona state', async () => {
+    state.personaCatalog = {
+      accounts: [{
+        accountId: 'fb-1',
+        label: 'Facebook 账号',
+        source: 'override',
+        identityName: '旧人设',
+        identityRole: '运营',
+        updatedAt: '2026-07-12T00:00:00.000Z',
+        updatedBy: 'op',
+      }],
+    };
+    state.personaDetail = {
+      accountId: 'fb-1',
+      label: 'Facebook 账号',
+      source: 'override',
+      persona: 'identity:\n  name: 旧人设\n',
+      updatedAt: '2026-07-12T00:00:00.000Z',
+      updatedBy: 'op',
+    };
+    state.accounts = [{
+      ...state.accounts[0]!,
+      accountId: 'fb-1',
+      label: 'Facebook 账号',
+      nickname: 'Facebook 账号',
+      displayName: 'Facebook 账号',
+      platform: 'facebook',
+      personaBound: true,
+      needsPersonaSetup: false,
+    }];
+    state.environments = [{
+      envKey: 'facebook-env-1',
+      platform: 'facebook',
+      lifecycle: { state: 'active' },
+      account: { accountId: 'fb-1', platform: 'facebook' },
+      executionBinding: { state: 'bound', accountId: 'fb-1' },
+      facebookRuleMode: { envKey: 'facebook-env-1', enabled: true },
+    }];
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(await within(dialog).findByDisplayValue(/旧人设/), { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(await screen.findByText('按规则运行、未绑人设')).toBeTruthy();
   });
 });

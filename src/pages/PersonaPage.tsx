@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { App, Button, Card, Form, Input, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../api/client';
-import { usePersonaConfig, useAccounts } from '../api/queries';
+import { usePersonaConfig, useAccounts, useEnvironments } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import { ProfileLink } from '../components';
 import { makeAccountNamer } from '../types/accountDisplay';
 import { tagOf } from '../types/aidcp-enums';
 import type { PersonaConfigRow, PersonaConfigCatalog, PersonaDetailView, PersonaSource } from '../types/api';
+import { deriveFacebookRuleModePersonaStates } from '../types/personaPresentation';
 
 // 人设绑定状态标注（persona-driven-content-pipeline：系统不存在默认/兜底人设）。
 const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
@@ -20,16 +21,24 @@ const SOURCE_TAG: Record<PersonaSource, { text: string; color: string }> = {
  * 账号人设配置页（change account-persona-config，stream F）。
  * - 按账号配置「人设」（identity / interests / behavior_guidelines 等，YAML 文本）。
  *   注：单场会话上限（时长 + 行为预算）已从人设迁出到「安全限额 · 单场会话上限」页（change session-limits-to-quota-layer）。
- * - 系统不存在默认/兜底人设——未绑定人设的账号
- *   浏览/发布/评论一律被诚实拒绝运行；列表如实标注绑定状态（未绑定=红）。
+ * - 系统不存在默认/兜底人设。普通浏览、发布与生成式评论仍要求人设；Facebook 规则模式的
+ *   浏览、点赞、加群与模板评论不读取人设，启用时按独立组合态如实呈现。
  * - 清空编辑器并保存 = 显式解绑，服务端删绑定行后返回 source=none 真态。
  * - 写非乐观——round-trip 后 invalidate 重取真态；非法人设由服务端 soul 校验拦截，诚实拒绝绝不落库。
  */
 export function PersonaPage() {
   const { data, isLoading, isError, refetch } = usePersonaConfig();
   const { data: accountsData } = useAccounts();
+  const environments = useEnvironments();
   // 账号列展示名走统一诚实回落（真名→运营名→ID）：人设目录只带 label，真名从账号列表 join 取。
   const nameOf = makeAccountNamer(accountsData?.accounts ?? []);
+  const facebookRuleModePersonaStates = useMemo(
+    () => deriveFacebookRuleModePersonaStates(
+      accountsData?.accounts ?? [],
+      environments.isError ? undefined : environments.data?.environments,
+    ),
+    [accountsData?.accounts, environments.data?.environments, environments.isError],
+  );
   const { message } = App.useApp();
   const qc = useQueryClient();
 
@@ -62,6 +71,7 @@ export function PersonaPage() {
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['config', 'personas'] });
+    void qc.invalidateQueries({ queryKey: ['accounts'] });
   };
 
   const save = useMutation({
@@ -113,8 +123,14 @@ export function PersonaPage() {
     {
       title: '来源',
       dataIndex: 'source',
-      width: 120,
-      render: (s: PersonaSource) => {
+      width: 188,
+      render: (s: PersonaSource, row) => {
+        if (s === 'none') {
+          const ruleState = facebookRuleModePersonaStates.get(row.accountId) ?? 'unknown';
+          if (ruleState === 'enabled') {
+            return <Tag color="blue">按规则运行、未绑人设</Tag>;
+          }
+        }
         const t = tagOf(SOURCE_TAG, s);
         return <Tag color={t.color}>{t.text}</Tag>;
       },
@@ -163,7 +179,7 @@ export function PersonaPage() {
           type="info"
           showIcon
           style={{ marginBottom: 'var(--aidcp-space-4)' }}
-          message="按账号配置人设：喂给该账号所有浏览 / 发布角色的身份、兴趣与行为偏好。保存后即时生效、无需重启。系统无默认人设，清空并保存会将账号调整为未绑定；未绑定账号会被诚实拒绝运行（不浏览、不发布、不评论）。"
+          message="按账号配置人设：提供普通浏览、发布与生成式评论所需的身份、兴趣和行为偏好。系统没有默认或兜底人设；未绑定账号会被这些路径诚实拒绝。Facebook 环境启用规则模式后，规则批次的浏览、点赞、加群和模板评论不读取人设，仍可按规则运行。清空并保存会解绑账号。"
         />
         <Table<PersonaConfigRow>
           size="small"

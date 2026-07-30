@@ -24,6 +24,8 @@ window.getComputedStyle = ((element: Element, pseudo?: string | null): CSSStyleD
 const state = vi.hoisted(() => ({
   putCalls: [] as Array<{ path: string; body: unknown }>,
   policies: { accounts: [], groups: [] } as ApprovalPolicyCatalog,
+  accounts: [] as PanelAccount[],
+  environments: [] as unknown[],
 }));
 
 const account = {
@@ -37,7 +39,10 @@ const account = {
 vi.mock('../api/client', async () => ({
   ...(await vi.importActual<typeof import('../api/client')>('../api/client')),
   apiGet: vi.fn((path: string) => {
-    if (path === '/api/accounts') return Promise.resolve({ accounts: [account] });
+    if (path === '/api/accounts') return Promise.resolve({ accounts: state.accounts });
+    if (path === '/api/environments') {
+      return Promise.resolve({ environments: state.environments, asOf: 1 });
+    }
     if (path === '/api/approval-policies') return Promise.resolve(state.policies);
     if (path === '/api/notification/routes') return Promise.resolve({ routes: [{ groupLabel: '运营一组', chatId: 'oc_team', updatedBy: null, updatedAt: 0 }] });
     if (path === '/api/bot-chats') return Promise.resolve({ chats: [{ chatId: 'oc_team', name: '运营一组群', isDefault: true }], defaultChatId: 'oc_team', source: 'feishu' });
@@ -68,6 +73,8 @@ function renderPage(node: React.ReactNode) {
 describe('approval policy controls', () => {
   beforeEach(() => {
     state.putCalls = [];
+    state.accounts = [account];
+    state.environments = [];
     state.policies = {
       accounts: [{ accountId: 'acc-1', mode: 'source_rules', configured: false, updatedBy: null, updatedAt: null }],
       groups: [{
@@ -83,6 +90,33 @@ describe('approval policy controls', () => {
     expect(screen.queryByRole('columnheader', { name: '评论审批' })).toBeNull();
     expect(screen.queryByRole('combobox', { name: '账号 acc-1 评论审批' })).toBeNull();
     expect(state.putCalls.some(({ path }) => path === '/api/approval-policies/account-comment')).toBe(false);
+  });
+
+  it('account page joins environment authority and suppresses persona setup guidance in rule mode', async () => {
+    state.accounts = [{
+      ...account,
+      accountId: 'fb-1',
+      platform: 'facebook',
+      displayName: 'Facebook 账号',
+      nickname: 'Facebook 账号',
+      personaBound: false,
+      needsPersonaSetup: true,
+    }];
+    state.environments = [{
+      envKey: 'facebook-env-1',
+      platform: 'facebook',
+      lifecycle: { state: 'active' },
+      account: { accountId: 'fb-1', platform: 'facebook' },
+      executionBinding: { state: 'bound', accountId: 'fb-1' },
+      facebookRuleMode: { envKey: 'facebook-env-1', enabled: true },
+    }];
+
+    renderPage(<AccountsPage />);
+
+    expect(await screen.findByText('按规则运行、未绑人设')).toBeTruthy();
+    expect(screen.queryByText('需设置')).toBeNull();
+    expect(screen.queryByText('已绑')).toBeNull();
+    expect(document.querySelector('a[href="/persona"]')).toBeNull();
   });
 
   it('group client-only control shows incomplete coverage fallback and corrected routing semantics', async () => {

@@ -6,6 +6,7 @@ import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
 import { ProfileLink } from './ProfileLink';
 import type { PanelAccount } from '../types/api';
+import type { FacebookRuleModePersonaState } from '../types/personaPresentation';
 import { OPERATOR_STATUS_LABEL, labelOf, type RiskStatus } from '../types/aidcp-enums';
 import { accountDisplayName } from '../types/accountDisplay';
 
@@ -102,19 +103,7 @@ const columns: ColumnsType<PanelAccount> = [
   {
     title: '人设',
     key: 'persona',
-    width: 76,
-    // 标签去掉冗余「人设」后缀（列头已是「人设」；避免换行的表格设计标准）：
-    // 未绑（非 default）→「需设置」橙标 + 跳转人设页；已绑 → 绿标「已绑」；default 豁免 → 中性「默认」。
-    render: (_, r) =>
-      r.needsPersonaSetup ? (
-        <Link to="/persona">
-          <Tag color="warning">需设置</Tag>
-        </Link>
-      ) : r.personaBound ? (
-        <Tag color="green">已绑</Tag>
-      ) : (
-        <Tag>默认</Tag>
-      ),
+    width: 188,
   },
   { title: '分组', dataIndex: 'groupLabel', render: (v: string | null) => v ?? dash },
   {
@@ -153,6 +142,7 @@ export function AccountsTable({
   riskStatusControl,
   quotaTierControl,
   configurationControl,
+  facebookRuleModePersonaStates,
   onEditGroup,
   onEditContact,
 }: {
@@ -165,6 +155,8 @@ export function AccountsTable({
   quotaTierControl?: (account: PanelAccount) => ReactNode;
   /** 账号页按平台注入账号级配置入口；不传则只读视图不增加配置列。 */
   configurationControl?: (account: PanelAccount) => ReactNode;
+  /** 环境权威与账号绑定严格 join 后的规则模式免人设三态；缺失按 unknown 呈现。 */
+  facebookRuleModePersonaStates?: ReadonlyMap<string, FacebookRuleModePersonaState>;
   /**
    * 可选：分组标签就地编辑保存回调（change editable-account-group-label）。
    * 传入 →「分组」列点击即变输入框、回车/失焦保存（trim 后空 = 清空，回 null）；
@@ -278,6 +270,27 @@ export function AccountsTable({
     }
     if (key === 'tier' && quotaTierControl) {
       return { ...column, render: (_: unknown, account: PanelAccount) => quotaTierControl(account) };
+    }
+    if (key === 'persona') {
+      return {
+        ...column,
+        width: 188,
+        render: (_: unknown, account: PanelAccount) => {
+          if (account.personaBound) return <Tag color="green">已绑</Tag>;
+          const ruleState = facebookRuleModePersonaStates?.get(account.accountId)
+            ?? (account.platform === 'facebook' ? 'unknown' : account.platform ? 'disabled' : 'unknown');
+          if (ruleState === 'enabled') {
+            return <Tag color="blue">按规则运行、未绑人设</Tag>;
+          }
+          return account.needsPersonaSetup ? (
+            <Link to="/persona">
+              <Tag color="warning">需设置</Tag>
+            </Link>
+          ) : (
+            <Tag>默认</Tag>
+          );
+        },
+      };
     }
     return column;
   });

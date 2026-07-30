@@ -85,6 +85,9 @@ function createServer(options: ServerOptions = {}) {
     if (requestUrl.pathname === '/api/accounts') {
       return json({ accounts: [panelAccount(), panelAccount('fb_demo', 'facebook'), panelAccount('xhs_demo', 'xiaohongshu')] });
     }
+    if (requestUrl.pathname === '/api/environments') {
+      return json({ environments: [], asOf: 1 });
+    }
 
     const match = requestUrl.pathname.match(/^\/api\/accounts\/([^/]+)\/(.+)$/);
     if (!match) return interactionError('INTERACTION_NOT_FOUND', 404);

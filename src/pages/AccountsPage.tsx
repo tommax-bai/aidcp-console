@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { App, Button, Card, Popconfirm, Tag } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, apiPut } from '../api/client';
-import { useAccounts } from '../api/queries';
+import { useAccounts, useEnvironments } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import {
   AccountsTable,
@@ -14,13 +14,22 @@ import {
 import { accountName } from '../types/accountDisplay';
 import { OPERATOR_STATUS_LABEL, labelOf } from '../types/aidcp-enums';
 import type { PanelAccount } from '../types/api';
+import { deriveFacebookRuleModePersonaStates } from '../types/personaPresentation';
 
 /** 账号列表（design PAGE 4a）+ pause/resume 写操作（非乐观、诚实文案）。 */
 export function AccountsPage() {
   const { data, isLoading, isError, refetch } = useAccounts();
+  const environments = useEnvironments();
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [runtimeAccount, setRuntimeAccount] = useState<PanelAccount | null>(null);
+  const facebookRuleModePersonaStates = useMemo(
+    () => deriveFacebookRuleModePersonaStates(
+      data?.accounts ?? [],
+      environments.isError ? undefined : environments.data?.environments,
+    ),
+    [data?.accounts, environments.data?.environments, environments.isError],
+  );
 
   const cmd = useMutation({
     mutationFn: (v: { accountId: string; command: 'pause' | 'resume' }) =>
@@ -91,6 +100,7 @@ export function AccountsPage() {
         <AccountsTable
           accounts={data?.accounts ?? []}
           loading={isLoading}
+          facebookRuleModePersonaStates={facebookRuleModePersonaStates}
           operatorStatusControl={operatorStatusControl}
           riskStatusControl={(account) => <RiskStatusControl account={account} />}
           quotaTierControl={(account) => <QuotaTierControl account={account} />}

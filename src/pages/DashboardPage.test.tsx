@@ -7,8 +7,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { DashboardPage } from './DashboardPage';
-import type { DashboardSummary } from '../types/api';
+import type { DashboardSummary, PanelAccount } from '../types/api';
 
 // jsdom 无 matchMedia；antd 响应式（Row gutter / Grid）需要最小桩。
 if (typeof window.matchMedia !== 'function') {
@@ -28,12 +29,16 @@ if (typeof window.matchMedia !== 'function') {
 const state = vi.hoisted(() => ({
   summary: undefined as unknown,
   mirrorHealth: undefined as unknown,
+  environments: [] as unknown[],
 }));
 
 vi.mock('../api/client', () => ({
   apiGet: vi.fn((path: string) => {
     if (path === '/api/dashboard/summary') return Promise.resolve(state.summary);
     if (path === '/api/config-mirrors') return Promise.resolve(state.mirrorHealth);
+    if (path === '/api/environments') {
+      return Promise.resolve({ environments: state.environments, asOf: AS_OF });
+    }
     // merge-monitor-into-dashboard：按笔记互动并入本页，页面挂载即拉取。
     if (path === '/api/monitor/interactions') return Promise.resolve({ interactions: [] });
     return Promise.reject(new Error(`unexpected apiGet ${path}`));
@@ -66,7 +71,9 @@ function renderPage(): void {
   render(
     <AntdApp>
       <QueryClientProvider client={queryClient}>
-        <DashboardPage />
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </AntdApp>,
   );
@@ -85,6 +92,7 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
   beforeEach(() => {
     state.summary = makeSummary();
     setFreshMirrorHealth();
+    state.environments = [];
   });
 
   it('呈现「数据截至 asOf / 自动刷新中」新鲜度标识', async () => {
@@ -192,12 +200,50 @@ describe('DashboardPage 新鲜度与无活动提示（change dashboard-refresh-c
     expect(usage.style.color).toBeTruthy();
     expect(screen.getAllByText('搜索').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('账号状态表把规则模式未绑账号呈现为正常组合态且不引导补人设', async () => {
+    const account: PanelAccount = {
+      accountId: 'fb-1',
+      label: 'FB',
+      nickname: 'Facebook 账号',
+      operatorAlias: null,
+      displayName: 'Facebook 账号',
+      displayNameSource: 'platform_nickname',
+      platform: 'facebook',
+      groupLabel: null,
+      machineLabel: null,
+      contactInfo: null,
+      operatorStatus: 'active',
+      pausedAt: null,
+      riskStatus: null,
+      riskQuotaLevel: null,
+      signalCount: null,
+      personaBound: false,
+      needsPersonaSetup: true,
+    };
+    state.summary = makeSummary({ accounts: [account] });
+    state.environments = [{
+      envKey: 'facebook-env-1',
+      platform: 'facebook',
+      lifecycle: { state: 'active' },
+      account: { accountId: 'fb-1', platform: 'facebook' },
+      executionBinding: { state: 'bound', accountId: 'fb-1' },
+      facebookRuleMode: { envKey: 'facebook-env-1', enabled: true },
+    }];
+
+    renderPage();
+
+    expect(await screen.findByText('按规则运行、未绑人设')).toBeTruthy();
+    expect(screen.queryByText('需设置')).toBeNull();
+    expect(document.querySelector('a[href="/persona"]')).toBeNull();
+  });
 });
 
 describe('DashboardPage 并入监控内容（merge-monitor-into-dashboard）', () => {
   beforeEach(() => {
     state.summary = makeSummary();
     setFreshMirrorHealth();
+    state.environments = [];
   });
 
   it('呈现「按笔记互动」「告警」「实时事件流」卡片；事件流默认折叠、不挂连接', async () => {
