@@ -669,6 +669,36 @@ describe('EnvironmentsPage', () => {
       .toBe(false);
   });
 
+  it('keeps unbound active slow start selected without fabricating an execution mode', async () => {
+    const current = {
+      ...operationPolicy,
+      baseMode: 'persona' as const,
+      effectiveMode: null,
+      slowStart: {
+        state: 'active' as const,
+        since: 1_774_800_000_000,
+        globallyDisabled: false,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const body = String(input).endsWith('/facebook-operation-policy')
+        ? current
+        : { environments: [facebookEnvironment], asOf: Date.now() };
+      return new Response(JSON.stringify(body), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    expect(await screen.findByText('基础：人设模式')).toBeTruthy();
+    expect(screen.getByText('生效：无执行对象')).toBeTruthy();
+    expect(screen.getByText('慢启动生命周期已启用')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '编辑运行策略 facebook-001' }));
+    expect(screen.getByText('慢启动', { selector: '.ant-select-selection-item' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: '保存运行策略' }) as HTMLButtonElement).disabled)
+      .toBe(true);
+  });
+
   it('renders unavailable policy truth without guessing persona mode', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).endsWith('/facebook-operation-policy')) {

@@ -38,7 +38,9 @@ interface PolicyDraft {
 
 function draftFrom(view: FacebookOperationPolicyView): PolicyDraft {
   return {
-    mode: view.effectiveMode === 'slow_start' ? 'slow_start' : view.baseMode,
+    mode: view.slowStart.state === 'active' || view.effectiveMode === 'slow_start'
+      ? 'slow_start'
+      : view.baseMode,
     rule: { ...view.rule },
     consumption: { ...view.consumption },
   };
