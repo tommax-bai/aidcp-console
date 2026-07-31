@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { EnvironmentsPage, ENVIRONMENT_LIFECYCLE_META, filterEnvironmentAssets } from './EnvironmentsPage';
-import type { EnvironmentAssetView, FacebookOperationPolicyView } from '../types/api';
+import type {
+  EnvironmentAssetView,
+  FacebookOperationGlobalPolicyView,
+  FacebookOperationPolicyView,
+} from '../types/api';
 
 const environment: EnvironmentAssetView = {
   envKey: 'profile-001',
@@ -46,6 +50,7 @@ const operationPolicy: FacebookOperationPolicyView = {
   effectiveMode: null,
   policyRevision: 3,
   schemaVersion: 'facebook-operation-policy/v1',
+  cadenceSource: 'environment',
   rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
   consumption: {
     viewsPerLike: 5,
@@ -70,6 +75,56 @@ const operationPolicy: FacebookOperationPolicyView = {
     accountDisplayName: null,
   },
   blocker: null,
+  updatedAt: '2026-07-30T01:00:00.000Z',
+  updatedBy: 'panel:alice',
+};
+
+const globalPolicy: FacebookOperationGlobalPolicyView = {
+  executionTarget: 'dev',
+  revision: 8,
+  schemaVersion: 'facebook-operation-global-policy/v1',
+  rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
+  consumption: {
+    viewsPerLike: 5,
+    confirmedLikesPerJoin: 2,
+    confirmedJoinsPerComment: 2,
+  },
+  slowStart: {
+    totalDays: 7,
+    dailyCaps: Array.from({ length: 7 }, (_, index) => ({
+      day: index + 1,
+      view: 30 + index * 10,
+      like: 2 + index,
+      comment: index,
+      follow: 1 + index,
+      publish: index === 6 ? 1 : 0,
+      search: 2 + index,
+      joinGroup: index === 6 ? 1 : 0,
+    })),
+  },
+  bounds: {
+    rule: {
+      viewsPerLike: { min: 1, max: 100, default: 5 },
+      joinEveryNRounds: { min: 1, max: 20, default: 2 },
+    },
+    consumption: {
+      viewsPerLike: { min: 1, max: 100, default: 5 },
+      confirmedLikesPerJoin: { min: 1, max: 20, default: 2 },
+      confirmedJoinsPerComment: { min: 1, max: 20, default: 2 },
+    },
+    slowStart: {
+      totalDays: { min: 1, max: 30, default: 7 },
+      dailyCaps: {
+        view: { min: 0, max: 1_000 },
+        like: { min: 0, max: 100 },
+        comment: { min: 0, max: 100 },
+        follow: { min: 0, max: 100 },
+        publish: { min: 0, max: 100 },
+        search: { min: 0, max: 100 },
+        joinGroup: { min: 0, max: 100 },
+      },
+    },
+  },
   updatedAt: '2026-07-30T01:00:00.000Z',
   updatedBy: 'panel:alice',
 };
@@ -139,6 +194,111 @@ describe('EnvironmentsPage', () => {
     expect(screen.queryByRole('button', { name: /删除|重试删除|确认删除环境/ })).toBeNull();
     expect(screen.queryByLabelText('确认环境 ID')).toBeNull();
     expect(fetchMock.mock.calls.every(([, init]) => !['POST', 'PUT'].includes((init as RequestInit | undefined)?.method ?? 'GET'))).toBe(true);
+  });
+
+  it('edits target-global rule, consumption and slow-start values with one CAS write', async () => {
+    let currentGlobal = globalPolicy;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith('/api/facebook/operation-global-policy')) {
+        if (init?.method === 'PUT') {
+          const inputPolicy = JSON.parse(String(init.body));
+          currentGlobal = {
+            ...globalPolicy,
+            ...inputPolicy,
+            revision: 9,
+            updatedAt: '2026-07-31T01:00:00.000Z',
+          };
+        }
+        return new Response(JSON.stringify(currentGlobal), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ environments: [environment], asOf: Date.now() }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    expect(await screen.findByText('目标：DEV')).toBeTruthy();
+    expect(screen.getByText('冷启动：7 天')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
+    fireEvent.change(await screen.findByLabelText('全局规则模式浏览点赞阈值'), {
+      target: { value: '6' },
+    });
+    fireEvent.change(screen.getByLabelText('全局冷启动总天数'), {
+      target: { value: '8' },
+    });
+    expect(await screen.findByLabelText('冷启动第8天浏览上限')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '保存全局数值' }));
+
+    await waitFor(() => expect(screen.getByText('revision 9')).toBeTruthy());
+    const put = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).endsWith('/api/facebook/operation-global-policy')
+        && (init as RequestInit | undefined)?.method === 'PUT',
+    );
+    const body = JSON.parse(String((put?.[1] as RequestInit).body));
+    expect(body.expectedRevision).toBe(8);
+    expect(body.rule.viewsPerLike).toBe(6);
+    expect(body.consumption).toEqual(globalPolicy.consumption);
+    expect(body.slowStart.totalDays).toBe(8);
+    expect(body.slowStart.dailyCaps).toHaveLength(8);
+    expect(body.slowStart.dailyCaps[7]).toEqual({
+      ...globalPolicy.slowStart.dailyCaps[6],
+      day: 8,
+    });
+  });
+
+  it('saves an inheriting environment without sending duplicated cadence values', async () => {
+    let current = { ...operationPolicy, cadenceSource: 'global' as const };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith('/api/facebook/operation-global-policy')) {
+        return new Response(JSON.stringify(globalPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (path.endsWith('/api/environments/facebook-001/facebook-operation-policy')) {
+        if (init?.method === 'PUT') {
+          current = {
+            ...current,
+            baseMode: 'consumption',
+            policyRevision: 4,
+          };
+        }
+        return new Response(JSON.stringify(current), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ environments: [facebookEnvironment], asOf: Date.now() }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    expect(await screen.findByText('节奏：继承全局')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '编辑运行策略 facebook-001' }));
+    expect(await screen.findByText('当前环境继承全局数值')).toBeTruthy();
+    expect(screen.queryByLabelText('规则模式浏览点赞阈值 facebook-001')).toBeNull();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行模式 facebook-001' }));
+    fireEvent.click(await screen.findByText('消费模式', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存运行策略' }));
+
+    await waitFor(() => expect(screen.getByText('基础：消费模式')).toBeTruthy());
+    const put = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).includes('/facebook-001/facebook-operation-policy')
+        && (init as RequestInit | undefined)?.method === 'PUT',
+    );
+    expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
+      expectedRevision: 3,
+      mode: 'consumption',
+      cadenceSource: 'global',
+    });
   });
 
   it('blocks no-op saves, then re-baselines after a confirmed CAS write and refetch', async () => {
@@ -217,6 +377,8 @@ describe('EnvironmentsPage', () => {
     expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
       expectedRevision: 3,
       mode: 'consumption',
+      cadenceSource: 'environment',
+      rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
       consumption: {
         viewsPerLike: 6,
         confirmedLikesPerJoin: 3,
@@ -265,7 +427,13 @@ describe('EnvironmentsPage', () => {
     expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
       expectedRevision: 3,
       mode: 'rule',
+      cadenceSource: 'environment',
       rule: { viewsPerLike: 7, joinEveryNRounds: 2 },
+      consumption: {
+        viewsPerLike: 5,
+        confirmedLikesPerJoin: 2,
+        confirmedJoinsPerComment: 2,
+      },
     });
   });
 
@@ -573,7 +741,7 @@ describe('EnvironmentsPage', () => {
     expect(screen.queryByRole('button', { name: '编辑运行策略 wechat-001' })).toBeNull();
   });
 
-  it('submits persona without foreign cadence fields', async () => {
+  it('keeps an independent cadence payload while switching to persona', async () => {
     let current = operationPolicy;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
@@ -595,8 +763,8 @@ describe('EnvironmentsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '编辑运行策略 facebook-001' }));
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行模式 facebook-001' }));
     fireEvent.click(await screen.findByText('人设模式', { selector: '.ant-select-item-option-content' }));
-    expect(screen.queryByLabelText(/规则模式浏览点赞阈值/)).toBeNull();
-    expect(screen.queryByLabelText(/消费模式浏览点赞阈值/)).toBeNull();
+    expect(screen.getByLabelText(/规则模式浏览点赞阈值/)).toBeTruthy();
+    expect(screen.getByLabelText(/消费模式浏览点赞阈值/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '保存运行策略' }));
 
     await waitFor(() => {
@@ -604,6 +772,13 @@ describe('EnvironmentsPage', () => {
       expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
         expectedRevision: 3,
         mode: 'persona',
+        cadenceSource: 'environment',
+        rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
+        consumption: {
+          viewsPerLike: 5,
+          confirmedLikesPerJoin: 2,
+          confirmedJoinsPerComment: 2,
+        },
       });
     });
   });

@@ -8,6 +8,7 @@ import {
 } from '../api/queries';
 import { errorText } from '../api/errorText';
 import { FacebookOperationPolicyEditor } from '../components/FacebookOperationPolicyEditor';
+import { FacebookOperationGlobalPolicyEditor } from '../components/FacebookOperationGlobalPolicyEditor';
 import { QueryError } from '../components/QueryGate';
 import { QuotaTierBadge } from '../components/QuotaTierBadge';
 import { RiskStatusBadge } from '../components/RiskStatusBadge';
@@ -265,6 +266,7 @@ export function EnvironmentsPage() {
   if (query.isError) return <QueryError title="加载环境列表失败" onRetry={() => query.refetch()} />;
   return (
     <div className="page-stack">
+      <FacebookOperationGlobalPolicyEditor />
       <Card
         size="small"
         title={linkedAccount ? '环境（来自账号页）' : '环境'}

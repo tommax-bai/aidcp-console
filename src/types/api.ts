@@ -1487,6 +1487,7 @@ export interface FacebookOperationPolicyView {
   effectiveMode: FacebookOperationEffectiveMode | null;
   policyRevision: number;
   schemaVersion: string;
+  cadenceSource: 'global' | 'environment';
   rule: FacebookRuleCadence;
   consumption: FacebookConsumptionCadence;
   bounds: FacebookOperationPolicyBounds;
@@ -1505,24 +1506,59 @@ export interface FacebookOperationPolicyView {
   updatedBy: string | null;
 }
 
-export type FacebookOperationPolicyWrite =
-  | {
-      expectedRevision: number;
-      mode: 'persona' | 'slow_start';
-      reason?: string;
-    }
-  | {
-      expectedRevision: number;
-      mode: 'rule';
-      rule: FacebookRuleCadence;
-      reason?: string;
-    }
-  | {
-      expectedRevision: number;
-      mode: 'consumption';
-      consumption: FacebookConsumptionCadence;
-      reason?: string;
+export interface FacebookOperationPolicyWrite {
+  expectedRevision: number;
+  mode: FacebookOperationMode;
+  cadenceSource: 'global' | 'environment';
+  rule?: FacebookRuleCadence;
+  consumption?: FacebookConsumptionCadence;
+  reason?: string;
+}
+
+export interface FacebookSlowStartDailyCaps {
+  day: number;
+  view: number;
+  like: number;
+  comment: number;
+  follow: number;
+  publish: number;
+  search: number;
+  joinGroup: number;
+}
+
+export interface FacebookOperationGlobalPolicyView {
+  executionTarget: 'dev' | 'ol';
+  revision: number;
+  schemaVersion: string;
+  rule: FacebookRuleCadence;
+  consumption: FacebookConsumptionCadence;
+  slowStart: {
+    totalDays: number;
+    dailyCaps: FacebookSlowStartDailyCaps[];
+  };
+  bounds: FacebookOperationPolicyBounds & {
+    slowStart: {
+      totalDays: IntegerFieldBounds;
+      dailyCaps: Record<
+        Exclude<keyof FacebookSlowStartDailyCaps, 'day'>,
+        { min: number; max: number }
+      >;
     };
+  };
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface FacebookOperationGlobalPolicyWrite {
+  expectedRevision: number;
+  rule: FacebookRuleCadence;
+  consumption: FacebookConsumptionCadence;
+  slowStart: {
+    totalDays: number;
+    dailyCaps: FacebookSlowStartDailyCaps[];
+  };
+  reason?: string;
+}
 
 export type FacebookOperationActionState =
   | 'pending'

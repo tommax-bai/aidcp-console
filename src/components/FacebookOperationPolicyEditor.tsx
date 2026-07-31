@@ -32,6 +32,7 @@ const MODE_META: Record<FacebookOperationMode | 'blocked', { label: string; colo
 
 interface PolicyDraft {
   mode: FacebookOperationMode;
+  cadenceSource: 'global' | 'environment';
   rule: FacebookRuleCadence;
   consumption: FacebookConsumptionCadence;
 }
@@ -41,6 +42,7 @@ function draftFrom(view: FacebookOperationPolicyView): PolicyDraft {
     mode: view.slowStart.state === 'active' || view.effectiveMode === 'slow_start'
       ? 'slow_start'
       : view.baseMode,
+    cadenceSource: view.cadenceSource,
     rule: { ...view.rule },
     consumption: { ...view.consumption },
   };
@@ -48,12 +50,11 @@ function draftFrom(view: FacebookOperationPolicyView): PolicyDraft {
 
 function sameDraft(left: PolicyDraft, right: PolicyDraft): boolean {
   if (left.mode !== right.mode) return false;
-  if (left.mode === 'rule') {
+  if (left.cadenceSource !== right.cadenceSource) return false;
+  if (left.cadenceSource === 'environment') {
     return left.rule.viewsPerLike === right.rule.viewsPerLike
-      && left.rule.joinEveryNRounds === right.rule.joinEveryNRounds;
-  }
-  if (left.mode === 'consumption') {
-    return left.consumption.viewsPerLike === right.consumption.viewsPerLike
+      && left.rule.joinEveryNRounds === right.rule.joinEveryNRounds
+      && left.consumption.viewsPerLike === right.consumption.viewsPerLike
       && left.consumption.confirmedLikesPerJoin
         === right.consumption.confirmedLikesPerJoin
       && left.consumption.confirmedJoinsPerComment
@@ -71,14 +72,16 @@ function integerError(label: string, value: number, bounds: IntegerFieldBounds) 
 }
 
 function validateDraft(draft: PolicyDraft, view: FacebookOperationPolicyView) {
-  if (draft.mode === 'rule') {
-    return integerError('浏览点赞阈值', draft.rule.viewsPerLike, view.bounds.rule.viewsPerLike)
-      ?? integerError('加群联系轮次', draft.rule.joinEveryNRounds, view.bounds.rule.joinEveryNRounds);
-  }
-  if (draft.mode === 'consumption') {
-    return integerError(
-      '浏览点赞阈值',
-      draft.consumption.viewsPerLike,
+  if (draft.cadenceSource === 'environment') {
+    return integerError('规则浏览点赞阈值', draft.rule.viewsPerLike, view.bounds.rule.viewsPerLike)
+      ?? integerError(
+        '规则加群联系轮次',
+        draft.rule.joinEveryNRounds,
+        view.bounds.rule.joinEveryNRounds,
+      )
+      ?? integerError(
+        '浏览点赞阈值',
+        draft.consumption.viewsPerLike,
       view.bounds.consumption.viewsPerLike,
     )
       ?? integerError(
@@ -99,13 +102,16 @@ function writePayload(
   draft: PolicyDraft,
   expectedRevision: number,
 ): FacebookOperationPolicyWrite {
-  if (draft.mode === 'rule') {
-    return { expectedRevision, mode: 'rule', rule: { ...draft.rule } };
+  if (draft.cadenceSource === 'environment') {
+    return {
+      expectedRevision,
+      mode: draft.mode,
+      cadenceSource: 'environment',
+      rule: { ...draft.rule },
+      consumption: { ...draft.consumption },
+    };
   }
-  if (draft.mode === 'consumption') {
-    return { expectedRevision, mode: 'consumption', consumption: { ...draft.consumption } };
-  }
-  return { expectedRevision, mode: draft.mode };
+  return { expectedRevision, mode: draft.mode, cadenceSource: 'global' };
 }
 
 function formatTime(value: string | null) {
@@ -215,6 +221,9 @@ export function FacebookOperationPolicyEditor({ envKey }: { envKey: string }) {
             <Tag>生效：无执行对象</Tag>
           )}
           <Tag>revision {view.policyRevision}</Tag>
+          <Tag color={view.cadenceSource === 'global' ? 'green' : 'geekblue'}>
+            {view.cadenceSource === 'global' ? '节奏：继承全局' : '节奏：独立配置'}
+          </Tag>
           {view.slowStart.globallyDisabled ? (
             <Tag color="gold">慢启动：Cloud 全局停用</Tag>
           ) : view.slowStart.state === 'active' ? (
@@ -294,7 +303,35 @@ export function FacebookOperationPolicyEditor({ envKey }: { envKey: string }) {
               />
             </Space>
 
-            {draft.mode === 'rule' ? (
+            <Space direction="vertical" size={4}>
+              <Typography.Text strong>数值来源</Typography.Text>
+              <Select<'global' | 'environment'>
+                aria-label={`数值来源 ${envKey}`}
+                value={draft.cadenceSource}
+                style={{ width: 220 }}
+                disabled={save.isPending}
+                onChange={(cadenceSource) => setDraft((current) =>
+                  current ? { ...current, cadenceSource } : current)}
+                options={[
+                  { value: 'global', label: '继承全局' },
+                  { value: 'environment', label: '独立配置' },
+                ]}
+              />
+              <Typography.Text type="secondary">
+                继承全局会随全局节奏更新；独立配置只作用于当前环境。
+              </Typography.Text>
+            </Space>
+
+            {draft.cadenceSource === 'global' ? (
+              <Alert
+                type="info"
+                showIcon
+                message="当前环境继承全局数值"
+                description={`规则 ${draft.rule.viewsPerLike}/${draft.rule.joinEveryNRounds}；消费 ${draft.consumption.viewsPerLike}/${draft.consumption.confirmedLikesPerJoin}/${draft.consumption.confirmedJoinsPerComment}。切换为独立配置后可编辑。`}
+              />
+            ) : null}
+
+            {draft.cadenceSource === 'environment' ? (
               <Space direction="vertical" size={8}>
                 <Typography.Text strong>规则模式节奏</Typography.Text>
                 <Space wrap>
@@ -332,7 +369,7 @@ export function FacebookOperationPolicyEditor({ envKey }: { envKey: string }) {
               </Space>
             ) : null}
 
-            {draft.mode === 'consumption' ? (
+            {draft.cadenceSource === 'environment' ? (
               <Space direction="vertical" size={8}>
                 <Typography.Text strong>消费模式节奏</Typography.Text>
                 <Alert
