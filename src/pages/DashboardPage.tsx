@@ -144,7 +144,7 @@ export function DashboardPage() {
           )}
           {/* V1 task 10.2：全局调度引擎启停（接 9.4 /dispatch；非乐观、回报真实在线 edge 数）。 */}
           <Col>
-            <DispatchControl active={data?.dispatchActive ?? null} />
+            <DispatchControl active={data?.dispatchActive ?? null} unknownReason={data?.dispatchUnknownReason ?? null} />
           </Col>
         </Row>
       </Card>

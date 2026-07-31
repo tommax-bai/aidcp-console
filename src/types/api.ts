@@ -342,6 +342,8 @@ export interface DashboardSummary {
   attributionPending: boolean;
   /** 调度引擎当前是否活跃（V1 task 9.4；单全局 RoleDispatcher）。 */
   dispatchActive: boolean | null;
+  /** `dispatchActive` 为 null 时的具名原因（云端 task 1.3a）；能读到时为 null。 */
+  dispatchUnknownReason?: string | null;
 }
 
 export interface PanelPublish {
