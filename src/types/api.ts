@@ -1469,6 +1469,16 @@ export interface FacebookConsumptionCadence {
   confirmedJoinsPerComment: number;
 }
 
+export interface FacebookGlobalReelCadence {
+  persona: {
+    viewsPerLike: number;
+    viewsPerFollow: number;
+  };
+  slowStart: { viewsPerFollow: number };
+  rule: { viewsPerFollow: number };
+  consumption: { viewsPerFollow: number };
+}
+
 export interface FacebookOperationPolicyBounds {
   rule: {
     viewsPerLike: IntegerFieldBounds;
@@ -1534,11 +1544,21 @@ export interface FacebookOperationGlobalPolicyView {
   schemaVersion: string;
   rule: FacebookRuleCadence;
   consumption: FacebookConsumptionCadence;
+  reels: FacebookGlobalReelCadence;
   slowStart: {
     totalDays: number;
     dailyCaps: FacebookSlowStartDailyCaps[];
   };
   bounds: FacebookOperationPolicyBounds & {
+    reels: {
+      persona: {
+        viewsPerLike: IntegerFieldBounds;
+        viewsPerFollow: IntegerFieldBounds;
+      };
+      slowStart: { viewsPerFollow: IntegerFieldBounds };
+      rule: { viewsPerFollow: IntegerFieldBounds };
+      consumption: { viewsPerFollow: IntegerFieldBounds };
+    };
     slowStart: {
       totalDays: IntegerFieldBounds;
       dailyCaps: Record<
@@ -1555,6 +1575,7 @@ export interface FacebookOperationGlobalPolicyWrite {
   expectedRevision: number;
   rule: FacebookRuleCadence;
   consumption: FacebookConsumptionCadence;
+  reels: FacebookGlobalReelCadence;
   slowStart: {
     totalDays: number;
     dailyCaps: FacebookSlowStartDailyCaps[];

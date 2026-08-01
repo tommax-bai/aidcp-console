@@ -37,6 +37,12 @@ function draftFrom(view: FacebookOperationGlobalPolicyView): GlobalDraft {
   return {
     rule: { ...view.rule },
     consumption: { ...view.consumption },
+    reels: {
+      persona: { ...view.reels.persona },
+      slowStart: { ...view.reels.slowStart },
+      rule: { ...view.reels.rule },
+      consumption: { ...view.reels.consumption },
+    },
     slowStart: {
       totalDays: view.slowStart.totalDays,
       dailyCaps: view.slowStart.dailyCaps.map((row) => ({ ...row })),
@@ -58,6 +64,11 @@ function integerError(label: string, value: number, bounds: { min: number; max: 
 
 function validateDraft(draft: GlobalDraft, view: FacebookOperationGlobalPolicyView) {
   const cadenceChecks: Array<[string, number, IntegerFieldBounds]> = [
+    ['普通人设 Reel 浏览点赞阈值', draft.reels.persona.viewsPerLike, view.bounds.reels.persona.viewsPerLike],
+    ['普通人设 Reel 浏览关注阈值', draft.reels.persona.viewsPerFollow, view.bounds.reels.persona.viewsPerFollow],
+    ['冷启动 Reel 浏览关注阈值', draft.reels.slowStart.viewsPerFollow, view.bounds.reels.slowStart.viewsPerFollow],
+    ['规则模式 Reel 浏览关注阈值', draft.reels.rule.viewsPerFollow, view.bounds.reels.rule.viewsPerFollow],
+    ['消费模式 Reel 浏览关注阈值', draft.reels.consumption.viewsPerFollow, view.bounds.reels.consumption.viewsPerFollow],
     ['规则浏览点赞阈值', draft.rule.viewsPerLike, view.bounds.rule.viewsPerLike],
     ['规则加群轮次', draft.rule.joinEveryNRounds, view.bounds.rule.joinEveryNRounds],
     ['消费浏览点赞阈值', draft.consumption.viewsPerLike, view.bounds.consumption.viewsPerLike],
@@ -174,6 +185,8 @@ export function FacebookOperationGlobalPolicyEditor() {
     || !['dev', 'ol'].includes(query.data.executionTarget)
     || !query.data.rule
     || !query.data.consumption
+    || !query.data.reels
+    || !query.data.bounds?.reels
     || !query.data.slowStart
     || !query.data.bounds?.slowStart
   ) {
@@ -209,15 +222,23 @@ export function FacebookOperationGlobalPolicyEditor() {
         <Space size={[8, 8]} wrap>
           <Tag color="blue">目标：{view.executionTarget.toUpperCase()}</Tag>
           <Tag>revision {view.revision}</Tag>
+          <Tag color="cyan">
+            普通人设 Reel：{view.reels.persona.viewsPerLike} 浏览/点赞，
+            {view.reels.persona.viewsPerFollow} 浏览/关注
+          </Tag>
           <Tag>规则：{view.rule.viewsPerLike}/{view.rule.joinEveryNRounds}</Tag>
           <Tag color="purple">
             消费：{view.consumption.viewsPerLike}/
             {view.consumption.confirmedLikesPerJoin}/
             {view.consumption.confirmedJoinsPerComment}
           </Tag>
+          <Tag color="orange">
+            Reel 关注：冷启动 {view.reels.slowStart.viewsPerFollow} / 规则 {view.reels.rule.viewsPerFollow}
+            {' / '}消费 {view.reels.consumption.viewsPerFollow}
+          </Tag>
           <Tag color="orange">冷启动：{view.slowStart.totalDays} 天</Tag>
           <Typography.Text type="secondary">
-            环境可选择继承这些节奏，或保留独立配置；冷启动数值仅使用全局配置。
+            Reel 点赞/关注节奏只可全局配置；普通人设的点赞只统计 Reel 浏览。
           </Typography.Text>
         </Space>
       </Card>
@@ -245,6 +266,12 @@ export function FacebookOperationGlobalPolicyEditor() {
                 expectedRevision: view.revision,
                 rule: { ...draft.rule },
                 consumption: { ...draft.consumption },
+                reels: {
+                  persona: { ...draft.reels.persona },
+                  slowStart: { ...draft.reels.slowStart },
+                  rule: { ...draft.reels.rule },
+                  consumption: { ...draft.reels.consumption },
+                },
                 slowStart: {
                   totalDays: draft.slowStart.totalDays,
                   dailyCaps: draft.slowStart.dailyCaps.map((row) => ({ ...row })),
@@ -263,9 +290,52 @@ export function FacebookOperationGlobalPolicyEditor() {
             <Alert
               type="info"
               showIcon
-              message="全局节奏变更只推进继承环境的 policy revision"
-              description="独立配置环境不会改变；冷启动中的环境保留当前天数，已毕业环境不会因延长总天数重新进入。"
+              message="普通人设点赞只统计 Reel 浏览"
+              description="达到 N 时仅产生一次动作意图，仍受风险、配额、冷却和确认结果约束；Feed、Feed 视频、详情页以及其他模式不会使用普通人设的 Reel 点赞节奏。"
             />
+
+            <Space direction="vertical" size={8}>
+              <Typography.Title level={5}>普通人设模式 · Reel 节奏</Typography.Title>
+              <Space wrap>
+                <Typography.Text>每浏览</Typography.Text>
+                <InputNumber
+                  aria-label="普通人设 Reel 浏览点赞阈值"
+                  precision={0}
+                  min={view.bounds.reels.persona.viewsPerLike.min}
+                  max={view.bounds.reels.persona.viewsPerLike.max}
+                  value={draft.reels.persona.viewsPerLike}
+                  disabled={save.isPending}
+                  onChange={(value) => setDraft((current) => current && value !== null
+                    ? {
+                        ...current,
+                        reels: {
+                          ...current.reels,
+                          persona: { ...current.reels.persona, viewsPerLike: value },
+                        },
+                      }
+                    : current)}
+                />
+                <Typography.Text>个 Reel 点赞一次；每浏览</Typography.Text>
+                <InputNumber
+                  aria-label="普通人设 Reel 浏览关注阈值"
+                  precision={0}
+                  min={view.bounds.reels.persona.viewsPerFollow.min}
+                  max={view.bounds.reels.persona.viewsPerFollow.max}
+                  value={draft.reels.persona.viewsPerFollow}
+                  disabled={save.isPending}
+                  onChange={(value) => setDraft((current) => current && value !== null
+                    ? {
+                        ...current,
+                        reels: {
+                          ...current.reels,
+                          persona: { ...current.reels.persona, viewsPerFollow: value },
+                        },
+                      }
+                    : current)}
+                />
+                <Typography.Text>个 Reel 关注一次</Typography.Text>
+              </Space>
+            </Space>
 
             <Space direction="vertical" size={8}>
               <Typography.Title level={5}>规则模式全局节奏</Typography.Title>
@@ -292,6 +362,25 @@ export function FacebookOperationGlobalPolicyEditor() {
                     : current)}
                 />
                 <Typography.Text>轮加群联系评论一次</Typography.Text>
+                <Typography.Text>每浏览</Typography.Text>
+                <InputNumber
+                  aria-label="规则模式 Reel 浏览关注阈值"
+                  precision={0}
+                  min={view.bounds.reels.rule.viewsPerFollow.min}
+                  max={view.bounds.reels.rule.viewsPerFollow.max}
+                  value={draft.reels.rule.viewsPerFollow}
+                  disabled={save.isPending}
+                  onChange={(value) => setDraft((current) => current && value !== null
+                    ? {
+                        ...current,
+                        reels: {
+                          ...current.reels,
+                          rule: { viewsPerFollow: value },
+                        },
+                      }
+                    : current)}
+                />
+                <Typography.Text>个 Reel 关注一次</Typography.Text>
               </Space>
             </Space>
 
@@ -344,12 +433,50 @@ export function FacebookOperationGlobalPolicyEditor() {
                     : current)}
                 />
                 <Typography.Text>→ 历史群评论</Typography.Text>
+                <Typography.Text>每浏览</Typography.Text>
+                <InputNumber
+                  aria-label="消费模式 Reel 浏览关注阈值"
+                  precision={0}
+                  min={view.bounds.reels.consumption.viewsPerFollow.min}
+                  max={view.bounds.reels.consumption.viewsPerFollow.max}
+                  value={draft.reels.consumption.viewsPerFollow}
+                  disabled={save.isPending}
+                  onChange={(value) => setDraft((current) => current && value !== null
+                    ? {
+                        ...current,
+                        reels: {
+                          ...current.reels,
+                          consumption: { viewsPerFollow: value },
+                        },
+                      }
+                    : current)}
+                />
+                <Typography.Text>个 Reel 关注一次</Typography.Text>
               </Space>
             </Space>
 
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
               <Typography.Title level={5}>冷启动全局上限</Typography.Title>
               <Space wrap>
+                <Typography.Text>每浏览</Typography.Text>
+                <InputNumber
+                  aria-label="冷启动 Reel 浏览关注阈值"
+                  precision={0}
+                  min={view.bounds.reels.slowStart.viewsPerFollow.min}
+                  max={view.bounds.reels.slowStart.viewsPerFollow.max}
+                  value={draft.reels.slowStart.viewsPerFollow}
+                  disabled={save.isPending}
+                  onChange={(value) => setDraft((current) => current && value !== null
+                    ? {
+                        ...current,
+                        reels: {
+                          ...current.reels,
+                          slowStart: { viewsPerFollow: value },
+                        },
+                      }
+                    : current)}
+                />
+                <Typography.Text>个 Reel 关注一次</Typography.Text>
                 <Typography.Text>总天数</Typography.Text>
                 <InputNumber
                   aria-label="全局冷启动总天数"

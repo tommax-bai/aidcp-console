@@ -82,12 +82,18 @@ const operationPolicy: FacebookOperationPolicyView = {
 const globalPolicy: FacebookOperationGlobalPolicyView = {
   executionTarget: 'dev',
   revision: 8,
-  schemaVersion: 'facebook-operation-global-policy/v1',
+  schemaVersion: 'facebook_operation_global_policy@2',
   rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
   consumption: {
     viewsPerLike: 5,
     confirmedLikesPerJoin: 2,
     confirmedJoinsPerComment: 2,
+  },
+  reels: {
+    persona: { viewsPerLike: 4, viewsPerFollow: 10 },
+    slowStart: { viewsPerFollow: 15 },
+    rule: { viewsPerFollow: 15 },
+    consumption: { viewsPerFollow: 15 },
   },
   slowStart: {
     totalDays: 7,
@@ -111,6 +117,15 @@ const globalPolicy: FacebookOperationGlobalPolicyView = {
       viewsPerLike: { min: 1, max: 100, default: 5 },
       confirmedLikesPerJoin: { min: 1, max: 20, default: 2 },
       confirmedJoinsPerComment: { min: 1, max: 20, default: 2 },
+    },
+    reels: {
+      persona: {
+        viewsPerLike: { min: 1, max: 100, default: 4 },
+        viewsPerFollow: { min: 1, max: 100, default: 10 },
+      },
+      slowStart: { viewsPerFollow: { min: 1, max: 100, default: 15 } },
+      rule: { viewsPerFollow: { min: 1, max: 100, default: 15 } },
+      consumption: { viewsPerFollow: { min: 1, max: 100, default: 15 } },
     },
     slowStart: {
       totalDays: { min: 1, max: 30, default: 7 },
@@ -196,7 +211,7 @@ describe('EnvironmentsPage', () => {
     expect(fetchMock.mock.calls.every(([, init]) => !['POST', 'PUT'].includes((init as RequestInit | undefined)?.method ?? 'GET'))).toBe(true);
   });
 
-  it('edits target-global rule, consumption and slow-start values with one CAS write', async () => {
+  it('edits persona Reel and mode follow cadence with the other target-global values in one CAS write', async () => {
     let currentGlobal = globalPolicy;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
@@ -224,7 +239,18 @@ describe('EnvironmentsPage', () => {
 
     expect(await screen.findByText('目标：DEV')).toBeTruthy();
     expect(screen.getByText('冷启动：7 天')).toBeTruthy();
+    expect(screen.getByText(/普通人设 Reel：4 浏览\/点赞，10 浏览\/关注/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
+    const personaReelLike = await screen.findByLabelText('普通人设 Reel 浏览点赞阈值');
+    const saveGlobal = screen.getByRole('button', { name: '保存全局数值' });
+    fireEvent.change(personaReelLike, { target: { value: '101' } });
+    expect(saveGlobal.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(personaReelLike, {
+      target: { value: '5' },
+    });
+    fireEvent.change(screen.getByLabelText('冷启动 Reel 浏览关注阈值'), {
+      target: { value: '16' },
+    });
     fireEvent.change(await screen.findByLabelText('全局规则模式浏览点赞阈值'), {
       target: { value: '6' },
     });
@@ -241,6 +267,11 @@ describe('EnvironmentsPage', () => {
     );
     const body = JSON.parse(String((put?.[1] as RequestInit).body));
     expect(body.expectedRevision).toBe(8);
+    expect(body.reels).toEqual({
+      ...globalPolicy.reels,
+      persona: { ...globalPolicy.reels.persona, viewsPerLike: 5 },
+      slowStart: { viewsPerFollow: 16 },
+    });
     expect(body.rule.viewsPerLike).toBe(6);
     expect(body.consumption).toEqual(globalPolicy.consumption);
     expect(body.slowStart.totalDays).toBe(8);
@@ -249,6 +280,46 @@ describe('EnvironmentsPage', () => {
       ...globalPolicy.slowStart.dailyCaps[6],
       day: 8,
     });
+    const authoritativeReads = fetchMock.mock.calls.filter(
+      ([input, init]) => String(input).endsWith('/api/facebook/operation-global-policy')
+        && (init as RequestInit | undefined)?.method !== 'PUT',
+    );
+    expect(authoritativeReads.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the edited global Reel cadence after a stale CAS failure', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith('/api/facebook/operation-global-policy')) {
+        if (init?.method === 'PUT') {
+          return new Response(JSON.stringify({
+            error: 'revision_conflict',
+            current: { ...globalPolicy, revision: 9 },
+          }), {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify(globalPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ environments: [environment], asOf: Date.now() }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    await screen.findByText('目标：DEV');
+    fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
+    const followInput = await screen.findByLabelText('普通人设 Reel 浏览关注阈值') as HTMLInputElement;
+    fireEvent.change(followInput, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存全局数值' }));
+
+    expect(await screen.findByText('全局策略已被其他操作员更新；当前表单已保留，请重新读取。')).toBeTruthy();
+    expect(followInput.value).toBe('12');
   });
 
   it('saves an inheriting environment without sending duplicated cadence values', async () => {
