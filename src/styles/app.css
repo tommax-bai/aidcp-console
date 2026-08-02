@@ -72,6 +72,12 @@
   /* ---- 阴影 ---- */
   --aidcp-shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
   --aidcp-shadow-md: 0 2px 4px -1px rgb(15 23 42 / 0.06), 0 4px 8px -2px rgb(15 23 42 / 0.04);
+
+  /* ---- 运营配置语义色 ---- */
+  --aidcp-accent-cyan: #08979c;
+  --aidcp-accent-blue: #1677ff;
+  --aidcp-accent-purple: #722ed1;
+  --aidcp-accent-orange: #d46b08;
 }
 
 /* ---- 基线排版 ---- */
@@ -100,6 +106,315 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--aidcp-space-4);
+}
+
+/* Facebook 全局运行数值：摘要先给结论，编辑区再按业务模式分组。 */
+.facebook-global-policy-card__title,
+.facebook-global-policy-card__actions,
+.facebook-global-policy-modal__title {
+  display: flex;
+  align-items: center;
+  gap: var(--aidcp-space-2);
+}
+
+.facebook-global-policy-card__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.facebook-global-policy-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--aidcp-space-3);
+}
+
+.facebook-global-policy-summary__group {
+  min-width: 0;
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-top: 3px solid var(--aidcp-muted-foreground);
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-background);
+}
+
+.facebook-global-policy-summary__group.is-persona {
+  border-top-color: var(--aidcp-accent-cyan);
+}
+
+.facebook-global-policy-summary__group.is-rule {
+  border-top-color: var(--aidcp-accent-blue);
+}
+
+.facebook-global-policy-summary__group.is-consumption {
+  border-top-color: var(--aidcp-accent-purple);
+}
+
+.facebook-global-policy-summary__group.is-slow-start {
+  border-top-color: var(--aidcp-accent-orange);
+}
+
+.facebook-global-policy-summary__group header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--aidcp-space-3);
+}
+
+.facebook-global-policy-summary__eyebrow {
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  font-weight: var(--aidcp-font-weight-medium);
+}
+
+.facebook-global-policy-summary__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--aidcp-space-2);
+}
+
+.facebook-global-policy-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--aidcp-space-1);
+  padding: var(--aidcp-space-2);
+  border-radius: var(--aidcp-radius-sm);
+  background: var(--aidcp-muted);
+}
+
+.facebook-global-policy-metric__label,
+.facebook-global-policy-metric__suffix {
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+}
+
+.facebook-global-policy-metric__value {
+  margin-right: var(--aidcp-space-1);
+  font-size: var(--aidcp-font-size-title-2);
+  font-weight: var(--aidcp-font-weight-semibold);
+  line-height: var(--aidcp-line-height-tight);
+}
+
+.facebook-global-policy-card__note {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--aidcp-space-4);
+  margin-top: var(--aidcp-space-3);
+  padding-top: var(--aidcp-space-3);
+  border-top: 1px solid var(--aidcp-border);
+}
+
+.facebook-global-policy-card__note > :first-child {
+  max-width: 760px;
+}
+
+.facebook-global-policy-modal__title {
+  flex-wrap: wrap;
+}
+
+.facebook-global-policy-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aidcp-space-4);
+}
+
+.facebook-global-policy-section {
+  padding: var(--aidcp-space-4);
+  border: 1px solid var(--aidcp-border);
+  border-left: 3px solid var(--aidcp-muted-foreground);
+  border-radius: var(--aidcp-radius-lg);
+  background: var(--aidcp-card);
+  box-shadow: var(--aidcp-shadow-sm);
+}
+
+.facebook-global-policy-section.is-persona {
+  border-left-color: var(--aidcp-accent-cyan);
+}
+
+.facebook-global-policy-section.is-rule {
+  border-left-color: var(--aidcp-accent-blue);
+}
+
+.facebook-global-policy-section.is-consumption {
+  border-left-color: var(--aidcp-accent-purple);
+}
+
+.facebook-global-policy-section.is-slow-start {
+  border-left-color: var(--aidcp-accent-orange);
+}
+
+.facebook-global-policy-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--aidcp-space-3);
+  margin-bottom: var(--aidcp-space-4);
+}
+
+.facebook-global-policy-section__header .ant-typography {
+  margin: 0;
+}
+
+.facebook-global-policy-section__header h5.ant-typography {
+  margin-bottom: var(--aidcp-space-1);
+}
+
+.facebook-global-policy-fields {
+  display: grid;
+  gap: var(--aidcp-space-3);
+}
+
+.facebook-global-policy-fields.is-two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.facebook-global-policy-fields.is-three-column {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.facebook-global-policy-fields.is-four-column {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.facebook-global-policy-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--aidcp-space-2);
+  padding: var(--aidcp-space-3);
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+  background: var(--aidcp-muted);
+}
+
+.facebook-global-policy-field__label {
+  font-size: var(--aidcp-font-size-sm);
+  font-weight: var(--aidcp-font-weight-medium);
+}
+
+.facebook-global-policy-field__control {
+  display: flex;
+  align-items: center;
+  gap: var(--aidcp-space-2);
+}
+
+.facebook-global-policy-field__control .ant-input-number {
+  width: 92px;
+  flex: 0 0 92px;
+}
+
+.facebook-global-policy-field__suffix,
+.facebook-global-policy-field__hint {
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  line-height: var(--aidcp-line-height-normal);
+}
+
+.facebook-global-policy-daily__heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--aidcp-space-3);
+  margin-top: var(--aidcp-space-5);
+  margin-bottom: var(--aidcp-space-2);
+}
+
+.facebook-global-policy-daily__heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.facebook-global-policy-daily__scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--aidcp-border);
+  border-radius: var(--aidcp-radius-md);
+}
+
+.facebook-global-policy-daily__table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.facebook-global-policy-daily__table th,
+.facebook-global-policy-daily__table td {
+  padding: var(--aidcp-space-2);
+  border-right: 1px solid var(--aidcp-border);
+  border-bottom: 1px solid var(--aidcp-border);
+  text-align: center;
+}
+
+.facebook-global-policy-daily__table thead th {
+  color: var(--aidcp-muted-foreground);
+  font-size: var(--aidcp-font-size-xs);
+  font-weight: var(--aidcp-font-weight-medium);
+  background: var(--aidcp-muted);
+}
+
+.facebook-global-policy-daily__table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 82px;
+  background: var(--aidcp-muted);
+}
+
+.facebook-global-policy-daily__table tbody th {
+  color: var(--aidcp-foreground);
+  font-size: var(--aidcp-font-size-sm);
+}
+
+.facebook-global-policy-daily__table tr:last-child > * {
+  border-bottom: 0;
+}
+
+.facebook-global-policy-daily__table tr > *:last-child {
+  border-right: 0;
+}
+
+.facebook-global-policy-daily__table .ant-input-number {
+  width: 100%;
+  min-width: 74px;
+}
+
+@media (max-width: 1100px) {
+  .facebook-global-policy-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .facebook-global-policy-fields.is-three-column,
+  .facebook-global-policy-fields.is-four-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .facebook-global-policy-card .ant-card-head-wrapper,
+  .facebook-global-policy-card__note,
+  .facebook-global-policy-section__header,
+  .facebook-global-policy-daily__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .facebook-global-policy-card__actions {
+    justify-content: flex-start;
+  }
+
+  .facebook-global-policy-summary,
+  .facebook-global-policy-fields.is-two-column,
+  .facebook-global-policy-fields.is-three-column,
+  .facebook-global-policy-fields.is-four-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facebook-global-policy-section {
+    padding: var(--aidcp-space-3);
+  }
 }
 
 /* Facebook group add/import is one framed operational tool inside the target list. */

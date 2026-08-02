@@ -237,10 +237,13 @@ describe('EnvironmentsPage', () => {
     });
     renderPage(fetchMock);
 
-    expect(await screen.findByText('目标：DEV')).toBeTruthy();
-    expect(screen.getByText('冷启动：7 天')).toBeTruthy();
-    expect(screen.getByText(/普通人设 Reel：4 浏览\/点赞，10 浏览\/关注/)).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Facebook 全局运行数值摘要' })).toBeTruthy();
+    expect(screen.getByText('DEV')).toBeTruthy();
+    expect(screen.getByText('分天动作上限')).toBeTruthy();
+    expect(screen.getByText('Reel 节奏')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
+    expect(await screen.findByRole('region', { name: '普通人设 Reel 节奏' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: '冷启动每日动作上限' })).toBeTruthy();
     const personaReelLike = await screen.findByLabelText('普通人设 Reel 浏览点赞阈值');
     const saveGlobal = screen.getByRole('button', { name: '保存全局数值' });
     fireEvent.change(personaReelLike, { target: { value: '101' } });
@@ -312,7 +315,7 @@ describe('EnvironmentsPage', () => {
     });
     renderPage(fetchMock);
 
-    await screen.findByText('目标：DEV');
+    await screen.findByRole('region', { name: 'Facebook 全局运行数值摘要' });
     fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
     const followInput = await screen.findByLabelText('普通人设 Reel 浏览关注阈值') as HTMLInputElement;
     fireEvent.change(followInput, { target: { value: '12' } });
