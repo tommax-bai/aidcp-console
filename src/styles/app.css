@@ -243,6 +243,10 @@ body {
   border-left-color: var(--aidcp-accent-orange);
 }
 
+.facebook-global-policy-subpolicy {
+  margin-top: var(--aidcp-space-4);
+}
+
 .facebook-global-policy-section__header {
   display: flex;
   align-items: flex-start;

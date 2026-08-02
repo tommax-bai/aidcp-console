@@ -25,7 +25,7 @@ const SOURCE_LABEL: Record<FacebookGroupCommentPolicyView['source'], string> = {
   default: '服务器默认值（未持久化）',
 };
 
-export function FacebookGroupCommentPolicyEditor() {
+export function FacebookGroupCommentPolicyEditor({ enabled = true }: { enabled?: boolean }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const queryKey = ['facebook', 'groups', 'comment-policy'] as const;
@@ -33,6 +33,7 @@ export function FacebookGroupCommentPolicyEditor() {
     queryKey,
     queryFn: () =>
       apiGet<FacebookGroupCommentPolicyView>('/api/facebook/groups/comment-policy'),
+    enabled,
     refetchOnWindowFocus: true,
   });
   const [draftHours, setDraftHours] = useState<number | null>(null);
@@ -62,9 +63,16 @@ export function FacebookGroupCommentPolicyEditor() {
     },
   });
 
+  if (!enabled) return null;
+
   if (policy.isLoading) {
     return (
-      <Card size="small" type="inner" title="群组评论时序">
+      <Card
+        size="small"
+        type="inner"
+        className="facebook-global-policy-subpolicy"
+        title="入群后评论延迟（独立保存）"
+      >
         <Skeleton active paragraph={{ rows: 2 }} />
       </Card>
     );
@@ -72,7 +80,12 @@ export function FacebookGroupCommentPolicyEditor() {
 
   if (policy.isError || !policy.data) {
     return (
-      <Card size="small" type="inner" title="群组评论时序">
+      <Card
+        size="small"
+        type="inner"
+        className="facebook-global-policy-subpolicy"
+        title="入群后评论延迟（独立保存）"
+      >
         <Alert
           type="error"
           showIcon
@@ -94,7 +107,8 @@ export function FacebookGroupCommentPolicyEditor() {
     <Card
       size="small"
       type="inner"
-      title="群组评论时序"
+      className="facebook-global-policy-subpolicy"
+      title="入群后评论延迟（独立保存）"
       extra={
         <Space size={[4, 4]} wrap>
           <Tag>{labelOf(SOURCE_LABEL, view.source)}</Tag>
@@ -103,6 +117,9 @@ export function FacebookGroupCommentPolicyEditor() {
       }
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Typography.Text type="secondary">
+          该配置独立于消费节奏保存；修改它不会重置消费模式 revision 或已累计进度。
+        </Typography.Text>
         {writeError ? (
           <Alert
             type="error"
@@ -161,7 +178,7 @@ export function FacebookGroupCommentPolicyEditor() {
             </Typography.Text>
           ) : null}
           <Typography.Text type="secondary">
-            该值只决定账号加入群组后，最早何时可对该群做首次普通覆盖评论。
+            该值决定消费模式与普通群组覆盖中，账号加入群组后最早何时可首次评论。
           </Typography.Text>
         </Space>
 

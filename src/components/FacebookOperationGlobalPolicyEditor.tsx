@@ -14,6 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiGet, apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
+import { FacebookGroupCommentPolicyEditor } from './FacebookGroupCommentPolicyEditor';
 import type {
   FacebookOperationGlobalPolicyView,
   FacebookOperationGlobalPolicyWrite,
@@ -638,6 +639,7 @@ export function FacebookOperationGlobalPolicyEditor() {
                     : current)}
                 />
               </div>
+              <FacebookGroupCommentPolicyEditor enabled={open} />
             </section>
 
             <section aria-label="冷启动全局上限" className="facebook-global-policy-section is-slow-start">

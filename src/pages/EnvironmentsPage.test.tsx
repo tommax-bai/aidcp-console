@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { EnvironmentsPage, ENVIRONMENT_LIFECYCLE_META, filterEnvironmentAssets } from './EnvironmentsPage';
 import type {
   EnvironmentAssetView,
+  FacebookGroupCommentPolicyView,
   FacebookOperationGlobalPolicyView,
   FacebookOperationPolicyView,
 } from '../types/api';
@@ -147,6 +148,19 @@ const globalPolicy: FacebookOperationGlobalPolicyView = {
   updatedBy: 'panel:alice',
 };
 
+const groupCommentPolicy: FacebookGroupCommentPolicyView = {
+  joinToFirstCommentHours: 24,
+  revision: null,
+  source: 'default',
+  bounds: {
+    joinToFirstCommentHours: { min: 1, max: 168, default: 24 },
+  },
+  sameGroupRecommentCooldownHours: 72,
+  sameGroupRecommentCooldownSource: 'default',
+  updatedAt: null,
+  updatedBy: null,
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -218,6 +232,12 @@ describe('EnvironmentsPage', () => {
     let currentGlobal = globalPolicy;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
+      if (path.endsWith('/api/facebook/groups/comment-policy')) {
+        return new Response(JSON.stringify(groupCommentPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (path.endsWith('/api/facebook/operation-global-policy')) {
         if (init?.method === 'PUT') {
           const inputPolicy = JSON.parse(String(init.body));
@@ -292,9 +312,82 @@ describe('EnvironmentsPage', () => {
     expect(authoritativeReads.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('edits join-to-first-comment delay inside global configuration with its own CAS write', async () => {
+    let currentGroupPolicy = groupCommentPolicy;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith('/api/facebook/groups/comment-policy')) {
+        if (init?.method === 'PUT') {
+          const inputPolicy = JSON.parse(String(init.body));
+          currentGroupPolicy = {
+            ...currentGroupPolicy,
+            joinToFirstCommentHours: inputPolicy.joinToFirstCommentHours,
+            revision: 1,
+            source: 'db',
+            updatedAt: '2026-08-03T01:00:00.000Z',
+            updatedBy: 'panel:alice',
+          };
+        }
+        return new Response(JSON.stringify(currentGroupPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (path.endsWith('/api/facebook/operation-global-policy')) {
+        return new Response(JSON.stringify(globalPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (path.endsWith('/api/environments/facebook-001/facebook-operation-policy')) {
+        return new Response(JSON.stringify(operationPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ environments: [facebookEnvironment], asOf: Date.now() }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderPage(fetchMock);
+
+    await screen.findByRole('region', { name: 'Facebook 全局运行数值摘要' });
+    expect(screen.queryByLabelText('入群后首次评论等待（小时）')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
+
+    expect(await screen.findByText('入群后评论延迟（独立保存）')).toBeTruthy();
+    expect(await screen.findByText('同群再次评论冷却（独立，只读）')).toBeTruthy();
+    expect(screen.getByText('72 小时')).toBeTruthy();
+    const delay = screen.getByLabelText('入群后首次评论等待（小时）') as HTMLInputElement;
+    expect(delay.value).toBe('24');
+    fireEvent.change(delay, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存首次评论等待' }));
+
+    await waitFor(() => expect(screen.getByText('revision 1')).toBeTruthy());
+    const groupPut = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).endsWith('/api/facebook/groups/comment-policy')
+        && (init as RequestInit | undefined)?.method === 'PUT',
+    );
+    expect(JSON.parse(String((groupPut?.[1] as RequestInit).body))).toEqual({
+      expectedRevision: 0,
+      joinToFirstCommentHours: 12,
+    });
+    expect(fetchMock.mock.calls.some(
+      ([input, init]) => String(input).endsWith('/api/facebook/operation-global-policy')
+        && (init as RequestInit | undefined)?.method === 'PUT',
+    )).toBe(false);
+  });
+
   it('keeps the edited global Reel cadence after a stale CAS failure', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
+      if (path.endsWith('/api/facebook/groups/comment-policy')) {
+        return new Response(JSON.stringify(groupCommentPolicy), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (path.endsWith('/api/facebook/operation-global-policy')) {
         if (init?.method === 'PUT') {
           return new Response(JSON.stringify({
