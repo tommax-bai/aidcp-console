@@ -1474,7 +1474,10 @@ export interface FacebookGlobalReelCadence {
     viewsPerLike: number;
     viewsPerFollow: number;
   };
-  slowStart: { viewsPerFollow: number };
+  slowStart: {
+    viewsPerLike: number;
+    viewsPerFollow: number;
+  };
   rule: { viewsPerFollow: number };
   consumption: { viewsPerFollow: number };
 }
@@ -1555,7 +1558,10 @@ export interface FacebookOperationGlobalPolicyView {
         viewsPerLike: IntegerFieldBounds;
         viewsPerFollow: IntegerFieldBounds;
       };
-      slowStart: { viewsPerFollow: IntegerFieldBounds };
+      slowStart: {
+        viewsPerLike: IntegerFieldBounds;
+        viewsPerFollow: IntegerFieldBounds;
+      };
       rule: { viewsPerFollow: IntegerFieldBounds };
       consumption: { viewsPerFollow: IntegerFieldBounds };
     };

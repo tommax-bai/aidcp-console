@@ -134,6 +134,7 @@ function validateDraft(draft: GlobalDraft, view: FacebookOperationGlobalPolicyVi
   const cadenceChecks: Array<[string, number, IntegerFieldBounds]> = [
     ['普通人设 Reel 浏览点赞阈值', draft.reels.persona.viewsPerLike, view.bounds.reels.persona.viewsPerLike],
     ['普通人设 Reel 浏览关注阈值', draft.reels.persona.viewsPerFollow, view.bounds.reels.persona.viewsPerFollow],
+    ['冷启动 Reel 浏览点赞阈值', draft.reels.slowStart.viewsPerLike, view.bounds.reels.slowStart.viewsPerLike],
     ['冷启动 Reel 浏览关注阈值', draft.reels.slowStart.viewsPerFollow, view.bounds.reels.slowStart.viewsPerFollow],
     ['规则模式 Reel 浏览关注阈值', draft.reels.rule.viewsPerFollow, view.bounds.reels.rule.viewsPerFollow],
     ['消费模式 Reel 浏览关注阈值', draft.reels.consumption.viewsPerFollow, view.bounds.reels.consumption.viewsPerFollow],
@@ -385,6 +386,11 @@ export function FacebookOperationGlobalPolicyEditor() {
             </header>
             <div className="facebook-global-policy-summary__metrics">
               <PolicyMetric label="周期" value={view.slowStart.totalDays} suffix="天" />
+              <PolicyMetric
+                label="Reel 点赞"
+                value={view.reels.slowStart.viewsPerLike}
+                suffix="次浏览 / 次"
+              />
               <PolicyMetric
                 label="Reel 关注"
                 value={view.reels.slowStart.viewsPerFollow}
@@ -644,6 +650,24 @@ export function FacebookOperationGlobalPolicyEditor() {
               </header>
               <div className="facebook-global-policy-fields is-two-column">
                 <PolicyNumberField
+                  ariaLabel="冷启动 Reel 浏览点赞阈值"
+                  label="Reel 点赞频率"
+                  suffix="个 Reel / 点赞 1 次"
+                  value={draft.reels.slowStart.viewsPerLike}
+                  min={view.bounds.reels.slowStart.viewsPerLike.min}
+                  max={view.bounds.reels.slowStart.viewsPerLike.max}
+                  disabled={save.isPending}
+                  onChange={(value) => setDraft((current) => current && value !== null
+                    ? {
+                        ...current,
+                        reels: {
+                          ...current.reels,
+                          slowStart: { ...current.reels.slowStart, viewsPerLike: value },
+                        },
+                      }
+                    : current)}
+                />
+                <PolicyNumberField
                   ariaLabel="冷启动 Reel 浏览关注阈值"
                   label="Reel 关注频率"
                   suffix="个 Reel / 关注 1 次"
@@ -654,7 +678,10 @@ export function FacebookOperationGlobalPolicyEditor() {
                   onChange={(value) => setDraft((current) => current && value !== null
                     ? {
                         ...current,
-                        reels: { ...current.reels, slowStart: { viewsPerFollow: value } },
+                        reels: {
+                          ...current.reels,
+                          slowStart: { ...current.reels.slowStart, viewsPerFollow: value },
+                        },
                       }
                     : current)}
                 />

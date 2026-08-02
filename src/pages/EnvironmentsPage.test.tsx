@@ -82,7 +82,7 @@ const operationPolicy: FacebookOperationPolicyView = {
 const globalPolicy: FacebookOperationGlobalPolicyView = {
   executionTarget: 'dev',
   revision: 8,
-  schemaVersion: 'facebook_operation_global_policy@2',
+  schemaVersion: 'facebook_operation_global_policy@3',
   rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
   consumption: {
     viewsPerLike: 5,
@@ -91,7 +91,7 @@ const globalPolicy: FacebookOperationGlobalPolicyView = {
   },
   reels: {
     persona: { viewsPerLike: 4, viewsPerFollow: 10 },
-    slowStart: { viewsPerFollow: 15 },
+    slowStart: { viewsPerLike: 15, viewsPerFollow: 15 },
     rule: { viewsPerFollow: 15 },
     consumption: { viewsPerFollow: 15 },
   },
@@ -123,7 +123,10 @@ const globalPolicy: FacebookOperationGlobalPolicyView = {
         viewsPerLike: { min: 1, max: 100, default: 4 },
         viewsPerFollow: { min: 1, max: 100, default: 10 },
       },
-      slowStart: { viewsPerFollow: { min: 1, max: 100, default: 15 } },
+      slowStart: {
+        viewsPerLike: { min: 1, max: 100, default: 15 },
+        viewsPerFollow: { min: 1, max: 100, default: 15 },
+      },
       rule: { viewsPerFollow: { min: 1, max: 100, default: 15 } },
       consumption: { viewsPerFollow: { min: 1, max: 100, default: 15 } },
     },
@@ -211,7 +214,7 @@ describe('EnvironmentsPage', () => {
     expect(fetchMock.mock.calls.every(([, init]) => !['POST', 'PUT'].includes((init as RequestInit | undefined)?.method ?? 'GET'))).toBe(true);
   });
 
-  it('edits persona Reel and mode follow cadence with the other target-global values in one CAS write', async () => {
+  it('edits slow-start Reel like/follow cadence with the other target-global values in one CAS write', async () => {
     let currentGlobal = globalPolicy;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
@@ -244,12 +247,12 @@ describe('EnvironmentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
     expect(await screen.findByRole('region', { name: '普通人设 Reel 节奏' })).toBeTruthy();
     expect(screen.getByRole('table', { name: '冷启动每日动作上限' })).toBeTruthy();
-    const personaReelLike = await screen.findByLabelText('普通人设 Reel 浏览点赞阈值');
+    const slowStartReelLike = await screen.findByLabelText('冷启动 Reel 浏览点赞阈值');
     const saveGlobal = screen.getByRole('button', { name: '保存全局数值' });
-    fireEvent.change(personaReelLike, { target: { value: '101' } });
+    fireEvent.change(slowStartReelLike, { target: { value: '101' } });
     expect(saveGlobal.hasAttribute('disabled')).toBe(true);
-    fireEvent.change(personaReelLike, {
-      target: { value: '5' },
+    fireEvent.change(slowStartReelLike, {
+      target: { value: '12' },
     });
     fireEvent.change(screen.getByLabelText('冷启动 Reel 浏览关注阈值'), {
       target: { value: '16' },
@@ -272,8 +275,7 @@ describe('EnvironmentsPage', () => {
     expect(body.expectedRevision).toBe(8);
     expect(body.reels).toEqual({
       ...globalPolicy.reels,
-      persona: { ...globalPolicy.reels.persona, viewsPerLike: 5 },
-      slowStart: { viewsPerFollow: 16 },
+      slowStart: { viewsPerLike: 12, viewsPerFollow: 16 },
     });
     expect(body.rule.viewsPerLike).toBe(6);
     expect(body.consumption).toEqual(globalPolicy.consumption);
@@ -317,12 +319,12 @@ describe('EnvironmentsPage', () => {
 
     await screen.findByRole('region', { name: 'Facebook 全局运行数值摘要' });
     fireEvent.click(screen.getByRole('button', { name: '编辑全局数值' }));
-    const followInput = await screen.findByLabelText('普通人设 Reel 浏览关注阈值') as HTMLInputElement;
-    fireEvent.change(followInput, { target: { value: '12' } });
+    const slowStartLikeInput = await screen.findByLabelText('冷启动 Reel 浏览点赞阈值') as HTMLInputElement;
+    fireEvent.change(slowStartLikeInput, { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: '保存全局数值' }));
 
     expect(await screen.findByText('全局策略已被其他操作员更新；当前表单已保留，请重新读取。')).toBeTruthy();
-    expect(followInput.value).toBe('12');
+    expect(slowStartLikeInput.value).toBe('12');
   });
 
   it('saves an inheriting environment without sending duplicated cadence values', async () => {
