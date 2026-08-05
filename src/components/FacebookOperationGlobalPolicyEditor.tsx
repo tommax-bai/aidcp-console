@@ -7,6 +7,7 @@ import {
   Card,
   InputNumber,
   Modal,
+  Popconfirm,
   Space,
   Tag,
   Typography,
@@ -15,6 +16,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiGet, apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
 import { FacebookGroupCommentPolicyEditor } from './FacebookGroupCommentPolicyEditor';
+import {
+  FACEBOOK_GLOBAL_POLICY_SCOPE_CONFIRM_DETAIL,
+  FACEBOOK_GLOBAL_POLICY_SCOPE_CONFIRM_TITLE,
+  FACEBOOK_GLOBAL_POLICY_SCOPE_DETAIL,
+  FACEBOOK_GLOBAL_POLICY_SCOPE_TITLE,
+} from './facebookGlobalPolicyScopeNotice';
 import type {
   FacebookOperationGlobalPolicyView,
   FacebookOperationGlobalPolicyWrite,
@@ -312,6 +319,14 @@ export function FacebookOperationGlobalPolicyEditor() {
           </div>
         )}
       >
+        <Alert
+          type="warning"
+          showIcon
+          className="facebook-global-policy-card__scope"
+          message={FACEBOOK_GLOBAL_POLICY_SCOPE_TITLE}
+          description={FACEBOOK_GLOBAL_POLICY_SCOPE_DETAIL}
+        />
+
         <section
           aria-label="Facebook 全局运行数值摘要"
           className="facebook-global-policy-summary"
@@ -434,12 +449,14 @@ export function FacebookOperationGlobalPolicyEditor() {
           <Button key="cancel" disabled={save.isPending} onClick={() => setOpen(false)}>
             取消
           </Button>,
-          <Button
+          <Popconfirm
             key="save"
-            type="primary"
-            loading={save.isPending}
-            disabled={!draft || !dirty || !!validationError}
-            onClick={() => {
+            title={FACEBOOK_GLOBAL_POLICY_SCOPE_CONFIRM_TITLE}
+            description={FACEBOOK_GLOBAL_POLICY_SCOPE_CONFIRM_DETAIL}
+            okText="确认保存"
+            cancelText="返回检查"
+            styles={{ root: { maxWidth: 380 } }}
+            onConfirm={() => {
               if (!draft) return;
               save.mutate({
                 expectedRevision: view.revision,
@@ -458,14 +475,26 @@ export function FacebookOperationGlobalPolicyEditor() {
               });
             }}
           >
-            保存全局数值
-          </Button>,
+            <Button
+              type="primary"
+              loading={save.isPending}
+              disabled={!draft || !dirty || !!validationError}
+            >
+              保存全局数值
+            </Button>
+          </Popconfirm>,
         ]}
         destroyOnHidden
       >
         {draft ? (
           <div className="facebook-global-policy-editor">
             {writeError ? <Alert type="error" showIcon message={writeError} /> : null}
+            <Alert
+              type="warning"
+              showIcon
+              message={FACEBOOK_GLOBAL_POLICY_SCOPE_TITLE}
+              description={FACEBOOK_GLOBAL_POLICY_SCOPE_DETAIL}
+            />
             <Alert
               type="info"
               showIcon

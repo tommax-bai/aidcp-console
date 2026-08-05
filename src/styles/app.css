@@ -122,6 +122,11 @@ body {
   justify-content: flex-end;
 }
 
+/* 「对全部运行目标同时生效」的防误闸标注：紧贴摘要上方，不与摘要粘连。 */
+.facebook-global-policy-card__scope {
+  margin-bottom: var(--aidcp-space-3);
+}
+
 .facebook-global-policy-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

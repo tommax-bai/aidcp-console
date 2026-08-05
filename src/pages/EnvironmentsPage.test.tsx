@@ -285,6 +285,8 @@ describe('EnvironmentsPage', () => {
     });
     expect(await screen.findByLabelText('冷启动第8天浏览上限')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '保存全局数值' }));
+    // 写入前先过一道「本次保存也会改到线上」的确认（change unify-facebook-global-policy-across-targets 6.2）。
+    fireEvent.click(await screen.findByRole('button', { name: '确认保存' }));
 
     await waitFor(() => expect(screen.getByText('revision 9')).toBeTruthy());
     const put = fetchMock.mock.calls.find(
@@ -310,7 +312,8 @@ describe('EnvironmentsPage', () => {
         && (init as RequestInit | undefined)?.method !== 'PUT',
     );
     expect(authoritativeReads.length).toBeGreaterThanOrEqual(2);
-  });
+    // 同上：多一层写入确认后，这条在整包并行跑时会压过默认 5s。
+  }, 20_000);
 
   it('edits join-to-first-comment delay inside global configuration with its own CAS write', async () => {
     let currentGroupPolicy = groupCommentPolicy;
@@ -363,6 +366,7 @@ describe('EnvironmentsPage', () => {
     expect(delay.value).toBe('24');
     fireEvent.change(delay, { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: '保存首次评论等待' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认保存' }));
 
     await waitFor(() => expect(screen.getByText('revision 1')).toBeTruthy());
     const groupPut = fetchMock.mock.calls.find(
@@ -377,7 +381,8 @@ describe('EnvironmentsPage', () => {
       ([input, init]) => String(input).endsWith('/api/facebook/operation-global-policy')
         && (init as RequestInit | undefined)?.method === 'PUT',
     )).toBe(false);
-  });
+    // 弹层里再套一层写入确认后，这条用例在 jsdom 下稳定在 5s 上下；默认 5s 会误判成超时。
+  }, 20_000);
 
   it('keeps the edited global Reel cadence after a stale CAS failure', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -415,10 +420,12 @@ describe('EnvironmentsPage', () => {
     const slowStartLikeInput = await screen.findByLabelText('冷启动 Reel 浏览点赞阈值') as HTMLInputElement;
     fireEvent.change(slowStartLikeInput, { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: '保存全局数值' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认保存' }));
 
     expect(await screen.findByText('全局策略已被其他操作员更新；当前表单已保留，请重新读取。')).toBeTruthy();
     expect(slowStartLikeInput.value).toBe('12');
-  });
+    // 同上：多一层写入确认后，这条在整包并行跑时会压过默认 5s。
+  }, 20_000);
 
   it('saves an inheriting environment without sending duplicated cadence values', async () => {
     let current = { ...operationPolicy, cadenceSource: 'global' as const };

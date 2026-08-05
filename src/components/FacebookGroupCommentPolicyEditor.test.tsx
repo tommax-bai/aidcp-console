@@ -3,6 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
 import { FacebookGroupCommentPolicyEditor } from './FacebookGroupCommentPolicyEditor';
+import {
+  FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_DETAIL,
+  FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_TITLE,
+  FACEBOOK_GROUP_COMMENT_SCOPE_TITLE,
+} from './facebookGlobalPolicyScopeNotice';
 import type { FacebookGroupCommentPolicyView } from '../types/api';
 
 const policy: FacebookGroupCommentPolicyView = {
@@ -64,6 +69,7 @@ describe('FacebookGroupCommentPolicyEditor', () => {
     const input = await screen.findByLabelText('入群后首次评论等待（小时）') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '36' } });
     fireEvent.click(screen.getByRole('button', { name: '保存首次评论等待' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认保存' }));
 
     expect(await screen.findByText(/策略 revision 已变化/)).toBeTruthy();
     expect(input.value).toBe('36');
@@ -84,6 +90,38 @@ describe('FacebookGroupCommentPolicyEditor', () => {
       .toBe(true);
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT'))
       .toBe(false);
+  });
+
+  // 合并成跨目标唯一一份后，这条标注是运营侧唯一的防误闸：页面与写入确认都必须讲明
+  // 「这次保存也会改到线上」。少任一处，误改就会像事故那次一样静默改到 OL。
+  it('warns on the card and again in the save confirmation that OL changes too', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return new Response(JSON.stringify({ ...policy, revision: 5 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(policy), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderEditor(fetchMock);
+
+    expect(await screen.findByText(FACEBOOK_GROUP_COMMENT_SCOPE_TITLE)).toBeTruthy();
+
+    const input = await screen.findByLabelText('入群后首次评论等待（小时）');
+    fireEvent.change(input, { target: { value: '36' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存首次评论等待' }));
+
+    expect(await screen.findByText(FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_TITLE)).toBeTruthy();
+    expect(screen.getByText(FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_DETAIL)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole('button', { name: '确认保存' }));
+    await waitFor(() => expect(
+      fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT'),
+    ).toBe(true));
   });
 
   it('renders an unavailable read as unknown instead of a 24-hour default', async () => {

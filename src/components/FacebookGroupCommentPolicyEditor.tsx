@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   InputNumber,
+  Popconfirm,
   Skeleton,
   Space,
   Tag,
@@ -13,6 +14,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiGet, apiPut } from '../api/client';
 import { errorText } from '../api/errorText';
+import {
+  FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_DETAIL,
+  FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_TITLE,
+  FACEBOOK_GROUP_COMMENT_SCOPE_DETAIL,
+  FACEBOOK_GROUP_COMMENT_SCOPE_TITLE,
+} from './facebookGlobalPolicyScopeNotice';
 import type {
   FacebookGroupCommentPolicyView,
   FacebookGroupCommentPolicyWrite,
@@ -117,6 +124,12 @@ export function FacebookGroupCommentPolicyEditor({ enabled = true }: { enabled?:
       }
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Alert
+          type="warning"
+          showIcon
+          message={FACEBOOK_GROUP_COMMENT_SCOPE_TITLE}
+          description={FACEBOOK_GROUP_COMMENT_SCOPE_DETAIL}
+        />
         <Typography.Text type="secondary">
           该配置独立于消费节奏保存；修改它不会重置消费模式 revision 或已累计进度。
         </Typography.Text>
@@ -158,19 +171,27 @@ export function FacebookGroupCommentPolicyEditor({ enabled = true }: { enabled?:
             <Typography.Text type="secondary">
               服务器范围 {bounds.min}–{bounds.max}；默认 {bounds.default}
             </Typography.Text>
-            <Button
-              type="primary"
-              loading={save.isPending}
-              disabled={invalid || !dirty}
-              onClick={() =>
+            <Popconfirm
+              title={FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_TITLE}
+              description={FACEBOOK_GROUP_COMMENT_SCOPE_CONFIRM_DETAIL}
+              okText="确认保存"
+              cancelText="返回检查"
+              styles={{ root: { maxWidth: 380 } }}
+              onConfirm={() =>
                 save.mutate({
                   expectedRevision: view.revision ?? 0,
                   joinToFirstCommentHours: value,
                 })
               }
             >
-              保存首次评论等待
-            </Button>
+              <Button
+                type="primary"
+                loading={save.isPending}
+                disabled={invalid || !dirty}
+              >
+                保存首次评论等待
+              </Button>
+            </Popconfirm>
           </Space>
           {invalid ? (
             <Typography.Text type="danger">
