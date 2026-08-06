@@ -63,6 +63,41 @@ export function AccountTotalsTable({
       columns={columns}
       dataSource={rows}
       locale={{ emptyText: '今日暂无按账号计数' }}
+      summary={(pageRows) =>
+        pageRows.length === 0 ? null : (
+          <Table.Summary.Row>
+            <Table.Summary.Cell index={0}>
+              <strong>合计（{pageRows.length} 个账号）</strong>
+            </Table.Summary.Cell>
+            {RISK_ACTIONS.map((a, i) => {
+              const used = pageRows.reduce((s, r) => s + (r.totals[a] ?? 0), 0);
+              // 上限求和只累计「拿得到上限」的账号：某账号上限缺省时，把它算成 0 会虚报余量，
+              // 算成别的账号的值更是无中生有——只加已知的那几个，含义是「已知上限之和」。
+              const withCap = pageRows.filter((r) => r.quotas?.[a] !== undefined);
+              const cap = withCap.reduce((s, r) => s + (r.quotas?.[a] ?? 0), 0);
+              return (
+                <Table.Summary.Cell key={a} index={i + 1} align="right">
+                  <strong>{used}</strong>
+                  {withCap.length > 0 && (
+                    <span
+                      style={{ color: '#bfbfbf' }}
+                      title={
+                        withCap.length < pageRows.length
+                          ? `仅 ${withCap.length}/${pageRows.length} 个账号取到上限，合计为已知部分之和`
+                          : undefined
+                      }
+                    >
+                      {' / '}
+                      {cap}
+                      {withCap.length < pageRows.length && '+'}
+                    </span>
+                  )}
+                </Table.Summary.Cell>
+              );
+            })}
+          </Table.Summary.Row>
+        )
+      }
     />
   );
 }
