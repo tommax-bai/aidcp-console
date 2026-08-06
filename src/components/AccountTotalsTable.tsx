@@ -1,6 +1,6 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { RISK_ACTIONS, RISK_ACTION_LABEL, labelOf } from '../types/aidcp-enums';
+import { RISK_ACTIONS, RISK_ACTION_LABEL, labelOf, type RiskAction } from '../types/aidcp-enums';
 import type { AccountTotals, PanelAccount } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 import { ProfileLink } from './ProfileLink';
@@ -12,6 +12,30 @@ import { STICKY_TABLE_HEADER } from './tableSticky';
  * 账号列经客户端 join（change account-real-nickname）：用 accounts 行的「真名→运营名→ID」回落显示，
  * 不加宽服务端 GROUP-BY 总表查询（避免函数依赖坑）；无 accounts 时回落裸 accountId。
  */
+/**
+ * 列顺序（仅本表的展示口径）：按运营关注度排，与 RISK_ACTIONS 的枚举顺序解耦——
+ * 后者是 cloud /api/version 的逐字镜像，顺序被对拍断言钉死，不可为了显示重排。
+ * 未在此列出的动作（云端新增、这里忘了排）自动追加到末尾，绝不静默丢列。
+ */
+const COLUMN_ORDER: readonly RiskAction[] = [
+  'view',
+  'like',
+  'join_group',
+  'comment',
+  'follow',
+  'publish',
+  'collect',
+  'comment_like',
+  'search',
+  'dm_reply',
+];
+
+/** 实际渲染顺序：先按 COLUMN_ORDER，剩下的按枚举原序补在末尾。列头与汇总行共用同一份，防错位。 */
+const ORDERED_ACTIONS: readonly RiskAction[] = [
+  ...COLUMN_ORDER.filter((a) => RISK_ACTIONS.includes(a)),
+  ...RISK_ACTIONS.filter((a) => !COLUMN_ORDER.includes(a)),
+];
+
 export function AccountTotalsTable({
   rows,
   accounts,
@@ -37,7 +61,7 @@ export function AccountTotalsTable({
       // 账号名可点：跳转其小红书主页（accountId = xhs userid）。非真实 id 回落纯文本。
       render: (_, r) => <ProfileLink userId={r.accountId}>{nameOf(r.accountId)}</ProfileLink>,
     },
-    ...RISK_ACTIONS.map((a) => ({
+    ...ORDERED_ACTIONS.map((a) => ({
       title: labelOf(RISK_ACTION_LABEL, a),
       key: a,
       align: 'right' as const,
@@ -74,7 +98,7 @@ export function AccountTotalsTable({
             <Table.Summary.Cell index={0}>
               <strong>合计（{pageRows.length} 个账号）</strong>
             </Table.Summary.Cell>
-            {RISK_ACTIONS.map((a, i) => {
+            {ORDERED_ACTIONS.map((a, i) => {
               const used = pageRows.reduce((s, r) => s + (r.totals[a] ?? 0), 0);
               // 上限求和只累计「拿得到上限」的账号：某账号上限缺省时，把它算成 0 会虚报余量，
               // 算成别的账号的值更是无中生有——只加已知的那几个，含义是「已知上限之和」。

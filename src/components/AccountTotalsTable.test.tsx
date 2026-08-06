@@ -46,6 +46,42 @@ const renderTable = (rows: AccountTotals[]) =>
     </MemoryRouter>,
   );
 
+describe('AccountTotalsTable 列顺序', () => {
+  const headerTexts = (): string[] =>
+    Array.from(document.querySelectorAll('thead th')).map((th) => th.textContent ?? '');
+
+  it('按运营关注度排列，且与枚举镜像顺序解耦', () => {
+    renderTable([row('a', { view: 1 })]);
+    expect(headerTexts()).toEqual([
+      '账号',
+      '浏览',
+      '点赞',
+      '加群',
+      '评论',
+      '关注',
+      '发布',
+      '收藏',
+      '评论赞',
+      '搜索',
+      '私信回复',
+    ]);
+  });
+
+  it('每个风控动作都有列，云端新增动作不会静默丢列', () => {
+    renderTable([row('a', { view: 1 })]);
+    // 账号列 + 每动作一列；顺序表漏排新动作时它落到末尾，仍然出现在表里。
+    expect(headerTexts()).toHaveLength(RISK_ACTIONS.length + 1);
+  });
+
+  it('汇总行与列头同序（合计不会落到别的列下面）', () => {
+    renderTable([row('a', { view: 7 }, { view: 150 })]);
+    const cells = Array.from(summaryRow().querySelectorAll('td')).map((td) => td.textContent ?? '');
+    // 浏览是第 1 个动作列 → 紧跟账号列；其用量落在这一格而非枚举原序的第 6 格。
+    expect(cells[1]).toContain('7');
+    expect(cells[1]).toContain('150');
+  });
+});
+
 describe('AccountTotalsTable 汇总行', () => {
   it('每列按账号加和，上限也加和', () => {
     renderTable([
