@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { RiskStatusBadge } from './RiskStatusBadge';
 import { QuotaTierBadge } from './QuotaTierBadge';
 import { ProfileLink } from './ProfileLink';
+import { STICKY_TABLE_HEADER } from './tableSticky';
 import type { PanelAccount } from '../types/api';
 import type { FacebookRuleModePersonaState } from '../types/personaPresentation';
 import { OPERATOR_STATUS_LABEL, labelOf, type RiskStatus } from '../types/aidcp-enums';
@@ -138,6 +139,7 @@ export function AccountsTable({
   accounts,
   loading,
   severitySorted = false,
+  stickyHeader = false,
   operatorStatusControl,
   riskStatusControl,
   quotaTierControl,
@@ -149,6 +151,8 @@ export function AccountsTable({
   accounts: PanelAccount[];
   loading?: boolean;
   severitySorted?: boolean;
+  /** 表头吸顶：长表下滚时列头停在顶栏下方，滚出表格范围即随表格离开。默认关（不改动既有页面版式）。 */
+  stickyHeader?: boolean;
   /** 账号页把动作归入对应事实列；只读视图不传，保留原徽标。 */
   operatorStatusControl?: (account: PanelAccount) => ReactNode;
   riskStatusControl?: (account: PanelAccount) => ReactNode;
@@ -355,6 +359,7 @@ export function AccountsTable({
       dataSource={rows}
       // 列多于视口时整表横向滚动；账号页不再创建通用“操作”列。
       scroll={{ x: 'max-content' }}
+      sticky={stickyHeader ? STICKY_TABLE_HEADER : undefined}
     />
   );
 }

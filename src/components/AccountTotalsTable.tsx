@@ -4,6 +4,7 @@ import { RISK_ACTIONS, RISK_ACTION_LABEL, labelOf } from '../types/aidcp-enums';
 import type { AccountTotals, PanelAccount } from '../types/api';
 import { accountDisplayName } from '../types/accountDisplay';
 import { ProfileLink } from './ProfileLink';
+import { STICKY_TABLE_HEADER } from './tableSticky';
 
 /**
  * 真按账号今日计数切片（V1 task 9.6 / 10.3）。
@@ -15,11 +16,14 @@ export function AccountTotalsTable({
   rows,
   accounts,
   loading,
+  stickyHeader = false,
 }: {
   rows: AccountTotals[];
   /** 账号一览（DashboardSummary.accounts）：用于把账号列从裸 ID 显示成真名（客户端 join，可选）。 */
   accounts?: PanelAccount[];
   loading?: boolean;
+  /** 表头吸顶：长表下滚时列头停在顶栏下方，滚出表格范围即随表格离开。默认关。 */
+  stickyHeader?: boolean;
 }) {
   const nameOf = (accountId: string): string => {
     const a = accounts?.find((x) => x.accountId === accountId);
@@ -62,6 +66,7 @@ export function AccountTotalsTable({
       pagination={false}
       columns={columns}
       dataSource={rows}
+      sticky={stickyHeader ? STICKY_TABLE_HEADER : undefined}
       locale={{ emptyText: '今日暂无按账号计数' }}
       summary={(pageRows) =>
         pageRows.length === 0 ? null : (

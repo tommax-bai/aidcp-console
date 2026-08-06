@@ -90,7 +90,8 @@ function evidenceTime(value: number | null | undefined): string {
 
 /**
  * 数据看板首页（design PAGE 3；merge-monitor-into-dashboard 后并入原「监控」页 PAGE 6）：
- * 今日数据 + 账号状态一览（按级别排序）+ 调度引擎 + 真按账号切片 + 按笔记互动 + 告警 + 实时事件流（默认折叠）。
+ * 今日数据 + 调度引擎 + 真按账号切片 + 账号状态一览（按级别排序）+ 按笔记互动 + 告警 + 实时事件流（默认折叠）。
+ * 两张按账号的长表（按账号·今日 / 各账号状态）开表头吸顶，下滚时列头停在顶栏下方。
  * 原两页重复的「告警」「按账号今日」各留一份；告警数据源收敛为汇总接口（原监控页独立 5s 告警流随之退役）。
  */
 export function DashboardPage() {
@@ -235,22 +236,28 @@ export function DashboardPage() {
         )}
       </Card>
 
+      {/* V1 task 9.6：真按账号今日计数切片（归因已流通，不再「归因待补」）。今日计数排在账号状态之前：先看「今天跑了多少」，再看「谁的状态需要处理」。 */}
+      <Card size="small" title="按账号·今日">
+        <AccountTotalsTable
+          rows={data?.totalsByAccount ?? []}
+          accounts={data?.accounts ?? []}
+          loading={isLoading}
+          stickyHeader
+        />
+      </Card>
+
       <Card size="small" title="各账号状态（按级别排序）">
         {data && data.accounts.length > 0 ? (
           <AccountsTable
             accounts={data.accounts}
             loading={isLoading}
             severitySorted
+            stickyHeader
             facebookRuleModePersonaStates={facebookRuleModePersonaStates}
           />
         ) : (
           <Empty description={isLoading ? '加载中…' : '暂无账号'} />
         )}
-      </Card>
-
-      {/* V1 task 9.6：真按账号今日计数切片（归因已流通，不再「归因待补」）。 */}
-      <Card size="small" title="按账号·今日">
-        <AccountTotalsTable rows={data?.totalsByAccount ?? []} accounts={data?.accounts ?? []} loading={isLoading} />
       </Card>
 
       {/* merge-monitor-into-dashboard：按笔记互动明细（原监控页 V1 task 9.2/10.3），接在计数之后成「总数→明细」层次。 */}
