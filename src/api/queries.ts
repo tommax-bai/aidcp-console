@@ -22,6 +22,7 @@ import type {
   SessionLimitView,
   HotLeadConfigView,
   ResumeConfigView,
+  RestrictedPolicyView,
   LlmUsagePayload,
   LlmBillingPriceRefreshPayload,
   PanelNotificationContact,
@@ -125,6 +126,14 @@ export function useResumeConfig() {
   return useQuery({
     queryKey: ['config', 'resume-config'],
     queryFn: () => apiGet<ResumeConfigView>('/api/resume-config'),
+  });
+}
+
+/** 受限处置策略（全局单例，change restricted-policy-global-config）。模式 + 恢复时长；对所有账号生效 + 审计。 */
+export function useRestrictedPolicy() {
+  return useQuery({
+    queryKey: ['config', 'restricted-policy'],
+    queryFn: () => apiGet<RestrictedPolicyView>('/api/restricted-policy'),
   });
 }
 

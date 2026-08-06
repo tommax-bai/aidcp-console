@@ -1249,6 +1249,25 @@ export interface ResumeConfigView {
   updatedBy: string | null;
 }
 
+// 受限处置策略（全局单例，change restricted-policy-global-config）。与 cloud RestrictedPolicyView 手动对齐。
+
+/**
+ * 受限处置模式。枚举值 MUST 与云端逐字一致（有枚举漂移白屏前科）：
+ * browse_only = 只浏览（受限只封互动，浏览照常）；full_pause = 浏览也暂停（让出浏览器槽位）。
+ */
+export type RestrictedPolicyMode = 'browse_only' | 'full_pause';
+
+/** 受限处置策略生效值 + 审计（GET /api/restricted-policy 形状）。对所有账号生效。 */
+export interface RestrictedPolicyView {
+  mode: RestrictedPolicyMode;
+  /** 受限自动恢复时长（小时，正整数；默认 72）。 */
+  recoveryHours: number;
+  /** 是否存在库内覆盖（false=显示的是写死默认 browse_only / 72）。 */
+  overridden: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 // ── token 用量统计（change llm-token-usage-stats，GET /api/llm-usage 形状，与 cloud 逐字对齐）──
 
 /** 表格一行：按北京日期 × (账号/角色/模型) 聚合。token 量为数值（BIGINT 求和后解析）。 */

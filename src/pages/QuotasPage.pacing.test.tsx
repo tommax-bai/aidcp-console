@@ -78,6 +78,14 @@ const HOT_LEAD_CONFIG = {
   updatedBy: null,
 };
 
+const RESTRICTED_POLICY = {
+  mode: 'browse_only',
+  recoveryHours: 72,
+  overridden: false,
+  updatedAt: null,
+  updatedBy: null,
+};
+
 const state = vi.hoisted(() => ({
   pacingRows: [] as unknown[],
   quotaRows: [] as unknown[],
@@ -95,6 +103,7 @@ vi.mock('../api/client', async () => ({
     if (path === '/api/session-limits') return Promise.resolve(SESSION_LIMITS);
     if (path === '/api/resume-config') return Promise.resolve(RESUME_CONFIG);
     if (path === '/api/hot-lead-config') return Promise.resolve(HOT_LEAD_CONFIG);
+    if (path === '/api/restricted-policy') return Promise.resolve(RESTRICTED_POLICY);
     return Promise.reject(new Error(`unexpected apiGet ${path}`));
   }),
   apiPut: vi.fn((path: string, body: unknown) => {

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { App, Button, Card, Form, InputNumber, Modal, Skeleton, Table, Tag, Typography, Alert } from 'antd';
+import { App, Button, Card, Form, InputNumber, Modal, Select, Skeleton, Table, Tag, Typography, Alert } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPut } from '../api/client';
-import { useQuotaConfig, useSessionLimits, useHotLeadConfig, useResumeConfig, usePacingConfig } from '../api/queries';
+import { useQuotaConfig, useSessionLimits, useHotLeadConfig, useResumeConfig, useRestrictedPolicy, usePacingConfig } from '../api/queries';
 import { QueryError } from '../components/QueryGate';
 import type {
   QuotaConfigRow,
@@ -14,6 +14,8 @@ import type {
   SessionInteractionBudget,
   HotLeadConfigView,
   ResumeConfigView,
+  RestrictedPolicyMode,
+  RestrictedPolicyView,
   PacingConfigRow,
   PacingConfigView,
   PacingOperation,
@@ -421,6 +423,51 @@ export function QuotasPage() {
     { title: '操作', width: 72, render: (_: unknown, row: ResumeConfigView) => <Button size="small" onClick={() => openEditRC(row)}>编辑</Button> },
   ];
 
+  // ── 受限处置策略（全局单例，change restricted-policy-global-config）───────────
+  // 枚举值与云端逐字对齐（browse_only / full_pause）；写非乐观（round-trip 后 invalidate 重取真态）。
+  const rp = useRestrictedPolicy();
+  const [editingRP, setEditingRP] = useState(false);
+  const [rpMode, setRpMode] = useState<RestrictedPolicyMode | null>(null);
+  const [rpHours, setRpHours] = useState<number | null>(null);
+
+  const RP_MODE_LABEL: Record<RestrictedPolicyMode, string> = {
+    browse_only: '只浏览（互动暂停）',
+    full_pause: '浏览也暂停',
+  };
+
+  const openEditRP = (row: RestrictedPolicyView) => {
+    setEditingRP(true);
+    setRpMode(row.mode);
+    setRpHours(row.recoveryHours);
+  };
+
+  const saveRP = useMutation({
+    mutationFn: (v: { mode: RestrictedPolicyMode; recoveryHours: number }) =>
+      apiPut<RestrictedPolicyView>('/api/restricted-policy', v),
+    onSuccess: () => {
+      message.success('已保存，受限处置策略即时生效（热加载、无需重启）');
+      setEditingRP(false);
+      void qc.invalidateQueries({ queryKey: ['config', 'restricted-policy'] });
+    },
+    onError: (e) => {
+      const msg = (e as Error).message;
+      message.error(msg === 'invalid_value' ? '取值非法（未知模式或小时数不是 1–720 的整数），未保存' : msg === 'no_valid_fields' ? '未填写任何可改字段，未保存' : '保存失败');
+    },
+  });
+
+  const canSaveRP =
+    (rpMode === 'browse_only' || rpMode === 'full_pause') &&
+    rpHours !== null && Number.isInteger(rpHours) && rpHours >= 1 && rpHours <= 720;
+
+  const rpRows = rp.data ? [rp.data] : [];
+
+  const rpColumns: ColumnsType<RestrictedPolicyView> = [
+    { title: '处置模式', dataIndex: 'mode', width: 160, render: (m: RestrictedPolicyMode) => (m === 'full_pause' ? <Tag color="orange">{labelOf(RP_MODE_LABEL, m)}</Tag> : <Tag>{labelOf(RP_MODE_LABEL, m)}</Tag>) },
+    { title: '自动恢复（小时）', dataIndex: 'recoveryHours', width: 130, render: (n: number) => <span className="tabular-nums">{n}</span> },
+    { title: '来源', dataIndex: 'overridden', width: 96, render: (ov: boolean) => (ov ? <Tag color="green">已覆盖</Tag> : <Tag>系统默认</Tag>) },
+    { title: '操作', width: 72, render: (_: unknown, row: RestrictedPolicyView) => <Button size="small" onClick={() => openEditRP(row)}>编辑</Button> },
+  ];
+
   // ── 节奏兜底（全局一套，change pacing-floor-config-min-interval）─────────────
   // 每类操作两次动作之间的「最小间隔」兜底区间（毫秒）；写非乐观（round-trip 后 invalidate 重取真态）。
   // 生效边界=连接级：各边缘节点下次重连后才拉到新快照。detail_dwell 仅兜底下限、内容驱动停留由云端算。
@@ -595,6 +642,26 @@ export function QuotasPage() {
             rowKey={() => GLOBAL_ROW_KEY}
             columns={rcColumns}
             dataSource={rcRows}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      <Card size="small" title="受限处置策略（全局）">
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--aidcp-space-4)' }}
+          message="对所有账号生效：风控进入「受限」后的处置力度。只浏览（默认）＝互动全停、纯浏览养号照常；浏览也暂停＝连浏览都停、账号让出浏览器槽位彻底静默。自动恢复：受限满 N 小时（默认 72）且无新风控信号自动回「警告」档，警告满 7 天回正常；冻结不受此影响、仍需人工处理。客户端「解除受限」与运营手动操作不等 N 小时、立即生效。改完即时生效（热加载、无需重启）。"
+        />
+        {rp.isLoading || !rp.data ? (
+          <Skeleton active />
+        ) : (
+          <Table<RestrictedPolicyView>
+            size="small"
+            rowKey={() => GLOBAL_ROW_KEY}
+            columns={rpColumns}
+            dataSource={rpRows}
             pagination={false}
           />
         )}
@@ -836,6 +903,45 @@ export function QuotasPage() {
             </Form.Item>
             <Form.Item label="看门狗放弃结束（分钟，须 > 轻推）">
               <InputNumber value={rcEndMin ?? undefined} onChange={(v) => setRcEndMin(v ?? null)} min={2} max={1440} precision={0} style={{ width: 200 }} />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title="编辑受限处置策略"
+        open={editingRP}
+        onCancel={() => setEditingRP(false)}
+        confirmLoading={saveRP.isPending}
+        okButtonProps={{ disabled: !canSaveRP }}
+        onOk={() =>
+          canSaveRP &&
+          saveRP.mutate({
+            mode: rpMode as RestrictedPolicyMode,
+            recoveryHours: rpHours as number,
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+      >
+        {editingRP && (
+          <Form layout="vertical" requiredMark={false}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              对所有账号生效。「浏览也暂停」下受限账号连浏览都停、让出浏览器槽位；两种模式下都会在满恢复时长后自动回「警告」档。恢复时长须为 1–720 的整数（小时）。保存前服务端会再校验。
+            </Typography.Paragraph>
+            <Form.Item label="处置模式">
+              <Select<RestrictedPolicyMode>
+                value={rpMode ?? undefined}
+                onChange={(v) => setRpMode(v)}
+                style={{ width: 240 }}
+                options={[
+                  { value: 'browse_only', label: RP_MODE_LABEL.browse_only },
+                  { value: 'full_pause', label: RP_MODE_LABEL.full_pause },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item label="自动恢复时长（小时）">
+              <InputNumber value={rpHours ?? undefined} onChange={(v) => setRpHours(v ?? null)} min={1} max={720} precision={0} style={{ width: 200 }} />
             </Form.Item>
           </Form>
         )}
