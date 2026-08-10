@@ -8,6 +8,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Segmented,
   Space,
   Tag,
   Typography,
@@ -23,11 +24,13 @@ import {
   FACEBOOK_GLOBAL_POLICY_SCOPE_TITLE,
 } from './facebookGlobalPolicyScopeNotice';
 import type {
+  FacebookCadenceMode,
   FacebookOperationGlobalPolicyView,
   FacebookOperationGlobalPolicyWrite,
   FacebookSlowStartDailyCaps,
   IntegerFieldBounds,
 } from '../types/api';
+import { FACEBOOK_CADENCE_MODE_LABEL, labelOf } from '../types/aidcp-enums';
 
 type GlobalDraft = Omit<FacebookOperationGlobalPolicyWrite, 'expectedRevision' | 'reason'>;
 type DailyCapKey = Exclude<keyof FacebookSlowStartDailyCaps, 'day'>;
@@ -111,6 +114,7 @@ function formatUpdatedAt(value: string | null) {
 
 function draftFrom(view: FacebookOperationGlobalPolicyView): GlobalDraft {
   return {
+    cadenceMode: view.cadenceMode,
     rule: { ...view.rule },
     consumption: { ...view.consumption },
     reels: {
@@ -300,6 +304,9 @@ export function FacebookOperationGlobalPolicyEditor() {
             <Tag color={view.executionTarget === 'dev' ? 'blue' : 'gold'}>
               {view.executionTarget.toUpperCase()}
             </Tag>
+            <Tag color={view.cadenceMode === 'probabilistic' ? 'purple' : 'default'}>
+              {labelOf(FACEBOOK_CADENCE_MODE_LABEL, view.cadenceMode)}
+            </Tag>
           </div>
         )}
         extra={(
@@ -460,6 +467,7 @@ export function FacebookOperationGlobalPolicyEditor() {
               if (!draft) return;
               save.mutate({
                 expectedRevision: view.revision,
+                cadenceMode: draft.cadenceMode,
                 rule: { ...draft.rule },
                 consumption: { ...draft.consumption },
                 reels: {
@@ -501,6 +509,29 @@ export function FacebookOperationGlobalPolicyEditor() {
               message="这里配置的是全局节奏，不代表平台动作已经成功"
               description="普通人设点赞只统计 Reel 浏览。达到阈值时仅产生一次动作意图，Feed、详情页和其他模式不会复用该计数；最终结果仍以平台确认回读为准。"
             />
+
+            <section aria-label="节奏解释模式" className="facebook-global-policy-section is-cadence-mode">
+              <header className="facebook-global-policy-section__header">
+                <div>
+                  <Typography.Title level={5}>节奏模式（全局）</Typography.Title>
+                  <Typography.Text type="secondary">
+                    统管以下所有「几次 A 触发一次 B」的数值：固定按精确次数触发；概率按每次 A 有 1/N 概率触发（长期均值相同，触发点不可预测，更像真人）。
+                  </Typography.Text>
+                </div>
+                <Segmented<FacebookCadenceMode>
+                  aria-label="节奏解释模式"
+                  value={draft.cadenceMode}
+                  options={[
+                    { label: '固定次数', value: 'fixed' },
+                    { label: '概率触发', value: 'probabilistic' },
+                  ]}
+                  disabled={save.isPending}
+                  onChange={(value) =>
+                    setDraft((prev) => (prev ? { ...prev, cadenceMode: value } : prev))
+                  }
+                />
+              </header>
+            </section>
 
             <section aria-label="普通人设 Reel 节奏" className="facebook-global-policy-section is-persona">
               <header className="facebook-global-policy-section__header">

@@ -1560,10 +1560,14 @@ export interface FacebookSlowStartDailyCaps {
   joinGroup: number;
 }
 
+/** 节奏解释模式（全局单选）：fixed=精确计数触发；probabilistic=每次合格事件独立 1/N 概率触发。 */
+export type FacebookCadenceMode = 'fixed' | 'probabilistic';
+
 export interface FacebookOperationGlobalPolicyView {
   executionTarget: 'dev' | 'ol';
   revision: number;
   schemaVersion: string;
+  cadenceMode: FacebookCadenceMode;
   rule: FacebookRuleCadence;
   consumption: FacebookConsumptionCadence;
   reels: FacebookGlobalReelCadence;
@@ -1598,6 +1602,7 @@ export interface FacebookOperationGlobalPolicyView {
 
 export interface FacebookOperationGlobalPolicyWrite {
   expectedRevision: number;
+  cadenceMode: FacebookCadenceMode;
   rule: FacebookRuleCadence;
   consumption: FacebookConsumptionCadence;
   reels: FacebookGlobalReelCadence;

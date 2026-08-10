@@ -30,6 +30,7 @@ const globalPolicy: FacebookOperationGlobalPolicyView = {
   executionTarget: 'dev',
   revision: 7,
   schemaVersion: 'fb-global-1',
+  cadenceMode: 'fixed',
   rule: { viewsPerLike: 5, joinEveryNRounds: 3 },
   consumption: { viewsPerLike: 4, confirmedLikesPerJoin: 5, confirmedJoinsPerComment: 2 },
   reels: {
@@ -155,5 +156,24 @@ describe('FacebookOperationGlobalPolicyEditor', () => {
     await waitFor(() => expect(
       fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT'),
     ).toBe(true));
+  });
+
+  it('switching to probabilistic mode submits cadenceMode in the PUT body', async () => {
+    const fetchMock = renderEditor();
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑全局数值' }));
+    // Segmented option 「概率触发」切换节奏模式。
+    fireEvent.click(await screen.findByText('概率触发'));
+    fireEvent.click(screen.getByRole('button', { name: '保存全局数值' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认保存' }));
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(String((put?.[1] as RequestInit).body));
+      expect(body.cadenceMode).toBe('probabilistic');
+    });
   });
 });

@@ -138,6 +138,12 @@ export const ALERT_SEVERITY_LABEL: Record<AlertSeverity, string> = {
   P3: '提示',
 };
 
+/** Facebook 全局节奏解释模式中文 label（fixed=精确计数 / probabilistic=概率触发）。 */
+export const FACEBOOK_CADENCE_MODE_LABEL: Record<string, string> = {
+  fixed: '固定次数',
+  probabilistic: '概率触发',
+};
+
 // ── 对象值徽标映射的容错取值（防云端↔控制台枚举漂移把整页 white-screen）─────────────
 /**
  * `Record<Union, {text,color}>` 徽标映射按 wire 值取值的**唯一安全入口**。

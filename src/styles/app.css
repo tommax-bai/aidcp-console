@@ -248,6 +248,10 @@ body {
   border-left-color: var(--aidcp-accent-orange);
 }
 
+.facebook-global-policy-section.is-cadence-mode {
+  border-left-color: var(--aidcp-accent-purple);
+}
+
 .facebook-global-policy-subpolicy {
   margin-top: var(--aidcp-space-4);
 }

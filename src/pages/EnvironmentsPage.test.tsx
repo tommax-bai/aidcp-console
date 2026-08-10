@@ -84,6 +84,7 @@ const globalPolicy: FacebookOperationGlobalPolicyView = {
   executionTarget: 'dev',
   revision: 8,
   schemaVersion: 'facebook_operation_global_policy@3',
+  cadenceMode: 'fixed',
   rule: { viewsPerLike: 5, joinEveryNRounds: 2 },
   consumption: {
     viewsPerLike: 5,
